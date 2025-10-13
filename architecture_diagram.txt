@@ -1,0 +1,20 @@
+\
+CollabCanvas Infrastructure (ASCII)
+
+Browser (React + Konva + Zustand)
+         │  Realtime (broadcasts) + Presence + Auth
+         ▼
+┌─────────────────────────────────────────────────────┐
+│                 Supabase Platform                   │
+│  • Realtime Channels: room:<id>                     │
+│  • Presence: cursors & who’s online                 │
+│  • Postgres: public.shapes (persistent state)       │
+│  • Auth: anonymous (MVP)                            │
+└─────────────────────────────────────────────────────┘
+         │
+         ▼
+┌─────────────────────────────────────────────────────┐
+│       (Optional) AI Edge Function (OpenAI)          │
+│  • Receives prompt, returns tool calls              │
+│  • Broadcasts canonical actions to room             │
+└─────────────────────────────────────────────────────┘
