@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import Auth from '../Auth';
 import { supabase } from '../lib/supabaseClient';
@@ -39,7 +39,14 @@ describe('Auth Component', () => {
 
   it('handles login form submission', async () => {
     const user = userEvent.setup();
-    const mockUser = { id: 'user-1', email: 'test@example.com' };
+    const mockUser = { 
+      id: 'user-1', 
+      email: 'test@example.com',
+      app_metadata: {},
+      user_metadata: {},
+      aud: 'authenticated',
+      created_at: '2023-01-01T00:00:00Z'
+    };
     const mockProfile = { id: 'user-1', display_name: 'Test User', avatar_color: '#3b82f6' };
     
     // Mock successful login
