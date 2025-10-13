@@ -7,7 +7,11 @@ import { interpret } from "./ai/agent";
 
 // const CANVAS_W = 2400, CANVAS_H = 1600;
 
-export default function Canvas() {
+interface CanvasProps {
+  onSignOut: () => void;
+}
+
+export default function Canvas({ onSignOut }: CanvasProps) {
   const { shapes, selectedIds, me, cursors } = useCanvas();
   const [_scale, setScale] = useState(1);
   const [editingText, setEditingText] = useState<{id: string, x: number, y: number, value: string} | null>(null);
@@ -378,7 +382,7 @@ export default function Canvas() {
 
   return (
     <div className="h-screen w-screen flex">
-      <Toolbar />
+      <Toolbar onSignOut={onSignOut} />
       <div className="flex-1 bg-slate-50">
         <Stage 
           width={window.innerWidth} 
@@ -463,7 +467,11 @@ export default function Canvas() {
   );
 }
 
-function Toolbar() {
+interface ToolbarProps {
+  onSignOut: () => void;
+}
+
+function Toolbar({ onSignOut }: ToolbarProps) {
   const { me, onlineUsers, cursors } = useCanvas();
   const addRect = () => addShape("rect");
   const addCircle = () => addShape("circle");
@@ -476,7 +484,19 @@ function Toolbar() {
   
   return (
     <div className="w-64 p-4 border-r bg-white space-y-3" onClick={handleSidebarClick}>
-      <div className="text-xl font-semibold">CollabCanvas</div>
+      <div className="flex items-center justify-between">
+        <div className="text-xl font-semibold">CollabCanvas</div>
+        <button
+          onClick={(e) => {
+            e.stopPropagation();
+            onSignOut();
+          }}
+          className="text-xs px-2 py-1 text-gray-600 hover:text-gray-800 hover:bg-gray-100 rounded transition-colors"
+          title="Sign out"
+        >
+          Sign out
+        </button>
+      </div>
       <div className="text-sm">Signed in as <span style={{color: me.color}}>{me.name||"Guest"}</span></div>
       
       {/* Online users */}
