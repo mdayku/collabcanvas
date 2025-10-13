@@ -57,24 +57,79 @@ describe('AI Agent', () => {
     });
   });
 
-  describe('Shape Creation Commands', () => {
-    it('creates circles from natural language', async () => {
-      const result = await interpret('create a circle');
+  describe('Creation Commands (Required)', () => {
+    it('creates circles with position and color', async () => {
+      const result = await interpret('Create a red circle at position 100, 200');
       expect(result).toBeDefined();
     });
 
     it('creates rectangles with dimensions', async () => {
-      const result = await interpret('create rectangle 300x200');
+      const result = await interpret('Make a 200x300 rectangle');
       expect(result).toBeDefined();
     });
 
-    it('creates rectangles without dimensions', async () => {
-      const result = await interpret('create a rectangle');
+    it('creates text layers', async () => {
+      const result = await interpret('Add a text layer that says Hello World');
       expect(result).toBeDefined();
     });
 
     it('creates grids', async () => {
-      const result = await interpret('create grid 3x2');
+      const result = await interpret('Create a grid of 3x3 squares');
+      expect(result).toBeDefined();
+    });
+  });
+
+  describe('Manipulation Commands (Required)', () => {
+    it('moves existing shapes', async () => {
+      // TODO: Implement moveShape command
+      const result = await interpret('Move the blue rectangle to the center');
+      expect(result).toBeDefined();
+    });
+
+    it('resizes existing shapes', async () => {
+      // TODO: Implement resizeShape command  
+      const result = await interpret('Resize the circle to be twice as big');
+      expect(result).toBeDefined();
+    });
+
+    it('rotates existing shapes', async () => {
+      // TODO: Implement rotateShape command
+      const result = await interpret('Rotate the text 45 degrees');
+      expect(result).toBeDefined();
+    });
+  });
+
+  describe('Layout Commands (Required)', () => {
+    it('arranges shapes in horizontal rows', async () => {
+      // TODO: Implement arrangement logic
+      const result = await interpret('Arrange these shapes in a horizontal row');
+      expect(result).toBeDefined();
+    });
+
+    it('spaces elements evenly', async () => {
+      // TODO: Implement spacing logic
+      const result = await interpret('Space these elements evenly');
+      expect(result).toBeDefined();
+    });
+  });
+
+  describe('Complex Commands (Required)', () => {
+    it('creates login forms', async () => {
+      // TODO: Implement complex multi-shape creation
+      const result = await interpret('Create a login form with username and password fields');
+      expect(result).toBeDefined();
+      // Should create multiple related shapes
+    });
+
+    it('creates navigation bars', async () => {
+      // TODO: Implement navigation bar creation
+      const result = await interpret('Build a navigation bar with 4 menu items');
+      expect(result).toBeDefined();
+    });
+
+    it('creates card layouts', async () => {
+      // TODO: Implement card layout creation
+      const result = await interpret('Make a card layout with title, image, and description');
       expect(result).toBeDefined();
     });
   });

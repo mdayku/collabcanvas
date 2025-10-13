@@ -95,7 +95,7 @@ describe('Canvas Component', () => {
   it('shows performance hints', () => {
     render(<Canvas onSignOut={mockOnSignOut} />);
     
-    expect(screen.getByText(/60 FPS target/i)).toBeInTheDocument();
-    expect(screen.getByText(/Cursor updates throttled/i)).toBeInTheDocument();
+    expect(screen.getByText('Ctrl+Z')).toBeInTheDocument();
+    expect(screen.getByText('Shift+Click')).toBeInTheDocument();
   });
 });

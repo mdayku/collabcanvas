@@ -90,6 +90,38 @@ describe('Canvas Store', () => {
       expect(shape.updated_by).toBe('test-user');
       expect(shape.color).toBe('#3b82f6');
     });
+
+    it.skip('duplicates shapes (REQUIRED FEATURE)', () => {
+      // TODO: Implement duplicateShapes functionality
+      const originalShape: ShapeBase = {
+        id: 'original',
+        type: 'rect',
+        x: 100,
+        y: 100,
+        w: 200,
+        h: 150,
+        color: '#ff0000',
+        updated_at: Date.now(),
+        updated_by: 'test-user',
+      };
+
+      useCanvas.setState({ shapes: { 'original': originalShape } });
+      
+      // This should create a new shape with offset position
+      useCanvas.getState().duplicateShapes(['original']);
+      
+      const shapes = Object.values(useCanvas.getState().shapes);
+      expect(shapes).toHaveLength(2); // Original + duplicate
+      
+      const duplicate = shapes.find(s => s.id !== 'original');
+      if (duplicate) {
+        expect(duplicate.x).toBe(120); // Offset by 20
+        expect(duplicate.y).toBe(120); // Offset by 20
+        expect(duplicate.w).toBe(originalShape.w);
+        expect(duplicate.h).toBe(originalShape.h);
+        expect(duplicate.color).toBe(originalShape.color);
+      }
+    });
   });
 
   describe('Selection Management', () => {
