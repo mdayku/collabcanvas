@@ -13,7 +13,40 @@ export const tools = {
   resizeShape: (id:string, w:number, h:number) => up(id, { w, h }),
   rotateShape: (id:string, deg:number) => up(id, { rotation: deg }),
   createText: (text:string, x:number, y:number, fontSize:number, color?:string) => {
-    const id = tools.createShape("text", x, y, Math.max(80, text.length*fontSize*0.6), fontSize*1.2, color, text); return id;
+    // Calculate dynamic dimensions similar to the Canvas component
+    const charWidth = fontSize * 0.6;
+    const words = text.split(' ');
+    const maxLineWidth = Math.max(300, Math.min(800, words.length > 1 ? 400 : text.length * charWidth));
+    
+    // Calculate how many lines we need
+    let currentLineWidth = 0;
+    let lines = 1;
+    
+    for (const word of words) {
+      const wordWidth = word.length * charWidth + charWidth; // +space
+      if (currentLineWidth + wordWidth > maxLineWidth && currentLineWidth > 0) {
+        lines++;
+        currentLineWidth = wordWidth;
+      } else {
+        currentLineWidth += wordWidth;
+      }
+    }
+    
+    const width = Math.max(Math.min(maxLineWidth, text.length * charWidth), 80);
+    const height = Math.max(lines * fontSize * 1.4, fontSize * 1.2);
+    
+    const id = tools.createShape("text", x, y, width, height, color, text); 
+    
+    // Also set the fontSize property
+    const shape = useCanvas.getState().shapes[id];
+    if (shape) {
+      const updatedShape = { ...shape, fontSize };
+      useCanvas.getState().upsert(updatedShape);
+      broadcastUpsert(updatedShape);
+      persist(updatedShape);
+    }
+    
+    return id;
   },
   getCanvasState: () => Object.values(useCanvas.getState().shapes),
 };

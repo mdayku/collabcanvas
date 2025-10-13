@@ -186,9 +186,16 @@ export default function Canvas() {
         // Save history before updating
         useCanvas.getState().pushHistory();
         
+        // Calculate new dimensions for the updated text
+        const fontSize = shape.fontSize || Math.max(16, Math.min(24, shape.h * 0.6));
+        const dimensions = getTextDimensions(editingText.value, fontSize);
+        
         const updatedShape = {
           ...shape,
           text: editingText.value,
+          w: dimensions.width,
+          h: dimensions.height,
+          fontSize: fontSize,
           updated_at: Date.now(),
           updated_by: me.id
         };
@@ -292,19 +299,82 @@ export default function Canvas() {
     }
   }, [selectedIds, shapes]);
 
-  const shapeEls = useMemo(() => Object.values(shapes).map((s) => (
-    <Group key={s.id} id={s.id}
-      draggable
-      x={s.x} y={s.y} rotation={s.rotation||0}
-      onClick={(e)=>onSelect(s.id, e)}
-      onDragEnd={(e)=>onDragEnd(s.id, e)}
-      onDblClick={s.type === 'text' ? (e) => onTextDoubleClick(s.id, e) : undefined}
-    >
-      {s.type === "rect" && <Rect width={s.w} height={s.h} fill={s.color||"#e5e7eb"} cornerRadius={8}/>}
-      {s.type === "circle" && <Circle radius={Math.max(s.w,s.h)/2} fill={s.color||"#e5e7eb"} />}
-      {s.type === "text" && <KText text={s.text||"text"} fontSize={Math.max(12, s.h*0.6)} fill={s.color||"#111"} width={s.w} height={s.h}/>}
-    </Group>
-  )), [shapes]);
+  // Helper function to calculate dynamic text dimensions
+  const getTextDimensions = (text: string, fontSize: number) => {
+    // Estimate character width (roughly 0.6 * fontSize for most fonts)
+    const charWidth = fontSize * 0.6;
+    const words = text.split(' ');
+    const maxLineWidth = Math.max(300, Math.min(800, words.length > 1 ? 400 : text.length * charWidth));
+    
+    // Calculate how many lines we need
+    let currentLineWidth = 0;
+    let lines = 1;
+    
+    for (const word of words) {
+      const wordWidth = word.length * charWidth + charWidth; // +space
+      if (currentLineWidth + wordWidth > maxLineWidth && currentLineWidth > 0) {
+        lines++;
+        currentLineWidth = wordWidth;
+      } else {
+        currentLineWidth += wordWidth;
+      }
+    }
+    
+    const width = Math.min(maxLineWidth, text.length * charWidth);
+    const height = lines * fontSize * 1.4; // 1.4 for line height
+    
+    return { width: Math.max(width, 80), height: Math.max(height, fontSize * 1.2) };
+  };
+
+  const shapeEls = useMemo(() => Object.values(shapes).map((s) => {
+    // For text shapes, calculate dynamic dimensions
+    let textWidth = s.w;
+    let textHeight = s.h;
+    let fontSize = s.fontSize || Math.max(16, Math.min(24, s.h * 0.6));
+    
+    if (s.type === 'text' && s.text) {
+      const dimensions = getTextDimensions(s.text, fontSize);
+      textWidth = dimensions.width;
+      textHeight = dimensions.height;
+    }
+    
+    return (
+      <Group key={s.id} id={s.id}
+        draggable
+        x={s.x} y={s.y} rotation={s.rotation||0}
+        onClick={(e)=>onSelect(s.id, e)}
+        onDragEnd={(e)=>onDragEnd(s.id, e)}
+        onDblClick={s.type === 'text' ? (e) => onTextDoubleClick(s.id, e) : undefined}
+      >
+        {s.type === "rect" && <Rect width={s.w} height={s.h} fill={s.color||"#e5e7eb"} cornerRadius={8}/>}
+        {s.type === "circle" && <Circle radius={Math.max(s.w,s.h)/2} fill={s.color||"#e5e7eb"} />}
+        {s.type === "text" && (
+          <>
+            {/* Optional background for text (subtle) */}
+            <Rect 
+              width={textWidth + 16} 
+              height={textHeight + 8} 
+              x={-8} 
+              y={-4}
+              fill="rgba(255,255,255,0.8)" 
+              cornerRadius={4}
+              stroke="#e5e7eb"
+              strokeWidth={1}
+            />
+            <KText 
+              text={s.text||"text"} 
+              fontSize={fontSize} 
+              fill={s.color||"#111"} 
+              width={textWidth}
+              height={textHeight}
+              wrap="word"
+              ellipsis={false}
+            />
+          </>
+        )}
+      </Group>
+    );
+  }), [shapes]);
 
   return (
     <div className="h-screen w-screen flex">
@@ -449,8 +519,47 @@ function addShape(type: "rect"|"circle"|"text") {
   useCanvas.getState().pushHistory();
   
   const { me } = useCanvas.getState();
-  const s: ShapeBase = { id: crypto.randomUUID(), type, x: 100+Math.random()*200, y: 100+Math.random()*200, w: 200, h: 120, color: undefined, text: type==="text"?"Hello":"", updated_at: Date.now(), updated_by: me.id };
-  useCanvas.getState().upsert(s); broadcastUpsert(s); persist(s);
+  
+  let s: ShapeBase;
+  if (type === "text") {
+    const defaultText = "Hello";
+    const fontSize = 20;
+    // Calculate initial dimensions based on default text
+    const charWidth = fontSize * 0.6;
+    const width = Math.max(80, defaultText.length * charWidth);
+    const height = fontSize * 1.4;
+    
+    s = { 
+      id: crypto.randomUUID(), 
+      type, 
+      x: 100 + Math.random() * 200, 
+      y: 100 + Math.random() * 200, 
+      w: width, 
+      h: height, 
+      color: "#111", 
+      text: defaultText,
+      fontSize: fontSize,
+      updated_at: Date.now(), 
+      updated_by: me.id 
+    };
+  } else {
+    s = { 
+      id: crypto.randomUUID(), 
+      type, 
+      x: 100 + Math.random() * 200, 
+      y: 100 + Math.random() * 200, 
+      w: 200, 
+      h: 120, 
+      color: undefined, 
+      text: "", 
+      updated_at: Date.now(), 
+      updated_by: me.id 
+    };
+  }
+  
+  useCanvas.getState().upsert(s); 
+  broadcastUpsert(s); 
+  persist(s);
 }
 
 function AIBox() {
