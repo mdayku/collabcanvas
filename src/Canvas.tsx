@@ -529,7 +529,7 @@ function Toolbar({ onSignOut }: ToolbarProps) {
         <button className="px-3 py-2 rounded bg-slate-200" onClick={addText}>Text</button>
       </div>
       <AIBox />
-      <PerfHints />
+      <UserTips />
     </div>
   );
 }
@@ -606,18 +606,20 @@ function AIBox() {
       <button className="px-3 py-2 rounded bg-emerald-500 text-white disabled:opacity-60" disabled={!q||working} onClick={onRun}>
         {working?"Thinking…":"Run"}
       </button>
-      <p className="text-xs text-slate-500">Function-like actions (create/move/resize/rotate/getCanvasState). Swap to OpenAI for richer parsing. Press Enter to run.</p>
+      <p className="text-xs text-slate-500">Try: "Create a red circle", "Add text saying hello", "Make a 300x200 rectangle"</p>
     </div>
   );
 }
 
-function PerfHints() {
+function UserTips() {
   return (
     <div className="text-xs text-slate-500 space-y-1">
-      <div>• 60 FPS target via Konva + optimistic updates</div>
-      <div>• Cursor updates throttled with rAF; shape sync via Supabase broadcast</div>
-      <div>• Persistence: Supabase table "shapes" (upsert on change, fetch on join)</div>
-      <div>• Undo: Ctrl+Z (50 states), Text: Double-click to edit</div>
+      <div className="font-medium text-slate-600 mb-1">Tips:</div>
+      <div>• <kbd className="px-1 bg-slate-200 rounded text-xs">Ctrl+Z</kbd> to undo</div>
+      <div>• <kbd className="px-1 bg-slate-200 rounded text-xs">Shift+Click</kbd> to multi-select</div>
+      <div>• <kbd className="px-1 bg-slate-200 rounded text-xs">Double-click</kbd> text to edit</div>
+      <div>• <kbd className="px-1 bg-slate-200 rounded text-xs">Delete</kbd> to remove selected</div>
+      <div>• <kbd className="px-1 bg-slate-200 rounded text-xs">Mouse wheel</kbd> to zoom</div>
     </div>
   );
 }
