@@ -3,7 +3,7 @@ import { supabase } from "./lib/supabaseClient";
 import { randomColor } from "./state/store";
 
 interface AuthProps {
-  onAuthSuccess: (user: any, profile: any) => void;
+  onAuthSuccess: (user: any, profile?: any) => void;
 }
 
 export default function Auth({ onAuthSuccess }: AuthProps) {

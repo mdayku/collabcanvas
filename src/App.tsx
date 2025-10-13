@@ -12,11 +12,18 @@ export default function App() {
   useEffect(() => {
     // Check for existing session
     const checkSession = async () => {
-      const { data: { session }, error } = await supabase.auth.getSession();
-      
-      if (session?.user && !error) {
-        await handleAuthSuccess(session.user, null, false);
-      } else {
+      try {
+        const { data: { session }, error } = await supabase.auth.getSession();
+        
+        if (session?.user && !error) {
+          console.log('Found existing session:', session.user.email);
+          await handleAuthSuccess(session.user, null);
+        } else {
+          console.log('No existing session found');
+          setLoading(false);
+        }
+      } catch (error) {
+        console.error('Session check failed:', error);
         setLoading(false);
       }
     };
@@ -26,13 +33,22 @@ export default function App() {
     // Listen for auth changes
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       async (event, session) => {
+        console.log('Auth state change:', event, session?.user?.email);
+        
         if (event === 'SIGNED_IN' && session?.user) {
-          await handleAuthSuccess(session.user, null, false);
+          await handleAuthSuccess(session.user, null);
         } else if (event === 'SIGNED_OUT') {
           setUser(null);
           setUserProfile(null);
           useCanvas.getState().setUser({ id: '', name: '', color: '#666' });
           useCanvas.getState().setAuthenticated(false);
+          setLoading(false);
+        } else if (event === 'TOKEN_REFRESHED' && session?.user) {
+          console.log('Token refreshed for:', session.user.email);
+          await handleAuthSuccess(session.user, null);
+        } else if (!session) {
+          // No session, stop loading
+          setLoading(false);
         }
       }
     );
@@ -40,21 +56,35 @@ export default function App() {
     return () => subscription.unsubscribe();
   }, []);
 
-  const handleAuthSuccess = async (authUser: any, providedProfile: any = null, isNewAuth: boolean = true) => {
-    setUser(authUser);
-    
-    // Get user profile from database if not provided
-    let profile = providedProfile;
-    if (!profile) {
-      const { data } = await supabase
-        .from('user_profiles')
-        .select('*')
-        .eq('id', authUser.id)
-        .single();
-      profile = data;
-    }
+  const handleAuthSuccess = async (authUser: any, providedProfile: any = null) => {
+    try {
+      console.log('Handling auth success for:', authUser.email);
+      setUser(authUser);
+      
+      // Get user profile from database if not provided
+      let profile = providedProfile;
+      if (!profile) {
+        console.log('Fetching user profile...');
+        const { data, error } = await supabase
+          .from('user_profiles')
+          .select('*')
+          .eq('id', authUser.id)
+          .single();
+          
+        if (error) {
+          console.error('Profile fetch error:', error);
+          // If profile doesn't exist, create a fallback
+          profile = {
+            id: authUser.id,
+            display_name: authUser.email?.split('@')[0] || 'User',
+            avatar_color: '#3b82f6'
+          };
+        } else {
+          profile = data;
+        }
+      }
 
-    if (profile) {
+      console.log('Using profile:', profile);
       setUserProfile(profile);
       
       // Update the canvas store with authenticated user info
@@ -64,13 +94,11 @@ export default function App() {
         s.me.color = profile.avatar_color;
         s.isAuthenticated = true;
       });
-    }
 
-    if (isNewAuth) {
       setLoading(false);
-    } else {
-      // For existing sessions, add a small delay to avoid flash
-      setTimeout(() => setLoading(false), 100);
+    } catch (error) {
+      console.error('Auth success handler failed:', error);
+      setLoading(false);
     }
   };
 
