@@ -173,6 +173,7 @@ export async function callGroq(userMessage: string): Promise<AIResponse> {
 export function isGroqConfigured(): boolean {
   const apiKey = import.meta.env.VITE_GROQ_API_KEY;
   console.log('[DEBUG] Groq API Key check:', apiKey ? `Found: ${apiKey.substring(0, 8)}...` : 'NOT FOUND');
-  console.log('[DEBUG] All env vars:', import.meta.env);
+  console.log('[DEBUG] Environment check - DEV:', import.meta.env.DEV, 'PROD:', import.meta.env.PROD);
+  console.log('[DEBUG] All VITE_ env vars:', Object.keys(import.meta.env).filter(k => k.startsWith('VITE_')));
   return !!apiKey;
 }
