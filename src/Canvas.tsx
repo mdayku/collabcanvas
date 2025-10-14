@@ -617,6 +617,76 @@ function addShape(type: "rect"|"circle"|"text") {
   persist(s);
 }
 
+function ClearCanvasButton() {
+  const [showConfirmation, setShowConfirmation] = useState(false);
+  const { shapes } = useCanvas();
+  const shapeCount = Object.keys(shapes).length;
+
+  const handleClearCanvas = async () => {
+    // Save history before clearing so it can be undone
+    useCanvas.getState().pushHistory();
+    
+    // Get all shape IDs before clearing
+    const allShapeIds = Object.keys(shapes);
+    
+    // Clear all shapes locally
+    useCanvas.getState().clear();
+    
+    // Broadcast removal to other users (for multiplayer sync)
+    if (allShapeIds.length > 0) {
+      await broadcastRemove(allShapeIds);
+      
+      // Delete from database
+      await supabase.from("shapes").delete().eq("room_id", useCanvas.getState().roomId);
+    }
+    
+    // Close confirmation dialog
+    setShowConfirmation(false);
+  };
+
+  if (shapeCount === 0) {
+    return null; // Don't show button if canvas is already empty
+  }
+
+  return (
+    <div className="relative">
+      <button
+        onClick={() => setShowConfirmation(true)}
+        className="text-xs bg-red-100 text-red-700 px-2 py-1 rounded hover:bg-red-200 transition-colors"
+        title="Clear all shapes from canvas"
+      >
+        🗑️ Clear Canvas
+      </button>
+
+      {showConfirmation && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg p-6 max-w-sm mx-4 shadow-xl">
+            <h3 className="text-lg font-semibold mb-2">Clear Canvas?</h3>
+            <p className="text-gray-600 mb-4">
+              Are you sure you want to remove all {shapeCount} shape{shapeCount !== 1 ? 's' : ''} from the canvas? 
+              This action can be undone with Ctrl+Z.
+            </p>
+            <div className="flex gap-3 justify-end">
+              <button
+                onClick={() => setShowConfirmation(false)}
+                className="px-4 py-2 text-gray-600 bg-gray-100 rounded hover:bg-gray-200 transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleClearCanvas}
+                className="px-4 py-2 bg-red-600 text-white rounded hover:bg-red-700 transition-colors"
+              >
+                Yes, Clear All
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function AIBox() {
   const [q, setQ] = useState("");
   const [working, setWorking] = useState(false);
@@ -850,27 +920,8 @@ function AIBox() {
             </div>
             {recognition && <div className="mt-1 text-blue-600">💬 Click 🎤 for voice input</div>}
             
-            {/* Development force refresh button */}
             <div className="mt-2 pt-2 border-t border-gray-200">
-              <button
-                onClick={() => {
-                  // Nuclear option: clear everything and reload
-                  localStorage.clear();
-                  sessionStorage.clear();
-                  if ('caches' in window) {
-                    caches.keys().then(names => names.forEach(name => caches.delete(name)));
-                  }
-                  if ('serviceWorker' in navigator && navigator.serviceWorker.controller) {
-                    navigator.serviceWorker.controller.postMessage({ type: 'CLEAR_ALL' });
-                  }
-                  // Simple reload without query params to avoid loops
-                  window.location.reload();
-                }}
-                className="text-xs bg-orange-100 text-orange-700 px-2 py-1 rounded hover:bg-orange-200 transition-colors"
-                title="Clear all cache and force reload"
-              >
-                🔄 Force Refresh (Dev)
-              </button>
+              <ClearCanvasButton />
             </div>
           </div>
         ) : (
