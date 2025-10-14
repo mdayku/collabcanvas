@@ -9,6 +9,8 @@ export type ShapeBase = {
   h: number;
   rotation?: number;
   color?: string;
+  stroke?: string;
+  strokeWidth?: number;
   text?: string; // for text shapes
   fontSize?: number; // for text shapes
   updated_at: number;

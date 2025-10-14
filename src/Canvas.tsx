@@ -21,8 +21,16 @@ interface CanvasProps {
   onSignOut: () => void;
 }
 
+// Context Menu Types
+interface ContextMenuData {
+  x: number;
+  y: number;
+  shapeId: string;
+}
+
 export default function Canvas({ onSignOut }: CanvasProps) {
   const { shapes, selectedIds, me, cursors } = useCanvas();
+  const [contextMenu, setContextMenu] = useState<ContextMenuData | null>(null);
   const [_scale, setScale] = useState(1);
   const [editingText, setEditingText] = useState<{id: string, x: number, y: number, value: string} | null>(null);
   const trRef = useRef<any>(null);
@@ -253,6 +261,9 @@ export default function Canvas({ onSignOut }: CanvasProps) {
     const isBackgroundRect = e.target.attrs && e.target.attrs.fill === '#fafafa';
     const isNotShape = !e.target.parent || !e.target.parent.attrs || !e.target.parent.attrs.id;
     
+    // Close context menu on any click
+    setContextMenu(null);
+    
     if (isStage || isBackgroundRect || isNotShape) {
       useCanvas.getState().select([]);
     }
@@ -414,10 +425,78 @@ export default function Canvas({ onSignOut }: CanvasProps) {
     );
   }), [shapes]);
 
+  // Add right-click handler to shapes
+  const rightClickShapeEls = useMemo(() => Object.values(shapes).map((s: ShapeBase) => {
+    const onClick = () => {
+      if (selectedIds.includes(s.id)) {
+        if (selectedIds.length === 1) {
+          useCanvas.getState().select([]);
+        }
+      } else {
+        useCanvas.getState().select([s.id]);
+      }
+    };
+
+    const onRightClick = (e: any) => {
+      e.evt.preventDefault();
+      const stage = e.target.getStage();
+      const pointer = stage.getPointerPosition();
+      setContextMenu({
+        x: pointer.x,
+        y: pointer.y,
+        shapeId: s.id
+      });
+      // Select the shape when right-clicking
+      useCanvas.getState().select([s.id]);
+    };
+
+    return (
+      <Group key={s.id} onTap={onClick} onClick={onClick} onContextMenu={onRightClick}>
+        {s.type === "rect" && (
+          <Rect
+            x={s.x}
+            y={s.y}
+            width={s.w}
+            height={s.h}
+            fill={s.color}
+            stroke={s.stroke || "#000"}
+            strokeWidth={s.strokeWidth || 1}
+          />
+        )}
+        {s.type === "circle" && (
+          <Circle
+            x={s.x + s.w / 2}
+            y={s.y + s.h / 2}
+            radius={Math.min(s.w, s.h) / 2}
+            fill={s.color}
+            stroke={s.stroke || "#000"}
+            strokeWidth={s.strokeWidth || 1}
+          />
+        )}
+        {s.type === "text" && (
+          <>
+            <KText
+              x={s.x}
+              y={s.y}
+              text={s.text || "Text"}
+              fontSize={s.fontSize || 20}
+              fill={s.color}
+              width={s.w}
+              height={s.h}
+              onDblClick={() => {
+                setEditingText({ id: s.id, x: s.x, y: s.y, value: s.text || '' });
+              }}
+            />
+          </>
+        )}
+      </Group>
+    );
+  }), [shapes, selectedIds]);
+
   return (
     <div className="h-screen w-screen flex">
       <Toolbar onSignOut={onSignOut} />
-      <div className="flex-1 bg-slate-50">
+      <div className="flex-1 bg-slate-50 relative">
         <Stage 
           width={window.innerWidth} 
           height={window.innerHeight} 
@@ -438,7 +517,7 @@ export default function Canvas({ onSignOut }: CanvasProps) {
               onClick={() => useCanvas.getState().select([])}
               onTap={() => useCanvas.getState().select([])}
             />
-            {shapeEls}
+            {rightClickShapeEls}
             <Transformer ref={trRef} rotateEnabled={true} onTransformEnd={onTransformEnd} />
           </Layer>
         </Stage>
@@ -496,6 +575,16 @@ export default function Canvas({ onSignOut }: CanvasProps) {
             </div>
           </div>
         ))}
+        
+        {/* Context Menu */}
+        {contextMenu && (
+          <ContextMenu 
+            x={contextMenu.x}
+            y={contextMenu.y}
+            shapeId={contextMenu.shapeId}
+            onClose={() => setContextMenu(null)}
+          />
+        )}
       </div>
     </div>
   );
@@ -1100,6 +1189,170 @@ function AIBox() {
       <div className="mt-2 pt-2 border-t border-gray-200">
         <ClearCanvasButton />
       </div>
+    </div>
+  );
+}
+
+// Color Picker Component
+function ColorPicker({ color, onChange }: { color: string; onChange: (color: string) => void }) {
+  const colors = [
+    '#FF6B6B', '#4ECDC4', '#45B7D1', '#96CEB4', '#FECA57',
+    '#FF9FF3', '#54A0FF', '#5F27CD', '#00D2D3', '#FF9F43',
+    '#FF6348', '#2ED573', '#3742FA', '#F368E0', '#FFA502',
+    '#FF3838', '#1DD1A1', '#5352ED', '#FF6B9D', '#FFC048',
+    '#C44569', '#F8B500', '#6C5CE7', '#A29BFE', '#FD79A8',
+    '#FDCB6E', '#6C5CE7', '#74B9FF', '#00B894', '#E17055',
+    '#000000', '#2D3436', '#636E72', '#B2BEC3', '#DDD',
+    '#FFFFFF'
+  ];
+
+  return (
+    <div className="bg-white rounded-lg shadow-lg p-4 border">
+      <div className="text-sm font-medium mb-3">Choose Color</div>
+      <div className="grid grid-cols-6 gap-2">
+        {colors.map((c) => (
+          <button
+            key={c}
+            className={`w-8 h-8 rounded-md border-2 hover:scale-110 transition-transform ${
+              color === c ? 'border-blue-500 border-4' : 'border-gray-300'
+            }`}
+            style={{ backgroundColor: c }}
+            onClick={() => onChange(c)}
+            title={c}
+          />
+        ))}
+      </div>
+      
+      {/* Custom Color Input */}
+      <div className="mt-3">
+        <label className="text-xs text-gray-600 block mb-1">Custom Color:</label>
+        <input
+          type="color"
+          value={color}
+          onChange={(e) => onChange(e.target.value)}
+          className="w-full h-8 rounded border cursor-pointer"
+        />
+      </div>
+    </div>
+  );
+}
+
+// Context Menu Component
+function ContextMenu({ x, y, shapeId, onClose }: {
+  x: number;
+  y: number;
+  shapeId: string;
+  onClose: () => void;
+}) {
+  const [showColorPicker, setShowColorPicker] = useState<'fill' | 'stroke' | null>(null);
+  const shape = useCanvas(state => state.shapes[shapeId]);
+  
+  if (!shape) return null;
+
+  const updateShape = (updates: Partial<ShapeBase>) => {
+    const updatedShape = { ...shape, ...updates, updated_at: Date.now(), updated_by: useCanvas.getState().me.id };
+    useCanvas.getState().upsert(updatedShape);
+    
+    // Broadcast to multiplayer
+    broadcastUpsert(updatedShape);
+    persist(updatedShape);
+  };
+
+  const handleColorChange = (type: 'fill' | 'stroke', newColor: string) => {
+    if (type === 'fill') {
+      updateShape({ color: newColor });
+    } else {
+      updateShape({ stroke: newColor });
+    }
+    setShowColorPicker(null);
+  };
+
+  const handleStrokeWidthChange = (width: number) => {
+    updateShape({ strokeWidth: width });
+  };
+
+  const handleDelete = () => {
+    useCanvas.getState().remove([shapeId]);
+    
+    // Broadcast to multiplayer
+    broadcastRemove([shapeId]);
+    deleteFromDB([shapeId]);
+    
+    onClose();
+  };
+
+  const menuStyle = {
+    position: 'fixed' as const,
+    left: Math.min(x, window.innerWidth - 250),
+    top: Math.min(y, window.innerHeight - 200),
+    zIndex: 1000,
+  };
+
+  return (
+    <div style={menuStyle} className="bg-white rounded-lg shadow-lg border p-3 min-w-[200px]">
+      <div className="text-sm font-medium mb-2">Shape Options</div>
+      
+      <div className="space-y-2">
+        {/* Fill Color */}
+        <div className="flex items-center justify-between">
+          <span className="text-sm">Fill Color:</span>
+          <button
+            className="w-6 h-6 rounded border border-gray-300 hover:border-gray-500"
+            style={{ backgroundColor: shape.color }}
+            onClick={() => setShowColorPicker(showColorPicker === 'fill' ? null : 'fill')}
+          />
+        </div>
+        
+        {/* Stroke Color */}
+        <div className="flex items-center justify-between">
+          <span className="text-sm">Stroke Color:</span>
+          <button
+            className="w-6 h-6 rounded border border-gray-300 hover:border-gray-500"
+            style={{ backgroundColor: shape.stroke || '#000000' }}
+            onClick={() => setShowColorPicker(showColorPicker === 'stroke' ? null : 'stroke')}
+          />
+        </div>
+        
+        {/* Stroke Width */}
+        <div className="flex items-center justify-between">
+          <span className="text-sm">Stroke Width:</span>
+          <input
+            type="range"
+            min="0"
+            max="10"
+            value={shape.strokeWidth || 1}
+            onChange={(e) => handleStrokeWidthChange(Number(e.target.value))}
+            className="w-16"
+          />
+          <span className="text-xs text-gray-500 w-6 text-center">{shape.strokeWidth || 1}</span>
+        </div>
+        
+        {/* Divider */}
+        <hr className="my-2" />
+        
+        {/* Delete */}
+        <button
+          onClick={handleDelete}
+          className="w-full text-left text-sm text-red-600 hover:bg-red-50 px-2 py-1 rounded"
+        >
+          Delete Shape
+        </button>
+      </div>
+      
+      {/* Color Picker Overlay */}
+      {showColorPicker && (
+        <div 
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-25"
+          onClick={() => setShowColorPicker(null)}
+        >
+          <div onClick={(e) => e.stopPropagation()}>
+            <ColorPicker
+              color={showColorPicker === 'fill' ? (shape.color || '#000000') : (shape.stroke || '#000000')}
+              onChange={(color) => handleColorChange(showColorPicker!, color)}
+            />
+          </div>
+        </div>
+      )}
     </div>
   );
 }
