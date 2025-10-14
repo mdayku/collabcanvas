@@ -863,7 +863,8 @@ function AIBox() {
                   if ('serviceWorker' in navigator && navigator.serviceWorker.controller) {
                     navigator.serviceWorker.controller.postMessage({ type: 'CLEAR_ALL' });
                   }
-                  window.location.href = window.location.href + '?v=' + Date.now();
+                  // Simple reload without query params to avoid loops
+                  window.location.reload();
                 }}
                 className="text-xs bg-orange-100 text-orange-700 px-2 py-1 rounded hover:bg-orange-200 transition-colors"
                 title="Clear all cache and force reload"

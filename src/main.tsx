@@ -9,12 +9,12 @@ ReactDOM.createRoot(document.getElementById("root")!).render(
   </React.StrictMode>
 );
 
-// Version tracking for cache-busting
-const APP_VERSION = 'v' + Date.now();
+// Static version for cache-busting (only changes on actual deploys)
+const APP_VERSION = 'v1.2.1'; // Only increment this manually when needed
 const STORED_VERSION_KEY = 'collabcanvas_version';
 
 // Clear all browser data if version changed
-function clearOldData() {
+function clearOldDataIfNeeded() {
   const storedVersion = localStorage.getItem(STORED_VERSION_KEY);
   
   if (storedVersion && storedVersion !== APP_VERSION) {
@@ -44,8 +44,11 @@ function clearOldData() {
       });
     }
     
-    // Force hard reload
-    window.location.href = window.location.href + '?v=' + Date.now();
+    // Store new version BEFORE reload to prevent loop
+    localStorage.setItem(STORED_VERSION_KEY, APP_VERSION);
+    
+    // Simple reload without query params
+    window.location.reload();
     return;
   }
   
@@ -53,13 +56,13 @@ function clearOldData() {
   localStorage.setItem(STORED_VERSION_KEY, APP_VERSION);
 }
 
-// Run cache clearing before app starts
-clearOldData();
+// Run cache clearing check
+clearOldDataIfNeeded();
 
 // Register service worker for better cache control
 if ('serviceWorker' in navigator) {
   window.addEventListener('load', () => {
-    navigator.serviceWorker.register('/sw.js?v=' + Date.now()) // Cache-bust the service worker too
+    navigator.serviceWorker.register('/sw.js') // Register service worker
       .then((registration) => {
         console.log('[SW] Registration successful:', registration);
         
@@ -74,10 +77,9 @@ if ('serviceWorker' in navigator) {
               if (newWorker.state === 'installed' && navigator.serviceWorker.controller) {
                 // New version available - force reload immediately
                 console.log('[SW] New version available - auto-updating');
-                clearOldData(); // Clear data before reload
                 newWorker.postMessage({ type: 'SKIP_WAITING' });
                 setTimeout(() => {
-                  window.location.href = window.location.href + '?v=' + Date.now();
+                  window.location.reload();
                 }, 100);
               }
             });
@@ -91,8 +93,7 @@ if ('serviceWorker' in navigator) {
 
   // Listen for service worker updates
   navigator.serviceWorker.addEventListener('controllerchange', () => {
-    console.log('[SW] Controller changed - clearing data and reloading');
-    clearOldData();
-    window.location.href = window.location.href + '?v=' + Date.now();
+    console.log('[SW] Controller changed - reloading');
+    window.location.reload();
   });
 }
