@@ -766,7 +766,7 @@ export default function Canvas({ onSignOut }: CanvasProps) {
             onMouseDown={onStageMouseDown}
             onMouseMove={onStageMouseMove}
             onMouseUp={onStageMouseUp}
-        >
+          >
           <Layer ref={layerRef}>
             <Rect 
               x={-2000} 
@@ -846,6 +846,7 @@ export default function Canvas({ onSignOut }: CanvasProps) {
           />
         )}
       </div>
+    </div>
     </div>
   );
 }
