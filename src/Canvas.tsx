@@ -759,8 +759,8 @@ export default function Canvas({ onSignOut }: CanvasProps) {
         <div className="flex-1 bg-slate-50 relative">
           <Stage 
             ref={canvasStageRef}
-            width={window.innerWidth} 
-            height={window.innerHeight} 
+            width={window.innerWidth - 256} 
+            height={window.innerHeight - 60} 
             onWheel={onWheel}
             onClick={onStageClick}
             onMouseDown={onStageMouseDown}
@@ -1213,11 +1213,14 @@ function addShape(type: ShapeType) {
     const width = Math.max(80, defaultText.length * charWidth);
     const height = fontSize * 1.4;
     
+    // Use findBlankArea like other shapes
+    const position = findBlankArea(shapes, width, height);
+    
     s = { 
       id: crypto.randomUUID(), 
       type, 
-      x: 100 + Math.random() * 200, 
-      y: 100 + Math.random() * 200, 
+      x: position.x, 
+      y: position.y, 
       w: width, 
       h: height, 
       color: "#111", 
