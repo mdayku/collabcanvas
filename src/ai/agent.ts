@@ -226,7 +226,7 @@ export type AIResponse = {
   confirmAction?: () => Promise<void>;
 };
 
-export async function interpretWithResponse(text: string): Promise<AIResponse> {
+export async function interpretWithResponse(text: string, language: string = 'en'): Promise<AIResponse> {
   // Try serverless AI endpoint first (only in production)
   if (import.meta.env.PROD) {
     try {
@@ -260,7 +260,7 @@ export async function interpretWithResponse(text: string): Promise<AIResponse> {
   if (isGroqConfigured()) {
     try {
       console.log('[AI] Using browser Groq for:', text);
-      const groqResponse = await callGroq(text);
+      const groqResponse = await callGroq(text, language);
       
       // Execute actions if any
       if (groqResponse.actions && groqResponse.actions.length > 0) {
@@ -287,7 +287,7 @@ export async function interpretWithResponse(text: string): Promise<AIResponse> {
   if (isOpenAIConfigured()) {
     try {
       console.log('[AI] Using browser OpenAI for:', text);
-      const openaiResponse = await callOpenAI(text);
+      const openaiResponse = await callOpenAI(text, language);
       
       // Execute actions if any
       if (openaiResponse.actions && openaiResponse.actions.length > 0) {

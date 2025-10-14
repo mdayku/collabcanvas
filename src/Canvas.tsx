@@ -505,11 +505,174 @@ interface ToolbarProps {
   onSignOut: () => void;
 }
 
-function Toolbar({ onSignOut }: ToolbarProps) {
-  const { me, onlineUsers, cursors } = useCanvas();
+function CategorizedToolbar() {
+  const [expandedCategories, setExpandedCategories] = useState<Set<string>>(
+    new Set(['shapes', 'emojis']) // Start with shapes and emojis expanded
+  );
+  
+  const toggleCategory = (category: string) => {
+    const newExpanded = new Set(expandedCategories);
+    if (newExpanded.has(category)) {
+      newExpanded.delete(category);
+    } else {
+      newExpanded.add(category);
+    }
+    setExpandedCategories(newExpanded);
+  };
+
   const addRect = () => addShape("rect");
   const addCircle = () => addShape("circle");
   const addText = () => addShape("text");
+  
+  const addEmoji = (emoji: string) => {
+    // Save history before creating
+    useCanvas.getState().pushHistory();
+    
+    const { me } = useCanvas.getState();
+    const fontSize = 32; // Larger size for emojis
+    const width = fontSize * 1.2;
+    const height = fontSize * 1.2;
+    
+    const s: ShapeBase = { 
+      id: crypto.randomUUID(), 
+      type: "text", 
+      x: 100 + Math.random() * 200, 
+      y: 100 + Math.random() * 200, 
+      w: width, 
+      h: height, 
+      color: "#111", 
+      text: emoji,
+      fontSize: fontSize,
+      updated_at: Date.now(), 
+      updated_by: me.id 
+    };
+    
+    useCanvas.getState().upsert(s); 
+    broadcastUpsert(s); 
+    persist(s);
+  };
+
+  const toolCategories = [
+    {
+      id: 'lines-arrows',
+      name: 'Lines & Arrows',
+      emoji: '📏',
+      tools: [
+        // Coming soon
+      ]
+    },
+    {
+      id: 'shapes',
+      name: 'Shapes',
+      emoji: '🔷',
+      tools: [
+        { name: '▭', action: addRect, available: true, tooltip: 'Rectangle' },
+        { name: '●', action: addCircle, available: true, tooltip: 'Circle' },
+        { name: '▲', action: () => {}, available: false, tooltip: 'Triangle' },
+        { name: '★', action: () => {}, available: false, tooltip: 'Star' },
+        { name: '♥', action: () => {}, available: false, tooltip: 'Heart' },
+      ]
+    },
+    {
+      id: 'emojis',
+      name: 'Emojis',
+      emoji: '😊',
+      tools: [
+        { name: '😊', action: () => addEmoji('😊'), available: true, tooltip: 'Smiley Face' },
+        { name: '❤️', action: () => addEmoji('❤️'), available: true, tooltip: 'Heart' },
+        { name: '👍', action: () => addEmoji('👍'), available: true, tooltip: 'Thumbs Up' },
+        { name: '🔥', action: () => addEmoji('🔥'), available: true, tooltip: 'Fire' },
+        { name: '💡', action: () => addEmoji('💡'), available: true, tooltip: 'Light Bulb' },
+        { name: '⚡', action: () => addEmoji('⚡'), available: true, tooltip: 'Lightning' },
+        { name: '🎯', action: () => addEmoji('🎯'), available: true, tooltip: 'Target' },
+        { name: '🚀', action: () => addEmoji('🚀'), available: true, tooltip: 'Rocket' },
+        { name: '⭐', action: () => addEmoji('⭐'), available: true, tooltip: 'Star' },
+        { name: '🎉', action: () => addEmoji('🎉'), available: true, tooltip: 'Party' },
+        { name: '💻', action: () => addEmoji('💻'), available: true, tooltip: 'Computer' },
+        { name: '📱', action: () => addEmoji('📱'), available: true, tooltip: 'Phone' },
+      ]
+    },
+    {
+      id: 'symbols',
+      name: 'Symbols',
+      emoji: '⭐',
+      tools: [
+        // Coming soon
+      ]
+    },
+    {
+      id: 'forms',
+      name: 'Forms',
+      emoji: '📝',
+      tools: [
+        // Coming soon via AI commands
+      ]
+    },
+    {
+      id: 'assets',
+      name: 'Assets',
+      emoji: '🎯',
+      tools: [
+        { name: '📝', action: addText, available: true, tooltip: 'Text Box' },
+        // More coming soon
+      ]
+    }
+  ];
+
+  return (
+    <div className="border-t pt-3">
+      <div className="space-y-2">
+        {toolCategories.map((category) => (
+          <div key={category.id} className="border rounded-lg">
+            <button
+              onClick={() => toggleCategory(category.id)}
+              className="w-full flex items-center justify-between p-3 text-left hover:bg-gray-50 transition-colors"
+            >
+              <div className="flex items-center gap-2">
+                <span className="text-lg">{category.emoji}</span>
+                <span className="font-medium text-sm">{category.name}</span>
+              </div>
+              <span className="text-gray-400 text-xs">
+                {expandedCategories.has(category.id) ? '▼' : '▶'}
+              </span>
+            </button>
+            
+            {expandedCategories.has(category.id) && (
+              <div className="px-3 pb-3 border-t bg-gray-50">
+                {category.tools.length === 0 ? (
+                  <div className="text-xs text-gray-500 py-2 italic">Coming soon...</div>
+                ) : (
+                  <div className="grid grid-cols-2 gap-1 mt-2">
+                    {category.tools.map((tool, idx) => (
+                      <button
+                        key={idx}
+                        onClick={tool.available ? tool.action : undefined}
+                        disabled={!tool.available}
+                        title={tool.tooltip || (tool.available ? `Create ${tool.name}` : 'Coming soon')}
+                        className={`
+                          px-2 py-1 text-sm rounded transition-colors flex items-center justify-center min-h-[32px]
+                          ${tool.available 
+                            ? 'bg-white hover:bg-blue-50 hover:text-blue-700 border border-gray-200' 
+                            : 'bg-gray-100 text-gray-400 cursor-not-allowed'
+                          }
+                        `}
+                      >
+                        {tool.name}
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function Toolbar({ onSignOut }: ToolbarProps) {
+  const { me, onlineUsers, cursors } = useCanvas();
   
   // Clear selection when clicking on sidebar
   const handleSidebarClick = () => {
@@ -520,16 +683,19 @@ function Toolbar({ onSignOut }: ToolbarProps) {
     <div className="w-64 p-4 border-r bg-white space-y-3" onClick={handleSidebarClick}>
       <div className="flex items-center justify-between">
         <div className="text-xl font-semibold">CollabCanvas</div>
-        <button
-          onClick={(e) => {
-            e.stopPropagation();
-            onSignOut();
-          }}
-          className="text-xs px-2 py-1 text-gray-600 hover:text-gray-800 hover:bg-gray-100 rounded transition-colors"
-          title="Sign out"
-        >
-          Sign out
-        </button>
+        <div className="flex gap-2">
+          <HelpMenu />
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              onSignOut();
+            }}
+            className="text-xs px-2 py-1 text-gray-600 hover:text-gray-800 hover:bg-gray-100 rounded transition-colors"
+            title="Sign out"
+          >
+            Sign out
+          </button>
+        </div>
       </div>
       <div className="text-sm">Signed in as <span style={{color: me.color}}>{me.name||"Guest"}</span></div>
       
@@ -557,14 +723,8 @@ function Toolbar({ onSignOut }: ToolbarProps) {
         </div>
       )}
       
-      <div className="flex gap-2">
-        <button className="px-3 py-2 rounded bg-slate-200" onClick={addRect}>Rectangle</button>
-        <button className="px-3 py-2 rounded bg-slate-200" onClick={addCircle}>Circle</button>
-        <button className="px-3 py-2 rounded bg-slate-200" onClick={addText}>Text</button>
-      </div>
       <AIBox />
-      <AIExamples />
-      <UserTips />
+      <CategorizedToolbar />
     </div>
   );
 }
@@ -693,6 +853,21 @@ function AIBox() {
   const [isListening, setIsListening] = useState(false);
   const [recognition, setRecognition] = useState<any | null>(null);
   const [aiResponse, setAiResponse] = useState<AIResponse | null>(null);
+  const [selectedLanguage, setSelectedLanguage] = useState(localStorage.getItem('ai-language') || 'en');
+
+  // Speech recognition language mapping
+  const getSpeechLang = (aiLang: string): string => {
+    const langMap: Record<string, string> = {
+      'en': 'en-US',
+      'zh': 'zh-CN', // Mandarin Chinese
+      'es': 'es-ES', // Spanish (Spain)
+      'fr': 'fr-FR', // French (France)
+      'de': 'de-DE', // German (Germany)
+      'ja': 'ja-JP', // Japanese
+      'ar': 'ar-SA', // Arabic (Saudi Arabia)
+    };
+    return langMap[aiLang] || 'en-US';
+  };
 
   // Initialize speech recognition
   useEffect(() => {
@@ -702,7 +877,7 @@ function AIBox() {
       
       recognition.continuous = false;
       recognition.interimResults = false;
-      recognition.lang = 'en-US';
+      recognition.lang = getSpeechLang(selectedLanguage);
 
       recognition.onstart = () => {
         setIsListening(true);
@@ -725,7 +900,7 @@ function AIBox() {
 
       setRecognition(recognition);
     }
-  }, []);
+  }, [selectedLanguage]); // Re-initialize when language changes
 
   const startListening = () => {
     if (recognition) {
@@ -739,12 +914,18 @@ function AIBox() {
     }
   };
   
+  // Save language preference to localStorage
+  const handleLanguageChange = (lang: string) => {
+    setSelectedLanguage(lang);
+    localStorage.setItem('ai-language', lang);
+  };
+
   const onRun = async () => { 
     setWorking(true);
     setAiResponse(null);
     
     try {
-      const response = await interpretWithResponse(q);
+      const response = await interpretWithResponse(q, selectedLanguage);
       setAiResponse(response);
       
       if (response.type === 'success') {
@@ -793,7 +974,7 @@ function AIBox() {
   const aiConfigured = groqConfigured || openaiConfigured;
   
   const getAIStatus = () => {
-    if (groqConfigured) return { label: '🚀 Groq (Free)', color: 'bg-green-100 text-green-700' };
+    if (groqConfigured) return { label: 'Groq (Free)', color: 'bg-green-100 text-green-700' };
     if (openaiConfigured) return { label: '🤖 GPT-3.5', color: 'bg-blue-100 text-blue-700' };
     return { label: '📝 Basic', color: 'bg-yellow-100 text-yellow-700' };
   };
@@ -819,7 +1000,7 @@ function AIBox() {
       
       <div className="flex gap-2">
         <input 
-          className="flex-1 border rounded px-2 py-1" 
+          className="flex-1 border rounded px-2 py-1 min-w-0" 
           placeholder={aiConfigured 
             ? "Try: 'Create a dashboard layout' or 'Make 5 blue circles'" 
             : "e.g., Create a 200x300 rectangle"
@@ -830,7 +1011,7 @@ function AIBox() {
         />
         {recognition && (
           <button
-            className={`px-3 py-1 rounded text-white transition-colors ${
+            className={`px-2 py-1 rounded text-white transition-colors flex-shrink-0 ${
               isListening 
                 ? 'bg-red-500 hover:bg-red-600' 
                 : 'bg-blue-500 hover:bg-blue-600'
@@ -845,12 +1026,20 @@ function AIBox() {
       </div>
 
       {isListening && (
-        <p className="text-xs text-blue-600 animate-pulse">🎤 Listening... speak your command</p>
+        <p className="text-xs text-blue-600 animate-pulse">
+          🎤 Listening in {selectedLanguage === 'zh' ? 'Chinese' : selectedLanguage === 'es' ? 'Spanish' : selectedLanguage === 'fr' ? 'French' : selectedLanguage === 'de' ? 'German' : selectedLanguage === 'ja' ? 'Japanese' : selectedLanguage === 'ar' ? 'Arabic' : 'English'}... speak your command
+        </p>
       )}
 
-      <button className="px-3 py-2 rounded bg-emerald-500 text-white disabled:opacity-60" disabled={!q||working} onClick={onRun}>
-        {working?"Thinking…":"Run"}
-      </button>
+      <div className="flex gap-2">
+        <LanguageDropdown 
+          selectedLanguage={selectedLanguage}
+          onLanguageChange={handleLanguageChange}
+        />
+        <button className="px-3 py-2 rounded bg-emerald-500 text-white disabled:opacity-60 flex-1" disabled={!q||working} onClick={onRun}>
+          {working?"Thinking…":"Run"}
+        </button>
+      </div>
 
       {/* AI Response Section */}
       {aiResponse && (
@@ -908,62 +1097,116 @@ function AIBox() {
         </div>
       )}
 
-      <div className="text-xs text-slate-500">
-        {aiConfigured ? (
-          <div>
-            <div className="font-medium text-slate-600 mb-1">🚀 AI Commands:</div>
-            <div className="grid grid-cols-1 gap-1">
-              <div><strong>Create:</strong> "Make a blue dashboard with 3 cards"</div>
-              <div><strong>Move:</strong> "Move the red circle to the center"</div>
-              <div><strong>Complex:</strong> "Create a login form with styled buttons"</div>
-              <div><strong>Arrange:</strong> "Arrange all shapes in a row"</div>
-            </div>
-            {recognition && <div className="mt-1 text-blue-600">💬 Click 🎤 for voice input</div>}
-            
-            <div className="mt-2 pt-2 border-t border-gray-200">
-              <ClearCanvasButton />
-            </div>
-          </div>
-        ) : (
-          <div>
-            <strong>Basic Commands:</strong> "Create a red circle", "Add text saying hello", "Create a 2x2 grid"
-            {recognition && <span className="text-blue-600"> • Click 🎤 for voice input</span>}
-          </div>
-        )}
+      <div className="mt-2 pt-2 border-t border-gray-200">
+        <ClearCanvasButton />
       </div>
     </div>
   );
 }
 
-function AIExamples() {
+function LanguageDropdown({ selectedLanguage, onLanguageChange }: { 
+  selectedLanguage: string; 
+  onLanguageChange: (lang: string) => void; 
+}) {
+  const languages = [
+    { code: 'en', name: 'English', flag: '🇺🇸' },
+    { code: 'zh', name: '中文', flag: '🇨🇳' },
+    { code: 'es', name: 'Español', flag: '🇪🇸' },
+    { code: 'fr', name: 'Français', flag: '🇫🇷' },
+    { code: 'de', name: 'Deutsch', flag: '🇩🇪' },
+    { code: 'ja', name: '日本語', flag: '🇯🇵' },
+    { code: 'ar', name: 'العربية', flag: '🇸🇦' },
+  ];
+
   return (
-    <div className="text-xs text-slate-500 space-y-1 border-t pt-2 mt-2">
-      <div className="font-medium text-slate-600 mb-1">AI Commands:</div>
-      <div className="space-y-0.5">
-        <div><strong>Create:</strong> "Create a red circle"</div>
-        <div><strong>Text:</strong> "Add text saying 'Hello'"</div>
-        <div><strong>Move:</strong> "Move the blue rectangle to center"</div>
-        <div><strong>Resize:</strong> "Make the circle twice as big"</div>
-        <div><strong>Rotate:</strong> "Rotate the text 45 degrees"</div>
-        <div><strong>Arrange:</strong> "Arrange shapes in horizontal row"</div>
-        <div><strong>Grid:</strong> "Create a 3x3 grid"</div>
-        <div><strong>Form:</strong> "Create a login form"</div>
-        <div><strong>Nav:</strong> "Build a navigation bar with menu"</div>
+    <div className="relative">
+      <select
+        value={selectedLanguage}
+        onChange={(e) => onLanguageChange(e.target.value)}
+        className="px-2 py-2 text-xs border rounded bg-white hover:bg-gray-50 transition-colors cursor-pointer appearance-none pr-6"
+        title="Select AI language"
+      >
+        {languages.map(lang => (
+          <option key={lang.code} value={lang.code}>
+            {lang.flag} {lang.name}
+          </option>
+        ))}
+      </select>
+      <div className="absolute right-1 top-1/2 transform -translate-y-1/2 pointer-events-none text-xs text-gray-400">
+        ▼
       </div>
     </div>
   );
 }
 
-function UserTips() {
+function HelpMenu() {
+  const [isOpen, setIsOpen] = useState(false);
+  const recognition = 'webkitSpeechRecognition' in window || 'SpeechRecognition' in window;
+  const groqConfigured = isGroqConfigured();
+  const openaiConfigured = isOpenAIConfigured();
+  const aiConfigured = groqConfigured || openaiConfigured;
+
   return (
-    <div className="text-xs text-slate-500 space-y-1 border-t pt-2 mt-2">
-      <div className="font-medium text-slate-600 mb-1">Shortcuts:</div>
-      <div>• <kbd className="px-1 bg-slate-200 rounded text-xs">Ctrl+Z</kbd> to undo</div>
-      <div>• <kbd className="px-1 bg-slate-200 rounded text-xs">Ctrl+D</kbd> to duplicate</div>
-      <div>• <kbd className="px-1 bg-slate-200 rounded text-xs">Shift+Click</kbd> to multi-select</div>
-      <div>• <kbd className="px-1 bg-slate-200 rounded text-xs">Double-click</kbd> text to edit</div>
-      <div>• <kbd className="px-1 bg-slate-200 rounded text-xs">Delete</kbd> to remove selected</div>
-      <div>• <kbd className="px-1 bg-slate-200 rounded text-xs">Mouse wheel</kbd> to zoom</div>
+    <div className="relative">
+      <button
+        onClick={(e) => {
+          e.stopPropagation();
+          setIsOpen(!isOpen);
+        }}
+        className="text-xs px-2 py-1 text-gray-600 hover:text-gray-800 hover:bg-gray-100 rounded transition-colors"
+        title="Help & Examples"
+      >
+        ?
+      </button>
+      
+      {isOpen && (
+        <>
+          {/* Backdrop */}
+          <div 
+            className="fixed inset-0 z-40" 
+            onClick={() => setIsOpen(false)}
+          ></div>
+          
+          {/* Help Menu */}
+          <div className="absolute left-0 top-full mt-1 w-80 bg-white border rounded-lg shadow-lg p-4 z-50 max-h-96 overflow-y-auto">
+            <div className="space-y-4">
+              {/* AI Command Examples */}
+              <div>
+                <div className="font-medium text-slate-600 mb-2">AI Agent Command Examples</div>
+                {aiConfigured ? (
+                  <div className="text-xs text-slate-500 space-y-1">
+                    <div><strong>Create:</strong> "Make a blue dashboard with 3 cards"</div>
+                    <div><strong>Move:</strong> "Move the red circle to the center"</div>
+                    <div><strong>Complex:</strong> "Create a login form with styled buttons"</div>
+                    <div><strong>Arrange:</strong> "Arrange all shapes in a row"</div>
+                    <div><strong>Layout:</strong> "Create a navigation bar with 4 menu items"</div>
+                    <div><strong>Grid:</strong> "Create a 3x3 grid of circles"</div>
+                    {recognition && <div className="mt-1 text-blue-600">💬 Click 🎤 for voice input</div>}
+                  </div>
+                ) : (
+                  <div className="text-xs text-slate-500">
+                    <strong>Basic Commands:</strong> "Create a red circle", "Add text saying hello", "Create a 2x2 grid"
+                    {recognition && <span className="text-blue-600"> • Click 🎤 for voice input</span>}
+                  </div>
+                )}
+              </div>
+              
+              {/* Keyboard Shortcuts */}
+              <div className="border-t pt-3">
+                <div className="font-medium text-slate-600 mb-2">Keyboard Shortcuts</div>
+                <div className="text-xs text-slate-500 space-y-1">
+                  <div>• <kbd className="px-1 bg-slate-200 rounded text-xs">Ctrl+Z</kbd> to undo</div>
+                  <div>• <kbd className="px-1 bg-slate-200 rounded text-xs">Ctrl+D</kbd> to duplicate</div>
+                  <div>• <kbd className="px-1 bg-slate-200 rounded text-xs">Shift+Click</kbd> to multi-select</div>
+                  <div>• <kbd className="px-1 bg-slate-200 rounded text-xs">Double-click</kbd> text to edit</div>
+                  <div>• <kbd className="px-1 bg-slate-200 rounded text-xs">Delete</kbd> to remove selected</div>
+                  <div>• <kbd className="px-1 bg-slate-200 rounded text-xs">Mouse wheel</kbd> to zoom</div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </>
+      )}
     </div>
   );
 }

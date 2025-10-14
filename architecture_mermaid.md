@@ -3,21 +3,33 @@
 ## 1️⃣ System Architecture
 ```mermaid
 flowchart TD
-  subgraph Client["Browser UI (Phase 2)"]
+  subgraph Client["Browser UI (Phase 3)"]
+    subgraph TopLevel["Top Interface"]
+      RIBBON[File Ribbon<br/>New, Open, Save, Export]
+      TABS[Canvas Tabs<br/>+ Add Tab, × Close Tab<br/>Editable Titles]
+    end
+    
     subgraph UI["React Components"]
-      CANVAS[Konva Canvas<br/>Pan/Zoom/Select]
-      TOOLBAR[Categorized Toolbar<br/>📏 Lines & Arrows<br/>🔷 Shapes<br/>🔣 Symbols<br/>📝 Forms<br/>🧩 Assets]
-      COLOR[Color Palette<br/>Fill, Outline, Thickness]
+      CANVAS[Konva Canvas<br/>Pan/Zoom/Select<br/>Per-Tab State]
+      TOOLBAR[Categorized Toolbar<br/>📏 Lines & Arrows<br/>🔷 Shapes (▭●▲★♥)<br/>😊 Emojis (12 clickable)<br/>⭐ Symbols<br/>📝 Forms<br/>🎯 Assets (📝)]
+      CONTEXT[Right-Click Context Menu<br/>Fill, Outline, Text Formatting]
       HELP[Help Panel<br/>AI Commands<br/>Shortcuts<br/>Tips]
     end
-    S[Zustand Store<br/>Shapes, Selection, History]
+    
+    S[Zustand Store<br/>Multi-Canvas State<br/>Active Tab Management<br/>Shapes, Selection, History]
     ENV[.env Variables<br/>Supabase + AI Keys]
   end
 
   subgraph Supabase["Supabase Platform"]
-    R[Realtime Channels<br/>room:&lt;id&gt;<br/>• broadcasts (shape:upsert/remove)<br/>• presence (cursors, online users)]
-    DB[(Postgres<br/>public.shapes<br/>public.user_profiles)]
+    R[Realtime Channels<br/>room:&lt;canvas_id&gt;<br/>• broadcasts (shape:upsert/remove)<br/>• presence (cursors, online users)]
+    DB[(Postgres<br/>public.canvases (projects)<br/>public.shapes (per canvas)<br/>public.user_profiles)]
     AUTH[Auth (Anonymous + Profiles)]
+  end
+  
+  subgraph Export["Export System"]
+    PDF[PDF Export<br/>High-quality rendering<br/>Vector graphics]
+    PNG[PNG Export<br/>Raster graphics<br/>Custom dimensions]
+    PRINT[Print Options<br/>Page layouts<br/>Scale options]
   end
 
   subgraph AI["Multi-Tier AI System"]
@@ -26,13 +38,17 @@ flowchart TD
     RULES[Rule-Based Fallback<br/>Pattern Matching]
   end
 
+  TopLevel <--> UI
   UI <--> S
   S -->|load keys| ENV
   CANVAS -->|subscribe / track presence| R
   CANVAS -->|broadcast deltas<br/>(shape:upsert/remove)| R
   R -->|fan-out updates| CANVAS
-  CANVAS -->|persist upserts| DB
-  CANVAS -->|load on subscribe| DB
+  CANVAS -->|persist canvas & shapes| DB
+  CANVAS -->|load canvas on tab switch| DB
+  
+  RIBBON -->|export commands| Export
+  Export -->|canvas data| CANVAS
 
   UI -->|sign in anon (JWT)| AUTH
   AUTH -->|session + profile| UI
@@ -44,20 +60,71 @@ flowchart TD
   SERVERLESS -->|shape actions| R
   R -->|broadcast AI actions| CANVAS
 
-## 2️⃣ UI Component Architecture (Phase 2)
+## 2️⃣ Multi-Canvas System (Phase 3)
+
+```mermaid
+flowchart TD
+    subgraph TabSystem["Canvas Tab Management"]
+        TABS[Tab Bar Component]
+        ADD[+ Add New Tab]
+        CLOSE[× Close Tab] 
+        TITLE[Editable Tab Titles]
+    end
+    
+    subgraph FileSystem["File Operations"]
+        RIBBON[File Ribbon Menu]
+        NEW[New Canvas]
+        OPEN[Open Canvas] 
+        SAVE[Save Canvas]
+        EXPORT[Export PDF/PNG]
+    end
+    
+    subgraph Database["Canvas Database Schema"]
+        CANVASES[(canvases table<br/>id, title, user_id, room_id<br/>created_at, updated_at, data)]
+        SHAPES[(shapes table<br/>id, canvas_id, type, x, y<br/>w, h, color, text, etc.)]
+        PROFILES[(user_profiles)]
+    end
+    
+    subgraph State["Multi-Canvas State"]
+        ACTIVE[Active Canvas ID]
+        CANVASLIST[Canvas List/Metadata] 
+        UNSAVED[Unsaved Changes Tracking]
+        AUTOSAVE[Auto-save System]
+    end
+    
+    TABS --> ACTIVE
+    ADD --> NEW
+    CLOSE --> SAVE
+    NEW --> CANVASES
+    OPEN --> CANVASES  
+    SAVE --> CANVASES
+    CANVASES --> SHAPES
+    ACTIVE --> State
+    EXPORT --> FileSystem
+```
+
+## 3️⃣ UI Component Architecture (Phase 2)
 ```mermaid
 flowchart LR
   subgraph Toolbar["Categorized Toolbar"]
-    LINES[📏 Lines & Arrows<br/>- Line tool<br/>- Arrow variants<br/>- Thickness control]
-    SHAPES[🔷 Shapes<br/>- Basic: ⭕ ⬜ 🔺<br/>- Advanced: ⭐ ❤️ ⬟<br/>- 3D: ◼️ ⚫]
-    SYMBOLS[🔣 Symbols<br/>- Icons (future)<br/>- Graphics (future)<br/>- Currently disabled]
+    LINES[📏 Lines & Arrows<br/>- Line tool (coming soon)<br/>- Arrow variants (coming soon)<br/>- Thickness via context menu]
+    SHAPES[🔷 Shapes<br/>- Active: ▭ Rectangle, ● Circle<br/>- Coming: ▲ Triangle, ★ Star, ♥ Heart<br/>- Visual icons, not text]
+    EMOJIS[😊 Emojis<br/>- 12 popular emojis<br/>- 32px size, draggable<br/>- Real-time multiplayer sync]
+    SYMBOLS[⭐ Symbols<br/>- Icons (future)<br/>- Graphics (future)<br/>- Coming soon]
     FORMS[📝 Forms<br/>- Login form<br/>- Contact form<br/>- AI-generated]
-    ASSETS[🧩 Assets<br/>- Navigation bar<br/>- Card layouts<br/>- AI-generated]
+    ASSETS[🎯 Assets<br/>- 📝 Text Box (active)<br/>- Navigation bars (AI-generated)<br/>- Card layouts (AI-generated)]
+  end
+  
+  subgraph ContextMenu["Right-Click Context Menu"]
+    TRIGGER[Object Right-Click<br/>- Shape selection<br/>- Context detection<br/>- Menu positioning]
+    SHAPESTYLE[Shape Styling<br/>- Fill color picker<br/>- Outline color & weight<br/>- Transform options]
+    TEXTSTYLE[Text Formatting<br/>- Font size slider<br/>- Font family dropdown<br/>- Text color picker]
+    ACTIONS[Object Actions<br/>- Duplicate (Ctrl+D)<br/>- Delete (Del)<br/>- Bring to front/back]
   end
   
   subgraph ColorSystem["Universal Color System"]
     PALETTE[Color Palette<br/>- Recent colors<br/>- Custom picker<br/>- Preset swatches]
-    STYLING[Shape Styling<br/>- Fill color<br/>- Outline color<br/>- Outline weight]
+    CONSISTENCY[Consistent UI<br/>- Same picker across menus<br/>- Color memory<br/>- Accessibility]
   end
   
   subgraph HelpSystem["Help & AI System"]

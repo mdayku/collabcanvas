@@ -76,7 +76,17 @@ Response: {
 
 Always be creative, helpful, and encouraging!`;
 
-export async function callGroq(userMessage: string): Promise<AIResponse> {
+const SYSTEM_PROMPTS = {
+  en: `You are an AI assistant for CollabCanvas, a collaborative design tool. Users can give you natural language commands to create and manipulate shapes on a canvas.`,
+  zh: `您是 CollabCanvas 的 AI 助手，这是一个协作设计工具。用户可以用自然语言命令来创建和操作画布上的形状。`,
+  es: `Eres un asistente de IA para CollabCanvas, una herramienta de diseño colaborativo. Los usuarios pueden darte comandos en lenguaje natural para crear y manipular formas en un lienzo.`,
+  fr: `Vous êtes un assistant IA pour CollabCanvas, un outil de conception collaborative. Les utilisateurs peuvent vous donner des commandes en langage naturel pour créer et manipuler des formes sur un canevas.`,
+  de: `Sie sind ein KI-Assistent für CollabCanvas, ein kollaboratives Design-Tool. Benutzer können Ihnen natürlichsprachliche Befehle geben, um Formen auf einer Leinwand zu erstellen und zu manipulieren.`,
+  ja: `あなたは協調的なデザインツールであるCollabCanvasのAIアシスタントです。ユーザーは自然言語でコマンドを与えて、キャンバス上の図形を作成・操作できます。`,
+  ar: `أنت مساعد ذكي لـ CollabCanvas، أداة تصميم تعاونية. يمكن للمستخدمين إعطاؤك أوامر بلغة طبيعية لإنشاء ومعالجة الأشكال على لوحة الرسم.`
+};
+
+export async function callGroq(userMessage: string, language: string = 'en'): Promise<AIResponse> {
   const client = initializeGroq();
   
   if (!client) {
@@ -97,7 +107,52 @@ export async function callGroq(userMessage: string): Promise<AIResponse> {
       ? 'empty canvas' 
       : `${canvasState.length} shapes: ${canvasState.map(s => `${s.type} at (${s.x},${s.y})`).join(', ')}`;
 
-    const systemPrompt = SYSTEM_PROMPT.replace('{canvasState}', stateDescription);
+    const basePrompt = SYSTEM_PROMPTS[language as keyof typeof SYSTEM_PROMPTS] || SYSTEM_PROMPTS.en;
+    const fullPrompt = `${basePrompt}
+
+AVAILABLE TOOLS:
+1. createShape(type, x, y, w, h, color, text?) - Create rectangle, circle, or text
+2. moveShape(id, x, y) - Move an existing shape to new position  
+3. resizeShape(id, w, h) - Resize an existing shape
+4. rotateShape(id, degrees) - Rotate shape by degrees
+5. createGrid(rows, cols) - Create a grid of rectangles
+6. createLoginForm() - Create a complete login form layout
+7. createNavBar() - Create a navigation bar with menu items
+8. createCard() - Create a card layout with title, image, description
+9. arrangeHorizontally() - Arrange existing shapes in a horizontal row
+
+CURRENT CANVAS STATE: The user has these shapes: ${stateDescription}
+
+RESPONSE FORMAT: Always respond with valid JSON in this exact format:
+{
+  "intent": "create",
+  "confidence": 0.8,
+  "actions": [
+    {
+      "tool": "createShape",
+      "params": {
+        "type": "rect", 
+        "x": 100, "y": 100, "w": 200, "h": 150,
+        "color": "#ff0000", "text": "optional text content"
+      }
+    }
+  ],
+  "message": "I'll create a red rectangle for you!",
+  "suggestions": ["Try: Create a blue circle", "Add text saying hello"]
+}
+
+GUIDELINES:
+- Always provide helpful, encouraging responses
+- If unclear, ask for clarification with specific suggestions
+- Use realistic coordinates (canvas is ~800x600, start shapes around 100-400 range)
+- Choose appropriate colors (use hex codes like #ff0000, #0000ff, #00ff00)
+- For text shapes, make them wide enough for the content
+- When creating multiple shapes, space them nicely apart
+- If no shapes exist and user wants to move/resize, suggest creating shapes first
+
+Always be creative, helpful, and encouraging!`;
+    
+    const systemPrompt = fullPrompt;
 
     console.log('[Groq] Sending request for:', userMessage);
     
