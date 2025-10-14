@@ -78,9 +78,12 @@ describe('Final Deliverable Integration Tests', () => {
       expect(screen.getByTestId('konva-stage')).toBeInTheDocument();
       
       // Shape creation tools (at least one type required, we have 3)
-      expect(screen.getByRole('button', { name: /rectangle/i })).toBeInTheDocument();
-      expect(screen.getByRole('button', { name: /circle/i })).toBeInTheDocument();
-      expect(screen.getByRole('button', { name: /text/i })).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: '▭' })).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: '●' })).toBeInTheDocument();
+      
+      // Text tool is in Assets section
+      const assetsButton = screen.getByRole('button', { name: /🎯Assets/ });
+      expect(assetsButton).toBeInTheDocument();
       
       // Multiplayer cursors and presence  
       expect(screen.getByText(/online \(/i)).toBeInTheDocument();
@@ -115,10 +118,12 @@ describe('Final Deliverable Integration Tests', () => {
       render(<Canvas onSignOut={mockOnSignOut} />);
       
       // Create shapes - buttons exist but canvas click creates shapes
-      await user.click(screen.getByRole('button', { name: /rectangle/i }));
+      await user.click(screen.getByRole('button', { name: '▭' }));
       // Note: Shape creation happens on canvas click, not button click
       
-      // Selection management
+      // Selection management hints are in Help menu
+      const helpButton = screen.getByRole('button', { name: '?' });
+      await user.click(helpButton);
       expect(screen.getByText('Shift+Click')).toBeInTheDocument();
       
       // Delete functionality  
@@ -158,14 +163,14 @@ describe('Final Deliverable Integration Tests', () => {
       render(<Canvas onSignOut={mockOnSignOut} />);
       
       // AI input interface
-      const aiInput = screen.getByPlaceholderText(/create a 200x300 rectangle/i);
+      const aiInput = screen.getByPlaceholderText(/create a dashboard layout/i);
       expect(aiInput).toBeInTheDocument();
       
       const runButton = screen.getByRole('button', { name: /run/i });
       expect(runButton).toBeInTheDocument();
       
-      // Should show helpful examples
-      expect(screen.getByText(/try: "create a red circle"/i)).toBeInTheDocument();
+      // Should show helpful examples in placeholder
+      expect(screen.getByPlaceholderText(/create a dashboard layout/i)).toBeInTheDocument();
       
       // Enter key functionality
       await user.type(aiInput, 'create a blue circle');
@@ -175,24 +180,32 @@ describe('Final Deliverable Integration Tests', () => {
       expect(runButton).toBeDisabled(); // Should be working
     });
 
-    it('shows AI feedback and state', () => {
+    it('shows AI feedback and state', async () => {
+      const user = userEvent.setup();
       render(<Canvas onSignOut={mockOnSignOut} />);
       
       // Should provide immediate feedback
       expect(screen.getByRole('button', { name: /run/i })).toBeInTheDocument();
       
-      // Should show examples of what AI can do
-      expect(screen.getByText(/AI Commands:/)).toBeInTheDocument();
-      expect(screen.getByText(/Create:/)).toBeInTheDocument();
+      // Help menu contains AI command examples (click to expand)
+      const helpButton = screen.getByRole('button', { name: '?' });
+      expect(helpButton).toBeInTheDocument();
+      
+      // Click help to see AI examples
+      await user.click(helpButton);
+      expect(screen.getByText(/AI Agent Command Examples/)).toBeInTheDocument();
     });
   });
 
   describe('Performance & User Experience', () => {
-    it('provides smooth interaction experience', () => {
+    it('provides smooth interaction experience', async () => {
+      const user = userEvent.setup();
       render(<Canvas onSignOut={mockOnSignOut} />);
       
-      // Should show performance tips
-      expect(screen.getByText('Mouse wheel')).toBeInTheDocument();
+      // Help menu contains performance tips (click to expand if not already)
+      const helpButton = screen.getByRole('button', { name: '?' });
+      await user.click(helpButton);
+      expect(screen.getByText(/Mouse wheel/)).toBeInTheDocument();
       
       // Should have responsive controls
       expect(screen.getByTestId('konva-stage')).toHaveAttribute('width');

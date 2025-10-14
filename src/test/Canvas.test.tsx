@@ -63,15 +63,20 @@ describe('Canvas Component', () => {
   it('renders toolbar buttons', () => {
     render(<Canvas onSignOut={mockOnSignOut} />);
     
-    expect(screen.getByRole('button', { name: /rectangle/i })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /circle/i })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /text/i })).toBeInTheDocument();
+    // Shape buttons now use symbols with tooltips  
+    expect(screen.getByRole('button', { name: '▭' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '●' })).toBeInTheDocument();
+    
+    // Text is in Assets section - need to expand it first
+    const assetsButton = screen.getByRole('button', { name: /🎯Assets/ });
+    expect(assetsButton).toBeInTheDocument();
   });
 
   it('renders AI input box', () => {
     render(<Canvas onSignOut={mockOnSignOut} />);
     
-    expect(screen.getByPlaceholderText(/create a 200x300 rectangle/i)).toBeInTheDocument();
+    const aiInput = screen.getByPlaceholderText(/create a dashboard layout/i);
+    expect(aiInput).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /run/i })).toBeInTheDocument();
   });
 
@@ -92,9 +97,13 @@ describe('Canvas Component', () => {
     expect(screen.getByText('Test User')).toBeInTheDocument();
   });
 
-  it('shows performance hints', () => {
+  it('shows performance hints', async () => {
+    const user = userEvent.setup();
     render(<Canvas onSignOut={mockOnSignOut} />);
     
+    // Performance hints are now in the Help menu
+    const helpButton = screen.getByRole('button', { name: '?' });
+    await user.click(helpButton);
     expect(screen.getByText('Ctrl+Z')).toBeInTheDocument();
     expect(screen.getByText('Shift+Click')).toBeInTheDocument();
   });
