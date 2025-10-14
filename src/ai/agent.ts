@@ -227,28 +227,32 @@ export type AIResponse = {
 };
 
 export async function interpretWithResponse(text: string): Promise<AIResponse> {
-  // Try serverless AI endpoint first (most reliable in production)
-  try {
-    console.log('[AI] Trying serverless AI endpoint for:', text);
-    const serverlessResponse = await callServerlessAI(text);
-    
-    // Execute actions if any
-    if (serverlessResponse.actions && serverlessResponse.actions.length > 0) {
-      await executeAIActions(serverlessResponse.actions);
+  // Try serverless AI endpoint first (only in production)
+  if (import.meta.env.PROD) {
+    try {
+      console.log('[AI] Trying serverless AI endpoint for:', text);
+      const serverlessResponse = await callServerlessAI(text);
+      
+      // Execute actions if any
+      if (serverlessResponse.actions && serverlessResponse.actions.length > 0) {
+        await executeAIActions(serverlessResponse.actions);
+      }
+      
+      // Convert serverless response to our AIResponse format
+      return {
+        type: serverlessResponse.intent === 'error' ? 'error' :
+              serverlessResponse.intent === 'clarify' ? 'clarification_needed' : 'success',
+        message: serverlessResponse.message,
+        result: serverlessResponse.actions,
+        suggestions: serverlessResponse.suggestions || []
+      };
+      
+    } catch (error) {
+      console.error('[AI] Serverless AI failed, trying browser-based APIs:', error);
+      // Fall through to browser-based APIs
     }
-    
-    // Convert serverless response to our AIResponse format
-    return {
-      type: serverlessResponse.intent === 'error' ? 'error' :
-            serverlessResponse.intent === 'clarify' ? 'clarification_needed' : 'success',
-      message: serverlessResponse.message,
-      result: serverlessResponse.actions,
-      suggestions: serverlessResponse.suggestions || []
-    };
-    
-  } catch (error) {
-    console.error('[AI] Serverless AI failed, trying browser-based APIs:', error);
-    // Fall through to browser-based APIs
+  } else {
+    console.log('[AI] Development mode - skipping serverless, using browser APIs');
   }
 
   // Try Groq browser client if configured (free and fast!)
