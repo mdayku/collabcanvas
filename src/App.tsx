@@ -260,7 +260,9 @@ export default function App() {
     );
   }
 
-  if (!user || !userProfile) {
+  // Show Auth if no userProfile, or if no user AND no demo user in localStorage
+  const hasDemoUser = localStorage.getItem('demo-user');
+  if (!userProfile || (!user && !hasDemoUser)) {
     return <Auth onAuthSuccess={handleAuthSuccess} />;
   }
 
