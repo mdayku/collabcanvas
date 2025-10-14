@@ -177,24 +177,38 @@ class CanvasService {
       throw new Error('Failed to load canvas shapes');
     }
 
-    // Convert database format to app format
-    return (data || []).map((shape: any) => ({
-      id: shape.id,
-      type: shape.type,
-      x: shape.x,
-      y: shape.y,
-      w: shape.w,
-      h: shape.h,
-      rotation: shape.rotation || 0,
-      color: shape.color,
-      text: shape.text,
-      fontSize: shape.fontSize,
-      fontFamily: shape.fontFamily,
-      stroke: shape.stroke,
-      strokeWidth: shape.strokeWidth,
-      updated_at: shape.updated_at,
-      updated_by: shape.updated_by,
-    }));
+    // Convert database format to app format with safe column handling
+    return (data || []).map((shape: any) => {
+      const baseShape: ShapeBase = {
+        id: shape.id,
+        type: shape.type,
+        x: shape.x,
+        y: shape.y,
+        w: shape.w,
+        h: shape.h,
+        rotation: shape.rotation || 0,
+        color: shape.color,
+        text: shape.text,
+        updated_at: shape.updated_at,
+        updated_by: shape.updated_by,
+      };
+
+      // Safely add new columns if they exist
+      if (shape.fontSize !== null && shape.fontSize !== undefined) {
+        baseShape.fontSize = shape.fontSize;
+      }
+      if (shape.fontFamily !== null && shape.fontFamily !== undefined) {
+        baseShape.fontFamily = shape.fontFamily;
+      }
+      if (shape.stroke !== null && shape.stroke !== undefined) {
+        baseShape.stroke = shape.stroke;
+      }
+      if (shape.strokeWidth !== null && shape.strokeWidth !== undefined) {
+        baseShape.strokeWidth = shape.strokeWidth;
+      }
+
+      return baseShape;
+    });
   }
 
   /**
@@ -207,35 +221,61 @@ class CanvasService {
       throw new Error('Canvas not found');
     }
 
-    // Prepare shapes for database insertion
-    const shapesToInsert = shapes.map(shape => ({
-      id: shape.id,
-      canvas_id: canvasId,
-      room_id: canvas.room_id,
-      type: shape.type,
-      x: shape.x,
-      y: shape.y,
-      w: shape.w,
-      h: shape.h,
-      rotation: shape.rotation || 0,
-      color: shape.color,
-      text: shape.text || '',
-      fontSize: shape.fontSize,
-      fontFamily: shape.fontFamily,
-      stroke: shape.stroke,
-      strokeWidth: shape.strokeWidth,
-      updated_at: shape.updated_at,
-      updated_by: shape.updated_by,
-    }));
+    // Prepare shapes for database insertion with safe column handling
+    const shapesToInsert = shapes.map(shape => {
+      // Base shape data (always present)
+      const baseShape: any = {
+        id: shape.id,
+        canvas_id: canvasId,
+        room_id: canvas.room_id,
+        type: shape.type,
+        x: shape.x,
+        y: shape.y,
+        w: shape.w,
+        h: shape.h,
+        rotation: shape.rotation || 0,
+        color: shape.color || null,
+        text: shape.text || null,
+        updated_at: shape.updated_at,
+        updated_by: shape.updated_by,
+      };
 
-    const { error } = await supabase
+      // Add new columns only if they have values (migration-safe)
+      if (shape.fontSize !== undefined) {
+        baseShape.fontSize = shape.fontSize;
+      }
+      if (shape.fontFamily !== undefined) {
+        baseShape.fontFamily = shape.fontFamily;
+      }
+      if (shape.stroke !== undefined) {
+        baseShape.stroke = shape.stroke;
+      }
+      if (shape.strokeWidth !== undefined) {
+        baseShape.strokeWidth = shape.strokeWidth;
+      }
+
+      return baseShape;
+    });
+
+    console.log('Saving shapes to canvas:', { canvasId, shapeCount: shapes.length, sampleShape: shapesToInsert[0] });
+
+    const { error, data } = await supabase
       .from('shapes')
       .upsert(shapesToInsert, { onConflict: 'id' });
 
     if (error) {
-      console.error('Error saving shapes to canvas:', error);
-      throw new Error('Failed to save shapes to canvas');
+      console.error('Detailed error saving shapes to canvas:', {
+        error: error,
+        message: error.message,
+        details: error.details,
+        hint: error.hint,
+        code: error.code,
+        shapesToInsert: shapesToInsert.slice(0, 2) // Log first 2 shapes for debugging
+      });
+      throw new Error(`Failed to save shapes to canvas: ${error.message}`);
     }
+
+    console.log('Successfully saved shapes to canvas:', { canvasId, savedCount: shapesToInsert.length });
   }
 
   /**
