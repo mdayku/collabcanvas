@@ -4,6 +4,7 @@ import { useCanvas } from "./state/store";
 import type { ShapeBase } from "./types";
 import { supabase } from "./lib/supabaseClient";
 import { interpretWithResponse, type AIResponse } from "./ai/agent";
+import { isOpenAIConfigured } from "./services/openaiService";
 
 // Web Speech API type declarations
 declare global {
@@ -716,14 +717,34 @@ function AIBox() {
     }
   };
   
+  const aiConfigured = isOpenAIConfigured();
+  
   return (
     <div className="mt-4 space-y-2">
-      <div className="font-medium">AI Agent</div>
+      <div className="flex items-center justify-between">
+        <div className="font-medium">AI Agent</div>
+        <div className={`text-xs px-2 py-1 rounded ${
+          aiConfigured 
+            ? 'bg-green-100 text-green-700' 
+            : 'bg-yellow-100 text-yellow-700'
+        }`}>
+          {aiConfigured ? '🤖 GPT-3.5' : '📝 Basic'}
+        </div>
+      </div>
+
+      {!aiConfigured && (
+        <div className="text-xs bg-blue-50 border border-blue-200 rounded p-2 text-blue-700">
+          <strong>💡 Upgrade to GPT-3.5:</strong> Add <code>VITE_OPENAI_API_KEY</code> to your .env file for intelligent AI responses!
+        </div>
+      )}
       
       <div className="flex gap-2">
         <input 
           className="flex-1 border rounded px-2 py-1" 
-          placeholder="e.g., Create a 200x300 rectangle"
+          placeholder={aiConfigured 
+            ? "Try: 'Create a dashboard layout' or 'Make 5 blue circles'" 
+            : "e.g., Create a 200x300 rectangle"
+          }
           value={q} 
           onChange={(e)=>setQ(e.target.value)}
           onKeyDown={handleKeyDown}
@@ -808,10 +829,25 @@ function AIBox() {
         </div>
       )}
 
-      <p className="text-xs text-slate-500">
-        Try: "Create a red circle", "Add text saying hello" 
-        {recognition && <span className="text-blue-600">• Click 🎤 for voice input</span>}
-      </p>
+      <div className="text-xs text-slate-500">
+        {aiConfigured ? (
+          <div>
+            <div className="font-medium text-slate-600 mb-1">🚀 AI Commands:</div>
+            <div className="grid grid-cols-1 gap-1">
+              <div><strong>Create:</strong> "Make a blue dashboard with 3 cards"</div>
+              <div><strong>Move:</strong> "Move the red circle to the center"</div>
+              <div><strong>Complex:</strong> "Create a login form with styled buttons"</div>
+              <div><strong>Arrange:</strong> "Arrange all shapes in a row"</div>
+            </div>
+            {recognition && <div className="mt-1 text-blue-600">💬 Click 🎤 for voice input</div>}
+          </div>
+        ) : (
+          <div>
+            <strong>Basic Commands:</strong> "Create a red circle", "Add text saying hello", "Create a 2x2 grid"
+            {recognition && <span className="text-blue-600"> • Click 🎤 for voice input</span>}
+          </div>
+        )}
+      </div>
     </div>
   );
 }
