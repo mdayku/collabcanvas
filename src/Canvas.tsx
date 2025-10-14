@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
-import { Stage, Layer, Rect, Circle, Text as KText, Transformer, Group } from "react-konva";
+import { Stage, Layer, Rect, Circle, Text as KText, Transformer, Group, Line, RegularPolygon } from "react-konva";
 import { useCanvas } from "./state/store";
-import type { ShapeBase } from "./types";
+import type { ShapeBase, ShapeType } from "./types";
 import { supabase } from "./lib/supabaseClient";
 import { interpretWithResponse, type AIResponse } from "./ai/agent";
 import { isOpenAIConfigured } from "./services/openaiService";
@@ -375,58 +375,19 @@ export default function Canvas({ onSignOut }: CanvasProps) {
     return { width: Math.max(width, 80), height: Math.max(height, fontSize * 1.2) };
   };
 
-  const shapeEls = useMemo(() => Object.values(shapes).map((s) => {
+
+  // Shape elements with right-click support and styling
+  const shapeEls = useMemo(() => Object.values(shapes).map((s: ShapeBase) => {
     // For text shapes, calculate dynamic dimensions
     let textWidth = s.w;
     let textHeight = s.h;
     let fontSize = s.fontSize || Math.max(16, Math.min(24, s.h * 0.6));
     
     if (s.type === 'text' && s.text) {
-      const dimensions = getTextDimensions(s.text, fontSize);
-      textWidth = dimensions.width;
-      textHeight = dimensions.height;
+      const dims = getTextDimensions(s.text, fontSize);
+      textWidth = dims.width;
+      textHeight = dims.height;
     }
-    
-    return (
-      <Group key={s.id} id={s.id}
-        draggable
-        x={s.x} y={s.y} rotation={s.rotation||0}
-        onClick={(e)=>onSelect(s.id, e)}
-        onDragEnd={(e)=>onDragEnd(s.id, e)}
-        onDblClick={s.type === 'text' ? (e) => onTextDoubleClick(s.id, e) : undefined}
-      >
-        {s.type === "rect" && <Rect width={s.w} height={s.h} fill={s.color||"#e5e7eb"} cornerRadius={8}/>}
-        {s.type === "circle" && <Circle radius={Math.max(s.w,s.h)/2} fill={s.color||"#e5e7eb"} />}
-        {s.type === "text" && (
-          <>
-            {/* Optional background for text (subtle) */}
-            <Rect 
-              width={textWidth + 16} 
-              height={textHeight + 8} 
-              x={-8} 
-              y={-4}
-              fill="rgba(255,255,255,0.8)" 
-              cornerRadius={4}
-              stroke="#e5e7eb"
-              strokeWidth={1}
-            />
-            <KText 
-              text={s.text||"text"} 
-              fontSize={fontSize} 
-              fill={s.color||"#111"} 
-              width={textWidth}
-              height={textHeight}
-              wrap="word"
-              ellipsis={false}
-            />
-          </>
-        )}
-      </Group>
-    );
-  }), [shapes]);
-
-  // Add right-click handler to shapes
-  const rightClickShapeEls = useMemo(() => Object.values(shapes).map((s: ShapeBase) => {
     const onClick = () => {
       if (selectedIds.includes(s.id)) {
         if (selectedIds.length === 1) {
@@ -451,24 +412,34 @@ export default function Canvas({ onSignOut }: CanvasProps) {
     };
 
     return (
-      <Group key={s.id} onTap={onClick} onClick={onClick} onContextMenu={onRightClick}>
+      <Group 
+        key={s.id}
+        id={s.id}
+        x={s.x}
+        y={s.y}
+        onTap={onClick} 
+        onClick={onClick} 
+        onContextMenu={onRightClick}
+        draggable={true}
+        onDragEnd={(e) => onDragEnd(s.id, e)}
+      >
         {s.type === "rect" && (
           <Rect
-            x={s.x}
-            y={s.y}
+            x={0}
+            y={0}
             width={s.w}
             height={s.h}
-            fill={s.color}
+            fill={s.color || "#000"}
             stroke={s.stroke || "#000"}
             strokeWidth={s.strokeWidth || 1}
           />
         )}
         {s.type === "circle" && (
           <Circle
-            x={s.x + s.w / 2}
-            y={s.y + s.h / 2}
+            x={s.w / 2}
+            y={s.h / 2}
             radius={Math.min(s.w, s.h) / 2}
-            fill={s.color}
+            fill={s.color || "#000"}
             stroke={s.stroke || "#000"}
             strokeWidth={s.strokeWidth || 1}
           />
@@ -476,18 +447,112 @@ export default function Canvas({ onSignOut }: CanvasProps) {
         {s.type === "text" && (
           <>
             <KText
-              x={s.x}
-              y={s.y}
+              x={0}
+              y={0}
               text={s.text || "Text"}
-              fontSize={s.fontSize || 20}
-              fill={s.color}
-              width={s.w}
-              height={s.h}
+              fontSize={fontSize}
+              fill={s.color || "#111"} 
+              width={textWidth}
+              height={textHeight}
+              wrap="word"
+              ellipsis={false}
               onDblClick={() => {
                 setEditingText({ id: s.id, x: s.x, y: s.y, value: s.text || '' });
               }}
             />
           </>
+        )}
+        {s.type === "triangle" && (
+          <TriangleShape
+            width={s.w}
+            height={s.h}
+            fill={s.color || "#000"}
+            stroke={s.stroke || "#000"}
+            strokeWidth={s.strokeWidth || 1}
+          />
+        )}
+        {s.type === "star" && (
+          <StarShape
+            width={s.w}
+            height={s.h}
+            fill={s.color || "#000"}
+            stroke={s.stroke || "#000"}
+            strokeWidth={s.strokeWidth || 1}
+          />
+        )}
+        {s.type === "heart" && (
+          <HeartShape
+            width={s.w}
+            height={s.h}
+            fill={s.color || "#000"}
+            stroke={s.stroke || "#000"}
+            strokeWidth={s.strokeWidth || 1}
+          />
+        )}
+        {s.type === "pentagon" && (
+          <PentagonShape
+            width={s.w}
+            height={s.h}
+            fill={s.color || "#000"}
+            stroke={s.stroke || "#000"}
+            strokeWidth={s.strokeWidth || 1}
+          />
+        )}
+        {s.type === "hexagon" && (
+          <HexagonShape
+            width={s.w}
+            height={s.h}
+            fill={s.color || "#000"}
+            stroke={s.stroke || "#000"}
+            strokeWidth={s.strokeWidth || 1}
+          />
+        )}
+        {s.type === "octagon" && (
+          <OctagonShape
+            width={s.w}
+            height={s.h}
+            fill={s.color || "#000"}
+            stroke={s.stroke || "#000"}
+            strokeWidth={s.strokeWidth || 1}
+          />
+        )}
+        {s.type === "oval" && (
+          <Circle
+            x={s.w / 2}
+            y={s.h / 2}
+            radiusX={s.w / 2}
+            radiusY={s.h / 2}
+            fill={s.color || "#000"}
+            stroke={s.stroke || "#000"}
+            strokeWidth={s.strokeWidth || 1}
+          />
+        )}
+        {s.type === "trapezoid" && (
+          <TrapezoidShape
+            width={s.w}
+            height={s.h}
+            fill={s.color || "#000"}
+            stroke={s.stroke || "#000"}
+            strokeWidth={s.strokeWidth || 1}
+          />
+        )}
+        {s.type === "rhombus" && (
+          <RhombusShape
+            width={s.w}
+            height={s.h}
+            fill={s.color || "#000"}
+            stroke={s.stroke || "#000"}
+            strokeWidth={s.strokeWidth || 1}
+          />
+        )}
+        {s.type === "parallelogram" && (
+          <ParallelogramShape
+            width={s.w}
+            height={s.h}
+            fill={s.color || "#000"}
+            stroke={s.stroke || "#000"}
+            strokeWidth={s.strokeWidth || 1}
+          />
         )}
       </Group>
     );
@@ -517,7 +582,7 @@ export default function Canvas({ onSignOut }: CanvasProps) {
               onClick={() => useCanvas.getState().select([])}
               onTap={() => useCanvas.getState().select([])}
             />
-            {rightClickShapeEls}
+            {shapeEls}
             <Transformer ref={trRef} rotateEnabled={true} onTransformEnd={onTransformEnd} />
           </Layer>
         </Stage>
@@ -612,6 +677,16 @@ function CategorizedToolbar() {
   const addRect = () => addShape("rect");
   const addCircle = () => addShape("circle");
   const addText = () => addShape("text");
+  const addTriangle = () => addShape("triangle");
+  const addStar = () => addShape("star");
+  const addHeart = () => addShape("heart");
+  const addPentagon = () => addShape("pentagon");
+  const addHexagon = () => addShape("hexagon");
+  const addOctagon = () => addShape("octagon");
+  const addOval = () => addShape("oval");
+  const addTrapezoid = () => addShape("trapezoid");
+  const addRhombus = () => addShape("rhombus");
+  const addParallelogram = () => addShape("parallelogram");
   
   const addEmoji = (emoji: string) => {
     // Save history before creating
@@ -657,9 +732,16 @@ function CategorizedToolbar() {
       tools: [
         { name: '▭', action: addRect, available: true, tooltip: 'Rectangle' },
         { name: '●', action: addCircle, available: true, tooltip: 'Circle' },
-        { name: '▲', action: () => {}, available: false, tooltip: 'Triangle' },
-        { name: '★', action: () => {}, available: false, tooltip: 'Star' },
-        { name: '♥', action: () => {}, available: false, tooltip: 'Heart' },
+        { name: '▲', action: addTriangle, available: true, tooltip: 'Triangle' },
+        { name: '★', action: addStar, available: true, tooltip: 'Star' },
+        { name: '♥', action: addHeart, available: true, tooltip: 'Heart' },
+        { name: '⬟', action: addPentagon, available: true, tooltip: 'Pentagon' },
+        { name: '⬡', action: addHexagon, available: true, tooltip: 'Hexagon' },
+        { name: '⯃', action: addOctagon, available: true, tooltip: 'Octagon' },
+        { name: '⬯', action: addOval, available: true, tooltip: 'Oval' },
+        { name: '⯊', action: addTrapezoid, available: true, tooltip: 'Trapezoid' },
+        { name: '◆', action: addRhombus, available: true, tooltip: 'Rhombus' },
+        { name: '▱', action: addParallelogram, available: true, tooltip: 'Parallelogram' },
       ]
     },
     {
@@ -818,7 +900,7 @@ function Toolbar({ onSignOut }: ToolbarProps) {
   );
 }
 
-function addShape(type: "rect"|"circle"|"text") {
+function addShape(type: ShapeType) {
   // Save history before creating
   useCanvas.getState().pushHistory();
   
@@ -1303,9 +1385,9 @@ function ContextMenu({ x, y, shapeId, onClose }: {
           />
         </div>
         
-        {/* Stroke Color */}
+        {/* Outline Color */}
         <div className="flex items-center justify-between">
-          <span className="text-sm">Stroke Color:</span>
+          <span className="text-sm">Outline Color:</span>
           <button
             className="w-6 h-6 rounded border border-gray-300 hover:border-gray-500"
             style={{ backgroundColor: shape.stroke || '#000000' }}
@@ -1313,9 +1395,9 @@ function ContextMenu({ x, y, shapeId, onClose }: {
           />
         </div>
         
-        {/* Stroke Width */}
+        {/* Outline Width */}
         <div className="flex items-center justify-between">
-          <span className="text-sm">Stroke Width:</span>
+          <span className="text-sm">Outline Width:</span>
           <input
             type="range"
             min="0"
@@ -1354,6 +1436,188 @@ function ContextMenu({ x, y, shapeId, onClose }: {
         </div>
       )}
     </div>
+  );
+}
+
+// Custom Shape Components
+function TriangleShape({ width, height, fill, stroke, strokeWidth }: {
+  width: number; height: number; fill: string; stroke: string; strokeWidth: number;
+}) {
+  const points = [
+    width / 2, 0,           // Top point
+    0, height,              // Bottom left
+    width, height,          // Bottom right
+    width / 2, 0            // Close path
+  ];
+  
+  return (
+    <Line
+      points={points}
+      fill={fill}
+      stroke={stroke}
+      strokeWidth={strokeWidth}
+      closed={true}
+    />
+  );
+}
+
+function StarShape({ width, height, fill, stroke, strokeWidth }: {
+  width: number; height: number; fill: string; stroke: string; strokeWidth: number;
+}) {
+  return (
+    <RegularPolygon
+      x={width / 2}
+      y={height / 2}
+      sides={5}
+      radius={Math.min(width, height) / 2}
+      fill={fill}
+      stroke={stroke}
+      strokeWidth={strokeWidth}
+      innerRadius={Math.min(width, height) / 4}
+    />
+  );
+}
+
+function HeartShape({ width, height, fill, stroke, strokeWidth }: {
+  width: number; height: number; fill: string; stroke: string; strokeWidth: number;
+}) {
+  // Heart shape using bezier curves
+  const w = width;
+  const h = height;
+  const points = [
+    w/2, h*0.3,
+    w*0.1, 0,
+    0, h*0.3,
+    w/2, h,
+    w, h*0.3,
+    w*0.9, 0,
+    w/2, h*0.3
+  ];
+  
+  return (
+    <Line
+      points={points}
+      fill={fill}
+      stroke={stroke}
+      strokeWidth={strokeWidth}
+      closed={true}
+      bezier={true}
+    />
+  );
+}
+
+function PentagonShape({ width, height, fill, stroke, strokeWidth }: {
+  width: number; height: number; fill: string; stroke: string; strokeWidth: number;
+}) {
+  return (
+    <RegularPolygon
+      x={width / 2}
+      y={height / 2}
+      sides={5}
+      radius={Math.min(width, height) / 2}
+      fill={fill}
+      stroke={stroke}
+      strokeWidth={strokeWidth}
+    />
+  );
+}
+
+function HexagonShape({ width, height, fill, stroke, strokeWidth }: {
+  width: number; height: number; fill: string; stroke: string; strokeWidth: number;
+}) {
+  return (
+    <RegularPolygon
+      x={width / 2}
+      y={height / 2}
+      sides={6}
+      radius={Math.min(width, height) / 2}
+      fill={fill}
+      stroke={stroke}
+      strokeWidth={strokeWidth}
+    />
+  );
+}
+
+function OctagonShape({ width, height, fill, stroke, strokeWidth }: {
+  width: number; height: number; fill: string; stroke: string; strokeWidth: number;
+}) {
+  return (
+    <RegularPolygon
+      x={width / 2}
+      y={height / 2}
+      sides={8}
+      radius={Math.min(width, height) / 2}
+      fill={fill}
+      stroke={stroke}
+      strokeWidth={strokeWidth}
+    />
+  );
+}
+
+function TrapezoidShape({ width, height, fill, stroke, strokeWidth }: {
+  width: number; height: number; fill: string; stroke: string; strokeWidth: number;
+}) {
+  const points = [
+    width * 0.2, 0,        // Top left
+    width * 0.8, 0,        // Top right
+    width, height,          // Bottom right
+    0, height,              // Bottom left
+    width * 0.2, 0          // Close path
+  ];
+  
+  return (
+    <Line
+      points={points}
+      fill={fill}
+      stroke={stroke}
+      strokeWidth={strokeWidth}
+      closed={true}
+    />
+  );
+}
+
+function RhombusShape({ width, height, fill, stroke, strokeWidth }: {
+  width: number; height: number; fill: string; stroke: string; strokeWidth: number;
+}) {
+  const points = [
+    width / 2, 0,           // Top
+    width, height / 2,      // Right
+    width / 2, height,      // Bottom
+    0, height / 2,          // Left
+    width / 2, 0            // Close path
+  ];
+  
+  return (
+    <Line
+      points={points}
+      fill={fill}
+      stroke={stroke}
+      strokeWidth={strokeWidth}
+      closed={true}
+    />
+  );
+}
+
+function ParallelogramShape({ width, height, fill, stroke, strokeWidth }: {
+  width: number; height: number; fill: string; stroke: string; strokeWidth: number;
+}) {
+  const skew = width * 0.2; // 20% skew for parallelogram effect
+  const points = [
+    skew, 0,                // Top left
+    width, 0,               // Top right
+    width - skew, height,   // Bottom right
+    0, height,              // Bottom left
+    skew, 0                 // Close path
+  ];
+  
+  return (
+    <Line
+      points={points}
+      fill={fill}
+      stroke={stroke}
+      strokeWidth={strokeWidth}
+      closed={true}
+    />
   );
 }
 

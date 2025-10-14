@@ -1,4 +1,4 @@
-export type ShapeType = "rect" | "circle" | "text";
+export type ShapeType = "rect" | "circle" | "text" | "triangle" | "star" | "heart" | "pentagon" | "hexagon" | "octagon" | "trapezoid" | "rhombus" | "parallelogram" | "oval";
 
 export type ShapeBase = {
   id: string;

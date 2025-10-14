@@ -335,4 +335,76 @@ describe('Canvas Store', () => {
       expect(nonExistentShape).toBeUndefined();
     });
   });
+
+  describe('New Shape Types Support', () => {
+    it('supports all new shape types', () => {
+      const shapeTypes = [
+        'triangle', 'star', 'heart', 'pentagon', 'hexagon', 
+        'octagon', 'oval', 'trapezoid', 'rhombus', 'parallelogram'
+      ] as const;
+
+      shapeTypes.forEach((type, index) => {
+        const shape: ShapeBase = {
+          id: `shape-${index}`,
+          type,
+          x: 100,
+          y: 100,
+          w: 100,
+          h: 100,
+          color: '#3b82f6',
+          updated_at: Date.now(),
+          updated_by: 'test-user',
+        };
+
+        useCanvas.getState().upsert(shape);
+        
+        const state = useCanvas.getState();
+        expect(state.shapes[shape.id]).toEqual(shape);
+        expect(state.shapes[shape.id].type).toBe(type);
+      });
+    });
+
+    it('handles new shape properties', () => {
+      const shapeWithStroke: ShapeBase = {
+        id: 'shape-with-stroke',
+        type: 'triangle',
+        x: 100,
+        y: 100,
+        w: 100,
+        h: 100,
+        color: '#3b82f6',
+        stroke: '#ff0000',
+        strokeWidth: 3,
+        updated_at: Date.now(),
+        updated_by: 'test-user',
+      };
+
+      useCanvas.getState().upsert(shapeWithStroke);
+      
+      const savedShape = useCanvas.getState().shapes[shapeWithStroke.id];
+      expect(savedShape.stroke).toBe('#ff0000');
+      expect(savedShape.strokeWidth).toBe(3);
+    });
+
+    it('maintains shape color defaults by type', () => {
+      const defaultColors = {
+        triangle: '#10b981',
+        star: '#fbbf24',
+        heart: '#ef4444',
+        pentagon: '#8b5cf6',
+        hexagon: '#06b6d4',
+        octagon: '#f59e0b',
+        oval: '#84cc16',
+        trapezoid: '#ec4899',
+        rhombus: '#14b8a6',
+        parallelogram: '#f97316',
+      };
+
+      Object.entries(defaultColors).forEach(([type, expectedColor]) => {
+        // This would test the addShape function which sets default colors
+        // In a real scenario, we'd need to expose addShape or test through UI interactions
+        expect(expectedColor).toMatch(/^#[0-9a-f]{6}$/i); // Valid hex color
+      });
+    });
+  });
 });

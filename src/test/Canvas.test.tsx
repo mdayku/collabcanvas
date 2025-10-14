@@ -12,6 +12,8 @@ vi.mock('react-konva', () => ({
   Text: (props: any) => <div data-testid="konva-text" {...props}>{props.text}</div>,
   Transformer: (props: any) => <div data-testid="konva-transformer" {...props} />,
   Group: ({ children, ...props }: any) => <div data-testid="konva-group" {...props}>{children}</div>,
+  Line: (props: any) => <div data-testid="konva-line" {...props} />,
+  RegularPolygon: (props: any) => <div data-testid="konva-regular-polygon" {...props} />,
 }));
 
 // Create a proper Zustand-like mock
@@ -63,13 +65,34 @@ describe('Canvas Component', () => {
   it('renders toolbar buttons', () => {
     render(<Canvas onSignOut={mockOnSignOut} />);
     
-    // Shape buttons now use symbols with tooltips  
+    // Basic shape buttons
     expect(screen.getByRole('button', { name: '▭' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: '●' })).toBeInTheDocument();
+    
+    // New shape buttons
+    expect(screen.getByRole('button', { name: '▲' })).toBeInTheDocument(); // Triangle
+    expect(screen.getByRole('button', { name: '★' })).toBeInTheDocument(); // Star
+    expect(screen.getByRole('button', { name: '♥' })).toBeInTheDocument(); // Heart
+    expect(screen.getByRole('button', { name: '⬟' })).toBeInTheDocument(); // Pentagon
+    expect(screen.getByRole('button', { name: '⬡' })).toBeInTheDocument(); // Hexagon
+    expect(screen.getByRole('button', { name: '⯃' })).toBeInTheDocument(); // Octagon
+    expect(screen.getByRole('button', { name: '⬯' })).toBeInTheDocument(); // Oval
+    expect(screen.getByRole('button', { name: '⯊' })).toBeInTheDocument(); // Trapezoid
+    expect(screen.getByRole('button', { name: '◆' })).toBeInTheDocument(); // Rhombus
+    expect(screen.getByRole('button', { name: '▱' })).toBeInTheDocument(); // Parallelogram
     
     // Text is in Assets section - need to expand it first
     const assetsButton = screen.getByRole('button', { name: /🎯Assets/ });
     expect(assetsButton).toBeInTheDocument();
+  });
+
+  it('renders all shape categories', () => {
+    render(<Canvas onSignOut={mockOnSignOut} />);
+    
+    // Check shape categories are present
+    expect(screen.getByText('Shapes')).toBeInTheDocument();
+    expect(screen.getByText('Emojis')).toBeInTheDocument();
+    expect(screen.getByText('Assets')).toBeInTheDocument();
   });
 
   it('renders AI input box', () => {
