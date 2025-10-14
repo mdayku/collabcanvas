@@ -13,6 +13,7 @@ export type ShapeBase = {
   strokeWidth?: number;
   text?: string; // for text shapes
   fontSize?: number; // for text shapes
+  fontFamily?: string; // for text shapes
   updated_at: number;
   updated_by: string;
 };

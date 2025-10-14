@@ -451,6 +451,7 @@ export default function Canvas({ onSignOut }: CanvasProps) {
               y={0}
               text={s.text || "Text"}
               fontSize={fontSize}
+              fontFamily={s.fontFamily || "Arial"}
               fill={s.color || "#111"} 
               width={textWidth}
               height={textHeight}
