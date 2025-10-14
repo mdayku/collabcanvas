@@ -1442,31 +1442,84 @@ function ContextMenu({ x, y, shapeId, onClose }: {
 
   return (
     <div style={menuStyle} className="bg-white rounded-lg shadow-lg border p-3 min-w-[200px]">
-      <div className="text-sm font-medium mb-2">Shape Options</div>
+      <div className="text-sm font-medium mb-2">
+        {shape.type === 'text' ? 'Text Options' : 'Shape Options'}
+      </div>
       
       <div className="space-y-2">
-        {/* Fill Color */}
-        <div className="flex items-center justify-between">
-          <span className="text-sm">Fill Color:</span>
-          <button
-            className="w-6 h-6 rounded border border-gray-300 hover:border-gray-500"
-            style={{ backgroundColor: shape.color }}
-            onClick={() => setShowColorPicker(showColorPicker === 'fill' ? null : 'fill')}
-          />
-        </div>
+        {/* Text-specific controls */}
+        {shape.type === 'text' && (
+          <>
+            {/* Text Color */}
+            <div className="flex items-center justify-between">
+              <span className="text-sm">Text Color:</span>
+              <button
+                className="w-6 h-6 rounded border border-gray-300 hover:border-gray-500"
+                style={{ backgroundColor: shape.color || '#111111' }}
+                onClick={() => setShowColorPicker(showColorPicker === 'fill' ? null : 'fill')}
+              />
+            </div>
+            
+            {/* Font Size */}
+            <div className="flex items-center justify-between">
+              <span className="text-sm">Font Size:</span>
+              <input
+                type="range"
+                min="8"
+                max="72"
+                value={shape.fontSize || 20}
+                onChange={(e) => updateShape({ fontSize: parseInt(e.target.value) })}
+                className="w-16"
+              />
+              <span className="text-xs text-gray-500 ml-1">{shape.fontSize || 20}px</span>
+            </div>
+            
+            {/* Font Family */}
+            <div className="flex flex-col">
+              <span className="text-sm mb-1">Font Family:</span>
+              <select
+                value={shape.fontFamily || "Arial"}
+                onChange={(e) => updateShape({ fontFamily: e.target.value })}
+                className="text-xs border rounded px-2 py-1"
+              >
+                <option value="Arial">Arial</option>
+                <option value="Helvetica">Helvetica</option>
+                <option value="Times New Roman">Times New Roman</option>
+                <option value="Georgia">Georgia</option>
+                <option value="Verdana">Verdana</option>
+                <option value="Courier New">Courier New</option>
+                <option value="Impact">Impact</option>
+                <option value="Comic Sans MS">Comic Sans MS</option>
+              </select>
+            </div>
+          </>
+        )}
         
-        {/* Outline Color */}
-        <div className="flex items-center justify-between">
-          <span className="text-sm">Outline Color:</span>
-          <button
-            className="w-6 h-6 rounded border border-gray-300 hover:border-gray-500"
-            style={{ backgroundColor: shape.stroke || '#000000' }}
-            onClick={() => setShowColorPicker(showColorPicker === 'stroke' ? null : 'stroke')}
-          />
-        </div>
-        
-        {/* Outline Width */}
-        <div className="flex items-center justify-between">
+        {/* Shape-specific controls */}
+        {shape.type !== 'text' && (
+          <>
+            {/* Fill Color */}
+            <div className="flex items-center justify-between">
+              <span className="text-sm">Fill Color:</span>
+              <button
+                className="w-6 h-6 rounded border border-gray-300 hover:border-gray-500"
+                style={{ backgroundColor: shape.color }}
+                onClick={() => setShowColorPicker(showColorPicker === 'fill' ? null : 'fill')}
+              />
+            </div>
+            
+            {/* Outline Color */}
+            <div className="flex items-center justify-between">
+              <span className="text-sm">Outline Color:</span>
+              <button
+                className="w-6 h-6 rounded border border-gray-300 hover:border-gray-500"
+                style={{ backgroundColor: shape.stroke || '#000000' }}
+                onClick={() => setShowColorPicker(showColorPicker === 'stroke' ? null : 'stroke')}
+              />
+            </div>
+            
+            {/* Outline Width */}
+            <div className="flex items-center justify-between">
           <span className="text-sm">Outline Width:</span>
           <input
             type="range"
