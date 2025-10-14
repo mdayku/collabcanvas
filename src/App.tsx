@@ -65,20 +65,32 @@ export default function App() {
       let profile = providedProfile;
       if (!profile) {
         console.log('Fetching user profile...');
+        console.log('Supabase client:', supabase);
+        console.log('Auth user ID:', authUser.id);
         
         try {
           // Add timeout protection to prevent hanging
+          console.log('Creating profile promise...');
           const profilePromise = supabase
             .from('user_profiles')
             .select('*')
             .eq('id', authUser.id)
             .single();
-            
+          
+          console.log('Profile promise created:', profilePromise);
+          
+          console.log('Creating timeout promise...');
           const timeoutPromise = new Promise((_, reject) => 
-            setTimeout(() => reject(new Error('Profile fetch timeout')), 5000)
+            setTimeout(() => {
+              console.log('Timeout triggered!');
+              reject(new Error('Profile fetch timeout'));
+            }, 5000)
           );
           
-          const { data, error } = await Promise.race([profilePromise, timeoutPromise]) as any;
+          console.log('Starting Promise.race...');
+          const result = await Promise.race([profilePromise, timeoutPromise]) as any;
+          console.log('Promise.race completed:', result);
+          const { data, error } = result;
           
           if (error) {
             console.warn('Profile fetch error (will create fallback):', error);
