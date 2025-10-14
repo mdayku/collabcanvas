@@ -68,6 +68,15 @@ export default function App() {
         if (event === 'SIGNED_IN' && session?.user) {
           await handleAuthSuccess(session.user, null);
         } else if (event === 'SIGNED_OUT') {
+          console.log('Auth state: SIGNED_OUT detected');
+          
+          // Don't interfere if this is a demo user session
+          const demoUser = localStorage.getItem('demo-user');
+          if (demoUser) {
+            console.log('Demo user detected during SIGNED_OUT, ignoring Supabase auth event');
+            return;
+          }
+          
           setUser(null);
           setUserProfile(null);
           useCanvas.getState().setUser({ id: '', name: '', color: '#666' });
@@ -197,19 +206,37 @@ export default function App() {
 
   const handleSignOut = async () => {
     try {
+      console.log('Signing out...');
+      
       // Clear demo user if it exists
       localStorage.removeItem('demo-user');
       
+      // Sign out from Supabase (safe for demo users)
       await supabase.auth.signOut();
       
       // Reset canvas state
-      useCanvas.getState().setUser({ id: '', name: '', color: '#666' });
-      useCanvas.getState().setAuthenticated(false);
+      const canvasState = useCanvas.getState();
+      canvasState.setUser({ id: '', name: '', color: '#666' });
+      canvasState.setAuthenticated(false);
       
+      // Clear React state
       setUser(null);
       setUserProfile(null);
+      setLoading(false); // Ensure we're not stuck in loading state
+      
+      console.log('Sign out complete');
     } catch (error) {
       console.error('Error signing out:', error);
+      
+      // Force clear state even if sign out fails
+      localStorage.removeItem('demo-user');
+      setUser(null);
+      setUserProfile(null);
+      setLoading(false);
+      
+      const canvasState = useCanvas.getState();
+      canvasState.setUser({ id: '', name: '', color: '#666' });
+      canvasState.setAuthenticated(false);
     }
   };
 
