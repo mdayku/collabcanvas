@@ -456,6 +456,8 @@ export default function Canvas({ onSignOut }: CanvasProps) {
               height={textHeight}
               wrap="word"
               ellipsis={false}
+              align={isEmoji(s.text || "") ? "center" : "left"}
+              verticalAlign={isEmoji(s.text || "") ? "middle" : "top"}
               onDblClick={() => {
                 setEditingText({ id: s.id, x: s.x, y: s.y, value: s.text || '' });
               }}
@@ -900,6 +902,18 @@ function Toolbar({ onSignOut }: ToolbarProps) {
       <CategorizedToolbar />
     </div>
   );
+}
+
+// Helper function to detect if text is an emoji
+function isEmoji(text: string): boolean {
+  // Simple emoji detection: single character that's likely an emoji
+  // This catches most emoji cases from our emoji picker
+  if (text.length <= 2) {
+    // Check if it contains emoji characters (rough detection)
+    const emojiRegex = /[\u{1F600}-\u{1F64F}]|[\u{1F300}-\u{1F5FF}]|[\u{1F680}-\u{1F6FF}]|[\u{1F1E0}-\u{1F1FF}]|[\u{2600}-\u{26FF}]|[\u{2700}-\u{27BF}]/u;
+    return emojiRegex.test(text);
+  }
+  return false;
 }
 
 // Helper function to find a blank area on canvas
