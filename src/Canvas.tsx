@@ -3,7 +3,15 @@ import { Stage, Layer, Rect, Circle, Text as KText, Transformer, Group } from "r
 import { useCanvas } from "./state/store";
 import type { ShapeBase } from "./types";
 import { supabase } from "./lib/supabaseClient";
-import { interpret } from "./ai/agent";
+import { interpret, interpretWithResponse, type AIResponse } from "./ai/agent";
+
+// Web Speech API type declarations
+declare global {
+  interface Window {
+    SpeechRecognition: any;
+    webkitSpeechRecognition: any;
+  }
+}
 
 // const CANVAS_W = 2400, CANVAS_H = 1600;
 
@@ -610,7 +618,97 @@ function addShape(type: "rect"|"circle"|"text") {
 function AIBox() {
   const [q, setQ] = useState("");
   const [working, setWorking] = useState(false);
-  const onRun = async () => { setWorking(true); await interpret(q); setWorking(false); setQ(""); };
+  const [isListening, setIsListening] = useState(false);
+  const [recognition, setRecognition] = useState<SpeechRecognition | null>(null);
+  const [aiResponse, setAiResponse] = useState<AIResponse | null>(null);
+
+  // Initialize speech recognition
+  useEffect(() => {
+    if ('webkitSpeechRecognition' in window || 'SpeechRecognition' in window) {
+      const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+      const recognition = new SpeechRecognition();
+      
+      recognition.continuous = false;
+      recognition.interimResults = false;
+      recognition.lang = 'en-US';
+
+      recognition.onstart = () => {
+        setIsListening(true);
+      };
+
+      recognition.onresult = (event: any) => {
+        const transcript = event.results[0][0].transcript;
+        setQ(transcript);
+        setIsListening(false);
+      };
+
+      recognition.onerror = (event: any) => {
+        console.error('Speech recognition error:', event.error);
+        setIsListening(false);
+      };
+
+      recognition.onend = () => {
+        setIsListening(false);
+      };
+
+      setRecognition(recognition);
+    }
+  }, []);
+
+  const startListening = () => {
+    if (recognition) {
+      recognition.start();
+    }
+  };
+
+  const stopListening = () => {
+    if (recognition) {
+      recognition.stop();
+    }
+  };
+  
+  const onRun = async () => { 
+    setWorking(true);
+    setAiResponse(null);
+    
+    try {
+      const response = await interpretWithResponse(q);
+      setAiResponse(response);
+      
+      if (response.type === 'success') {
+        setQ(""); // Clear input on success
+      }
+    } catch (error) {
+      setAiResponse({
+        type: 'error',
+        message: 'An error occurred while processing your request.'
+      });
+    }
+    
+    setWorking(false);
+  };
+
+  const useSuggestion = (suggestion: string) => {
+    setQ(suggestion);
+    setAiResponse(null);
+  };
+
+  const confirmAction = async () => {
+    if (aiResponse?.confirmAction) {
+      setWorking(true);
+      await aiResponse.confirmAction();
+      setAiResponse({
+        type: 'success',
+        message: '✅ Action completed successfully!'
+      });
+      setQ("");
+      setWorking(false);
+    }
+  };
+
+  const cancelAction = () => {
+    setAiResponse(null);
+  };
   
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === 'Enter' && !working && q.trim()) {
@@ -621,17 +719,99 @@ function AIBox() {
   return (
     <div className="mt-4 space-y-2">
       <div className="font-medium">AI Agent</div>
-      <input 
-        className="w-full border rounded px-2 py-1" 
-        placeholder="e.g., Create a 200x300 rectangle"
-        value={q} 
-        onChange={(e)=>setQ(e.target.value)}
-        onKeyDown={handleKeyDown}
-      />
+      
+      <div className="flex gap-2">
+        <input 
+          className="flex-1 border rounded px-2 py-1" 
+          placeholder="e.g., Create a 200x300 rectangle"
+          value={q} 
+          onChange={(e)=>setQ(e.target.value)}
+          onKeyDown={handleKeyDown}
+        />
+        {recognition && (
+          <button
+            className={`px-3 py-1 rounded text-white transition-colors ${
+              isListening 
+                ? 'bg-red-500 hover:bg-red-600' 
+                : 'bg-blue-500 hover:bg-blue-600'
+            }`}
+            onClick={isListening ? stopListening : startListening}
+            disabled={working}
+            title={isListening ? "Stop listening" : "Start voice input"}
+          >
+            {isListening ? '🔴' : '🎤'}
+          </button>
+        )}
+      </div>
+
+      {isListening && (
+        <p className="text-xs text-blue-600 animate-pulse">🎤 Listening... speak your command</p>
+      )}
+
       <button className="px-3 py-2 rounded bg-emerald-500 text-white disabled:opacity-60" disabled={!q||working} onClick={onRun}>
         {working?"Thinking…":"Run"}
       </button>
-      <p className="text-xs text-slate-500">Try: "Create a red circle", "Add text saying hello", "Make a 300x200 rectangle"</p>
+
+      {/* AI Response Section */}
+      {aiResponse && (
+        <div className={`p-3 rounded-md text-sm ${
+          aiResponse.type === 'success' ? 'bg-green-50 border border-green-200' :
+          aiResponse.type === 'error' ? 'bg-red-50 border border-red-200' :
+          aiResponse.type === 'confirmation_required' ? 'bg-orange-50 border border-orange-200' :
+          'bg-blue-50 border border-blue-200'
+        }`}>
+          <p className={`font-medium ${
+            aiResponse.type === 'success' ? 'text-green-700' :
+            aiResponse.type === 'error' ? 'text-red-700' :
+            aiResponse.type === 'confirmation_required' ? 'text-orange-700' :
+            'text-blue-700'
+          }`}>
+            {aiResponse.message}
+          </p>
+
+          {/* Suggestions */}
+          {aiResponse.suggestions && aiResponse.suggestions.length > 0 && (
+            <div className="mt-2">
+              <p className="text-xs text-gray-600 mb-1">Try these suggestions:</p>
+              <div className="flex flex-wrap gap-1">
+                {aiResponse.suggestions.map((suggestion, index) => (
+                  <button
+                    key={index}
+                    className="px-2 py-1 text-xs bg-white border rounded hover:bg-gray-50"
+                    onClick={() => useSuggestion(suggestion)}
+                  >
+                    {suggestion}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Confirmation Actions */}
+          {aiResponse.type === 'confirmation_required' && (
+            <div className="mt-2 flex gap-2">
+              <button
+                className="px-3 py-1 text-xs bg-orange-500 text-white rounded hover:bg-orange-600"
+                onClick={confirmAction}
+                disabled={working}
+              >
+                Yes, proceed
+              </button>
+              <button
+                className="px-3 py-1 text-xs bg-gray-500 text-white rounded hover:bg-gray-600"
+                onClick={cancelAction}
+              >
+                Cancel
+              </button>
+            </div>
+          )}
+        </div>
+      )}
+
+      <p className="text-xs text-slate-500">
+        Try: "Create a red circle", "Add text saying hello" 
+        {recognition && <span className="text-blue-600">• Click 🎤 for voice input</span>}
+      </p>
     </div>
   );
 }
