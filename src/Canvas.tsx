@@ -694,8 +694,9 @@ function CategorizedToolbar() {
     
     const { me, shapes } = useCanvas.getState();
     const fontSize = 32; // Larger size for emojis
-    const width = fontSize * 0.8; // Tighter fit for emojis
-    const height = fontSize * 0.8;
+    // Emojis have inherent padding, make bounds much tighter
+    const width = fontSize * 0.5; // Much tighter for visual emoji content
+    const height = fontSize * 0.6; // Slightly taller to account for emoji proportions
     const position = findBlankArea(shapes, width, height);
     
     const s: ShapeBase = { 
