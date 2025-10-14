@@ -130,6 +130,30 @@ export default function Canvas({ onSignOut }: CanvasProps) {
         return;
       }
       
+      // Duplicate selected shapes with Ctrl+D
+      if (e.ctrlKey && e.key === 'd') {
+        const selectedIds = useCanvas.getState().selectedIds;
+        if (selectedIds.length > 0) {
+          // Save history before duplicating
+          useCanvas.getState().pushHistory();
+          
+          // Duplicate shapes (this also selects the new shapes)
+          useCanvas.getState().duplicateShapes(selectedIds);
+          
+          // Get the newly created shapes to broadcast them
+          const newShapes = useCanvas.getState().getSelectedShapes();
+          
+          // Broadcast new shapes to other users
+          broadcastUpsert(newShapes);
+          
+          // Persist to database
+          newShapes.forEach(shape => persist(shape));
+          
+          e.preventDefault();
+        }
+        return;
+      }
+      
       // Delete selected shapes
       if (e.key === 'Delete' || e.key === 'Backspace') {
         const selectedIds = useCanvas.getState().selectedIds;
@@ -616,6 +640,7 @@ function UserTips() {
     <div className="text-xs text-slate-500 space-y-1">
       <div className="font-medium text-slate-600 mb-1">Tips:</div>
       <div>• <kbd className="px-1 bg-slate-200 rounded text-xs">Ctrl+Z</kbd> to undo</div>
+      <div>• <kbd className="px-1 bg-slate-200 rounded text-xs">Ctrl+D</kbd> to duplicate</div>
       <div>• <kbd className="px-1 bg-slate-200 rounded text-xs">Shift+Click</kbd> to multi-select</div>
       <div>• <kbd className="px-1 bg-slate-200 rounded text-xs">Double-click</kbd> text to edit</div>
       <div>• <kbd className="px-1 bg-slate-200 rounded text-xs">Delete</kbd> to remove selected</div>

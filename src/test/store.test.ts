@@ -14,12 +14,8 @@ describe('Canvas Store', () => {
       history: [],
       cursors: {},
       onlineUsers: [],
-      // Add missing methods
-      createShape: vi.fn(),
-      updateShape: vi.fn(),
-      duplicateShapes: vi.fn(),
-      getSelectedShapes: vi.fn(() => []),
-      getShape: vi.fn(),
+      // Keep real methods for functionality we want to test
+      // Note: duplicateShapes, getSelectedShapes, getShape use real implementations
     });
   });
 
@@ -91,7 +87,7 @@ describe('Canvas Store', () => {
       expect(shape.color).toBe('#3b82f6');
     });
 
-    it.skip('duplicates shapes (REQUIRED FEATURE)', () => {
+    it('duplicates shapes (REQUIRED FEATURE)', () => {
       // TODO: Implement duplicateShapes functionality
       const originalShape: ShapeBase = {
         id: 'original',
