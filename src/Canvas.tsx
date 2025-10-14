@@ -453,6 +453,8 @@ export default function Canvas({ onSignOut }: CanvasProps) {
               fontSize={fontSize}
               fontFamily={s.fontFamily || "Arial"}
               fill={s.color || "#111"} 
+              stroke={s.stroke}
+              strokeWidth={s.strokeWidth || 0}
               width={textWidth}
               height={textHeight}
               wrap="word"
@@ -1461,17 +1463,27 @@ function ContextMenu({ x, y, shapeId, onClose }: {
             </div>
             
             {/* Font Size */}
-            <div className="flex items-center justify-between">
+            <div className="flex flex-col space-y-1">
               <span className="text-sm">Font Size:</span>
-              <input
-                type="range"
-                min="8"
-                max="72"
-                value={shape.fontSize || 20}
-                onChange={(e) => updateShape({ fontSize: parseInt(e.target.value) })}
-                className="w-16"
-              />
-              <span className="text-xs text-gray-500 ml-1">{shape.fontSize || 20}px</span>
+              <div className="flex items-center space-x-2">
+                <input
+                  type="number"
+                  min="1"
+                  max="256"
+                  value={shape.fontSize || 20}
+                  onChange={(e) => updateShape({ fontSize: Math.max(1, Math.min(256, parseInt(e.target.value) || 20)) })}
+                  className="w-16 text-xs border rounded px-2 py-1"
+                />
+                <input
+                  type="range"
+                  min="1"
+                  max="256"
+                  value={shape.fontSize || 20}
+                  onChange={(e) => updateShape({ fontSize: parseInt(e.target.value) })}
+                  className="flex-1"
+                />
+                <span className="text-xs text-gray-500 w-8">px</span>
+              </div>
             </div>
             
             {/* Font Family */}
@@ -1491,6 +1503,30 @@ function ContextMenu({ x, y, shapeId, onClose }: {
                 <option value="Impact">Impact</option>
                 <option value="Comic Sans MS">Comic Sans MS</option>
               </select>
+            </div>
+            
+            {/* Text Outline Color */}
+            <div className="flex items-center justify-between">
+              <span className="text-sm">Outline Color:</span>
+              <button
+                className="w-6 h-6 rounded border border-gray-300 hover:border-gray-500"
+                style={{ backgroundColor: shape.stroke || '#000000' }}
+                onClick={() => setShowColorPicker(showColorPicker === 'stroke' ? null : 'stroke')}
+              />
+            </div>
+            
+            {/* Text Outline Width */}
+            <div className="flex items-center justify-between">
+              <span className="text-sm">Outline Width:</span>
+              <input
+                type="range"
+                min="0"
+                max="5"
+                value={shape.strokeWidth || 0}
+                onChange={(e) => updateShape({ strokeWidth: Number(e.target.value) })}
+                className="w-16"
+              />
+              <span className="text-xs text-gray-500 w-6 text-center">{shape.strokeWidth || 0}</span>
             </div>
           </>
         )}
@@ -1542,6 +1578,8 @@ function ContextMenu({ x, y, shapeId, onClose }: {
         >
           Delete Shape
         </button>
+          </>
+        )}
       </div>
       
       {/* Color Picker Overlay */}
