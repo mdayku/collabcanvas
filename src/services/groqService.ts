@@ -1,20 +1,20 @@
-import OpenAI from 'openai';
+import Groq from 'groq-sdk';
 import { useCanvas } from '../state/store';
-import type { ShapeBase } from '../types';
+import type { AIAction, AIResponse } from './openaiService';
 
-// OpenAI client - will be initialized when API key is available
-let openaiClient: OpenAI | null = null;
+// Groq client - will be initialized when API key is available
+let groqClient: Groq | null = null;
 
-// Initialize OpenAI client
-function initializeOpenAI() {
-  const apiKey = import.meta.env.VITE_OPENAI_API_KEY;
-  if (apiKey && !openaiClient) {
-    openaiClient = new OpenAI({
+// Initialize Groq client
+function initializeGroq() {
+  const apiKey = import.meta.env.VITE_GROQ_API_KEY;
+  if (apiKey && !groqClient) {
+    groqClient = new Groq({
       apiKey: apiKey,
       dangerouslyAllowBrowser: true // We're in a browser environment
     });
   }
-  return openaiClient;
+  return groqClient;
 }
 
 // System prompt that teaches the AI about our canvas tools
@@ -33,15 +33,15 @@ AVAILABLE TOOLS:
 
 CURRENT CANVAS STATE: The user has these shapes: {canvasState}
 
-RESPONSE FORMAT: Always respond with valid JSON in this format:
+RESPONSE FORMAT: Always respond with valid JSON in this exact format:
 {
-  "intent": "create|move|resize|rotate|arrange|clarify|error",
+  "intent": "create",
   "confidence": 0.8,
   "actions": [
     {
       "tool": "createShape",
       "params": {
-        "type": "rect|circle|text", 
+        "type": "rect", 
         "x": 100, "y": 100, "w": 200, "h": 150,
         "color": "#ff0000", "text": "optional text content"
       }
@@ -57,41 +57,35 @@ GUIDELINES:
 - Use realistic coordinates (canvas is ~800x600, start shapes around 100-400 range)
 - Choose appropriate colors (use hex codes like #ff0000, #0000ff, #00ff00)
 - For text shapes, make them wide enough for the content
-- When arranging/moving shapes, consider their current positions
+- When creating multiple shapes, space them nicely apart
 - If no shapes exist and user wants to move/resize, suggest creating shapes first
 
 EXAMPLES:
-User: "Create a red circle"
-Response: {"intent": "create", "confidence": 0.9, "actions": [{"tool": "createShape", "params": {"type": "circle", "x": 200, "y": 200, "w": 100, "h": 100, "color": "#ff0000"}}], "message": "I'll create a red circle for you!", "suggestions": []}
-
-User: "Make something blue"  
-Response: {"intent": "clarify", "confidence": 0.6, "actions": [], "message": "I'd love to make something blue! What would you like me to create?", "suggestions": ["Create a blue rectangle", "Create a blue circle", "Add blue text"]}
+User: "Create 3 blue circles"
+Response: {
+  "intent": "create", 
+  "confidence": 0.9,
+  "actions": [
+    {"tool": "createShape", "params": {"type": "circle", "x": 150, "y": 200, "w": 100, "h": 100, "color": "#0000ff"}},
+    {"tool": "createShape", "params": {"type": "circle", "x": 280, "y": 200, "w": 100, "h": 100, "color": "#0000ff"}},
+    {"tool": "createShape", "params": {"type": "circle", "x": 410, "y": 200, "w": 100, "h": 100, "color": "#0000ff"}}
+  ],
+  "message": "I'll create 3 blue circles for you!",
+  "suggestions": []
+}
 
 Always be creative, helpful, and encouraging!`;
 
-export type AIAction = {
-  tool: string;
-  params: Record<string, any>;
-};
-
-export type AIResponse = {
-  intent: 'create' | 'move' | 'resize' | 'rotate' | 'arrange' | 'clarify' | 'error';
-  confidence: number;
-  actions: AIAction[];
-  message: string;
-  suggestions: string[];
-};
-
-export async function callOpenAI(userMessage: string): Promise<AIResponse> {
-  const client = initializeOpenAI();
+export async function callGroq(userMessage: string): Promise<AIResponse> {
+  const client = initializeGroq();
   
   if (!client) {
-    // Fallback response when OpenAI is not available
+    // Fallback response when Groq is not available
     return {
       intent: 'error',
       confidence: 0.0,
       actions: [],
-      message: 'AI service not configured. Using basic pattern matching.',
+      message: 'Groq AI service not configured. Using basic pattern matching.',
       suggestions: ['Create a red circle', 'Add text saying hello', 'Create a 2x2 grid']
     };
   }
@@ -105,53 +99,59 @@ export async function callOpenAI(userMessage: string): Promise<AIResponse> {
 
     const systemPrompt = SYSTEM_PROMPT.replace('{canvasState}', stateDescription);
 
-    console.log('[OpenAI] Sending request for:', userMessage);
+    console.log('[Groq] Sending request for:', userMessage);
     
     const completion = await client.chat.completions.create({
-      model: 'gpt-3.5-turbo',
       messages: [
         { role: 'system', content: systemPrompt },
         { role: 'user', content: userMessage }
       ],
+      model: 'llama-3.1-8b-instant', // Fast, smart, free model
       max_tokens: 500,
-      temperature: 0.7,
-      response_format: { type: 'json_object' } // Ensure JSON response
+      temperature: 0.3, // Lower for more consistent JSON
     });
 
     const responseText = completion.choices[0]?.message?.content;
-    console.log('[OpenAI] Raw response:', responseText);
+    console.log('[Groq] Raw response:', responseText);
     
     if (!responseText) {
-      throw new Error('No response from OpenAI');
+      throw new Error('No response from Groq');
     }
 
     // Parse and validate the JSON response
-    const aiResponse: AIResponse = JSON.parse(responseText);
-    console.log('[OpenAI] Parsed response:', aiResponse);
+    let aiResponse: AIResponse;
+    try {
+      // Sometimes the response has markdown formatting, strip it
+      const cleanedResponse = responseText.replace(/```json\n?|\n?```/g, '').trim();
+      aiResponse = JSON.parse(cleanedResponse);
+    } catch (parseError) {
+      console.error('[Groq] JSON parse error:', parseError);
+      throw new Error('Invalid JSON response from Groq');
+    }
+    
+    console.log('[Groq] Parsed response:', aiResponse);
     
     // Validate required fields
     if (!aiResponse.intent || !aiResponse.message || !Array.isArray(aiResponse.actions)) {
-      throw new Error('Invalid response format from AI');
+      throw new Error('Invalid response format from Groq AI');
     }
 
     return aiResponse;
 
   } catch (error) {
-    console.error('[OpenAI] API error details:', error);
+    console.error('[Groq] API error details:', error);
     
     // More detailed error message based on error type
-    let errorMessage = 'OpenAI unavailable - using basic pattern matching instead.';
+    let errorMessage = 'Groq AI encountered an error. Using basic pattern matching instead.';
     if (error instanceof Error) {
-      if (error.message.includes('quota') || error.message.includes('429')) {
-        errorMessage = '💳 OpenAI quota exceeded. Add billing at platform.openai.com or using basic mode.';
-      } else if (error.message.includes('API key')) {
-        errorMessage = '🔑 OpenAI API key issue. Check your configuration or using basic mode.';
+      if (error.message.includes('API key')) {
+        errorMessage = '🔑 Groq API key issue. Check your configuration or using basic mode.';
       } else if (error.message.includes('rate limit')) {
-        errorMessage = '⏱️ OpenAI rate limit hit. Wait a moment or using basic mode.';
+        errorMessage = '⏱️ Groq rate limit hit. Wait a moment or using basic mode.';
       } else if (error.message.includes('JSON')) {
-        errorMessage = '🔧 OpenAI response format error. Using basic mode instead.';
+        errorMessage = '🔧 Groq response format error. Using basic mode instead.';
       }
-      console.error('[OpenAI] Error details:', error.message);
+      console.error('[Groq] Error details:', error.message);
     }
     
     // Fallback to a helpful error response
@@ -169,7 +169,7 @@ export async function callOpenAI(userMessage: string): Promise<AIResponse> {
   }
 }
 
-// Helper function to check if OpenAI is configured
-export function isOpenAIConfigured(): boolean {
-  return !!import.meta.env.VITE_OPENAI_API_KEY;
+// Helper function to check if Groq is configured
+export function isGroqConfigured(): boolean {
+  return !!import.meta.env.VITE_GROQ_API_KEY;
 }

@@ -5,6 +5,7 @@ import type { ShapeBase } from "./types";
 import { supabase } from "./lib/supabaseClient";
 import { interpretWithResponse, type AIResponse } from "./ai/agent";
 import { isOpenAIConfigured } from "./services/openaiService";
+import { isGroqConfigured } from "./services/groqService";
 
 // Web Speech API type declarations
 declare global {
@@ -717,24 +718,32 @@ function AIBox() {
     }
   };
   
-  const aiConfigured = isOpenAIConfigured();
+  const groqConfigured = isGroqConfigured();
+  const openaiConfigured = isOpenAIConfigured();
+  const aiConfigured = groqConfigured || openaiConfigured;
+  
+  const getAIStatus = () => {
+    if (groqConfigured) return { label: '🚀 Groq (Free)', color: 'bg-green-100 text-green-700' };
+    if (openaiConfigured) return { label: '🤖 GPT-3.5', color: 'bg-blue-100 text-blue-700' };
+    return { label: '📝 Basic', color: 'bg-yellow-100 text-yellow-700' };
+  };
+  
+  const aiStatus = getAIStatus();
   
   return (
     <div className="mt-4 space-y-2">
       <div className="flex items-center justify-between">
         <div className="font-medium">AI Agent</div>
-        <div className={`text-xs px-2 py-1 rounded ${
-          aiConfigured 
-            ? 'bg-green-100 text-green-700' 
-            : 'bg-yellow-100 text-yellow-700'
-        }`}>
-          {aiConfigured ? '🤖 GPT-3.5' : '📝 Basic'}
+        <div className={`text-xs px-2 py-1 rounded ${aiStatus.color}`}>
+          {aiStatus.label}
         </div>
       </div>
 
       {!aiConfigured && (
         <div className="text-xs bg-blue-50 border border-blue-200 rounded p-2 text-blue-700">
-          <strong>💡 Upgrade to GPT-3.5:</strong> Add <code>VITE_OPENAI_API_KEY</code> to your .env file for intelligent AI responses!
+          <strong>💡 Upgrade to Smart AI:</strong><br />
+          • <strong>Free:</strong> Add <code>VITE_GROQ_API_KEY</code> (recommended!)<br />
+          • <strong>Paid:</strong> Add <code>VITE_OPENAI_API_KEY</code> for GPT-3.5
         </div>
       )}
       
@@ -840,6 +849,28 @@ function AIBox() {
               <div><strong>Arrange:</strong> "Arrange all shapes in a row"</div>
             </div>
             {recognition && <div className="mt-1 text-blue-600">💬 Click 🎤 for voice input</div>}
+            
+            {/* Development force refresh button */}
+            <div className="mt-2 pt-2 border-t border-gray-200">
+              <button
+                onClick={() => {
+                  // Nuclear option: clear everything and reload
+                  localStorage.clear();
+                  sessionStorage.clear();
+                  if ('caches' in window) {
+                    caches.keys().then(names => names.forEach(name => caches.delete(name)));
+                  }
+                  if ('serviceWorker' in navigator && navigator.serviceWorker.controller) {
+                    navigator.serviceWorker.controller.postMessage({ type: 'CLEAR_ALL' });
+                  }
+                  window.location.href = window.location.href + '?v=' + Date.now();
+                }}
+                className="text-xs bg-orange-100 text-orange-700 px-2 py-1 rounded hover:bg-orange-200 transition-colors"
+                title="Clear all cache and force reload"
+              >
+                🔄 Force Refresh (Dev)
+              </button>
+            </div>
           </div>
         ) : (
           <div>

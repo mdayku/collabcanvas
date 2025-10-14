@@ -2,6 +2,7 @@ import type { ShapeBase } from "../types";
 import { useCanvas } from "../state/store";
 import { supabase } from "../lib/supabaseClient";
 import { callOpenAI, isOpenAIConfigured, type AIResponse as OpenAIResponse, type AIAction } from "../services/openaiService";
+import { callGroq, isGroqConfigured } from "../services/groqService";
 
 // Execute AI actions using our existing tools
 async function executeAIActions(actions: AIAction[]): Promise<any[]> {
@@ -225,7 +226,33 @@ export type AIResponse = {
 };
 
 export async function interpretWithResponse(text: string): Promise<AIResponse> {
-  // Try OpenAI first if configured
+  // Try Groq first if configured (free and fast!)
+  if (isGroqConfigured()) {
+    try {
+      console.log('[AI] Using Groq for:', text);
+      const groqResponse = await callGroq(text);
+      
+      // Execute actions if any
+      if (groqResponse.actions && groqResponse.actions.length > 0) {
+        await executeAIActions(groqResponse.actions);
+      }
+      
+      // Convert Groq response to our AIResponse format
+      return {
+        type: groqResponse.intent === 'error' ? 'error' :
+              groqResponse.intent === 'clarify' ? 'clarification_needed' : 'success',
+        message: groqResponse.message,
+        result: groqResponse.actions,
+        suggestions: groqResponse.suggestions || []
+      };
+      
+    } catch (error) {
+      console.error('[AI] Groq failed, trying OpenAI:', error);
+      // Fall through to OpenAI
+    }
+  }
+
+  // Try OpenAI as backup if configured
   if (isOpenAIConfigured()) {
     try {
       console.log('[AI] Using OpenAI for:', text);
@@ -468,10 +495,31 @@ export async function interpret(text: string) {
     }
   }
   
-  // CREATION COMMANDS (enhanced)
-  if (t.includes("create") && t.includes("circle")) {
+  // CREATION COMMANDS (enhanced with quantity support)
+  if ((t.includes("create") || t.includes("draw") || t.includes("make")) && t.includes("circle")) {
     let x = 200, y = 200;
     let color = "#3b82f6"; // default blue
+    let count = 1; // default single shape
+    
+    // Parse quantity (numbers and words)
+    const numberWords: Record<string, number> = {
+      'one': 1, 'two': 2, 'three': 3, 'four': 4, 'five': 5,
+      'six': 6, 'seven': 7, 'eight': 8, 'nine': 9, 'ten': 10
+    };
+    
+    // Check for number words first
+    for (const [word, num] of Object.entries(numberWords)) {
+      if (t.includes(word)) {
+        count = num;
+        break;
+      }
+    }
+    
+    // Check for digit numbers
+    const digitMatch = t.match(/(\d+)\s+(?:blue|red|green|yellow|purple|gray|grey|black|white|)\s*circles?/);
+    if (digitMatch) {
+      count = parseInt(digitMatch[1]);
+    }
     
     // Parse position if specified
     const posMatch = t.match(/(?:at\s+)?position\s+(\d+),?\s*(\d+)/);
@@ -497,11 +545,69 @@ export async function interpret(text: string) {
       color = colorMap[colorMatch[1]] || color;
     }
     
-    return tools.createShape("circle", x, y, 120, 120, color);
+    // Create multiple shapes with spacing
+    const ids: string[] = [];
+    const spacing = 140; // Distance between shapes
+    
+    for (let i = 0; i < Math.min(count, 10); i++) { // Limit to max 10 shapes
+      const offsetX = x + (i % 5) * spacing; // Arrange in rows of 5
+      const offsetY = y + Math.floor(i / 5) * spacing;
+      const id = tools.createShape("circle", offsetX, offsetY, 120, 120, color);
+      ids.push(id);
+    }
+    
+    return ids.length === 1 ? ids[0] : ids;
   }
-  if ((t.includes("create") && t.includes("rectangle")) || (t.includes("make") && t.includes("rectangle"))) {
-    const m = t.match(/(\d+)x(\d+)/); const w = m?+m[1]:200; const h = m?+m[2]:120;
-    return tools.createShape("rect", 300, 220, w, h, "#ef4444");
+  if ((t.includes("create") || t.includes("draw") || t.includes("make")) && (t.includes("rectangle") || t.includes("rect"))) {
+    let count = 1;
+    let color = "#ef4444"; // default red
+    
+    // Parse quantity
+    const numberWords: Record<string, number> = {
+      'one': 1, 'two': 2, 'three': 3, 'four': 4, 'five': 5,
+      'six': 6, 'seven': 7, 'eight': 8, 'nine': 9, 'ten': 10
+    };
+    
+    for (const [word, num] of Object.entries(numberWords)) {
+      if (t.includes(word)) {
+        count = num;
+        break;
+      }
+    }
+    
+    const digitMatch = t.match(/(\d+)\s+(?:blue|red|green|yellow|purple|gray|grey|black|white|)\s*rectangles?/);
+    if (digitMatch) {
+      count = parseInt(digitMatch[1]);
+    }
+    
+    // Parse color
+    const colorMatch = t.match(/(red|blue|green|yellow|purple|gray|grey|black|white)/);
+    if (colorMatch) {
+      const colorMap: Record<string, string> = {
+        'red': '#ef4444', 'blue': '#3b82f6', 'green': '#10b981',
+        'yellow': '#f59e0b', 'purple': '#8b5cf6', 'gray': '#6b7280',
+        'grey': '#6b7280', 'black': '#111827', 'white': '#ffffff'
+      };
+      color = colorMap[colorMatch[1]] || color;
+    }
+    
+    // Parse dimensions
+    const m = t.match(/(\d+)x(\d+)/); 
+    const w = m ? +m[1] : 200; 
+    const h = m ? +m[2] : 120;
+    
+    // Create multiple rectangles
+    const ids: string[] = [];
+    const spacing = 140;
+    
+    for (let i = 0; i < Math.min(count, 10); i++) {
+      const offsetX = 300 + (i % 5) * spacing;
+      const offsetY = 220 + Math.floor(i / 5) * spacing;
+      const id = tools.createShape("rect", offsetX, offsetY, w, h, color);
+      ids.push(id);
+    }
+    
+    return ids.length === 1 ? ids[0] : ids;
   }
   if (t.includes("text") || t.includes("layer")) {
     let content = "Hello World";
