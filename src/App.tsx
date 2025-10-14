@@ -10,9 +10,39 @@ export default function App() {
   const [userProfile, setUserProfile] = useState<any>(null);
 
   useEffect(() => {
+    // Check for demo user first
+    const checkDemoUser = () => {
+      const demoUser = localStorage.getItem('demo-user');
+      if (demoUser) {
+        try {
+          const demoProfile = JSON.parse(demoUser);
+          console.log('Demo user found:', demoProfile.display_name);
+          setUserProfile(demoProfile);
+          setUser({ id: demoProfile.id }); // Set a basic user object
+          useCanvas.getState().setUser({
+            id: demoProfile.id,
+            name: demoProfile.display_name,
+            color: demoProfile.avatar_color
+          });
+          useCanvas.getState().setAuthenticated(true);
+          setLoading(false);
+          return true; // Demo user found
+        } catch (error) {
+          console.error('Error parsing demo user:', error);
+          localStorage.removeItem('demo-user');
+        }
+      }
+      return false; // No demo user
+    };
+
     // Check for existing session
     const checkSession = async () => {
       try {
+        // First check for demo user
+        if (checkDemoUser()) {
+          return; // Demo user found, skip Supabase auth
+        }
+
         const { data: { session }, error } = await supabase.auth.getSession();
         
         if (session?.user && !error) {
@@ -149,7 +179,21 @@ export default function App() {
   };
 
   const handleSignOut = async () => {
-    await supabase.auth.signOut();
+    try {
+      // Clear demo user if it exists
+      localStorage.removeItem('demo-user');
+      
+      await supabase.auth.signOut();
+      
+      // Reset canvas state
+      useCanvas.getState().setUser({ id: '', name: '', color: '#666' });
+      useCanvas.getState().setAuthenticated(false);
+      
+      setUser(null);
+      setUserProfile(null);
+    } catch (error) {
+      console.error('Error signing out:', error);
+    }
   };
 
   if (loading) {

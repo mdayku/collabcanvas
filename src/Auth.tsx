@@ -14,6 +14,39 @@ export default function Auth({ onAuthSuccess }: AuthProps) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
 
+  const handleDemoLogin = async (demoUser: { email: string; name: string; color: string }) => {
+    try {
+      setLoading(true);
+      setError('');
+      
+      // Create a demo user profile directly
+      const demoProfile = {
+        id: `demo-${demoUser.email.split('@')[0]}`,
+        email: demoUser.email,
+        display_name: demoUser.name,
+        avatar_color: demoUser.color,
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString()
+      };
+      
+      // Store demo user in localStorage to persist the session
+      localStorage.setItem('demo-user', JSON.stringify(demoProfile));
+      
+      // Call onAuthSuccess with the demo profile - pass null as user since it's demo mode
+      onAuthSuccess(null, demoProfile);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Demo login failed');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const demoUsers = [
+    { email: 'demo1@collabcanvas.com', name: 'Demo User 1', color: '#3b82f6' }, // Blue
+    { email: 'demo2@collabcanvas.com', name: 'Demo User 2', color: '#ef4444' }, // Red  
+    { email: 'demo3@collabcanvas.com', name: 'Demo User 3', color: '#10b981' }, // Green
+  ];
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
@@ -85,6 +118,42 @@ export default function Auth({ onAuthSuccess }: AuthProps) {
           <p className="text-gray-600">
             {isSignUp ? "Create your account" : "Sign in to your account"}
           </p>
+        </div>
+
+        {/* Demo Login Section */}
+        <div className="mb-6">
+          <h3 className="text-sm font-medium text-gray-700 mb-3">🚀 Quick Demo (No signup required)</h3>
+          <div className="grid gap-2">
+            {demoUsers.map((user) => (
+              <button
+                key={user.email}
+                onClick={() => handleDemoLogin(user)}
+                disabled={loading}
+                className="flex items-center justify-between p-3 border border-gray-200 rounded-md hover:bg-gray-50 transition-colors disabled:opacity-50"
+              >
+                <div className="flex items-center space-x-3">
+                  <div 
+                    className="w-4 h-4 rounded-full" 
+                    style={{ backgroundColor: user.color }}
+                  ></div>
+                  <span className="text-sm font-medium text-gray-900">{user.name}</span>
+                </div>
+                <span className="text-xs text-gray-500">Click to join</span>
+              </button>
+            ))}
+          </div>
+          <p className="text-xs text-gray-500 mt-2">
+            💡 Open multiple browser tabs/windows to test multiplayer features
+          </p>
+        </div>
+
+        <div className="relative mb-4">
+          <div className="absolute inset-0 flex items-center">
+            <div className="w-full border-t border-gray-200" />
+          </div>
+          <div className="relative flex justify-center text-sm">
+            <span className="px-2 bg-white text-gray-500">Or sign in with your account</span>
+          </div>
         </div>
 
         <form onSubmit={handleSubmit} className="space-y-4">
