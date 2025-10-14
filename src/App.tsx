@@ -88,12 +88,29 @@ export default function App() {
 
   const handleAuthSuccess = async (authUser: any, providedProfile: any = null) => {
     try {
-      console.log('Handling auth success for:', authUser.email);
+      console.log('Handling auth success for:', authUser?.email || 'Demo User');
       setUser(authUser);
+      
+      // If we have a provided profile (demo mode or signup), use it directly
+      if (providedProfile) {
+        console.log('Using provided profile:', providedProfile);
+        setUserProfile(providedProfile);
+        
+        // Update the canvas store with user info
+        useCanvas.setState((s) => {
+          s.me.id = providedProfile.id;
+          s.me.name = providedProfile.display_name;
+          s.me.color = providedProfile.avatar_color;
+          s.isAuthenticated = true;
+        });
+
+        setLoading(false);
+        return;
+      }
       
       // Get user profile from database if not provided
       let profile = providedProfile;
-      if (!profile) {
+      if (!profile && authUser) {
         console.log('Fetching user profile...');
         
         try {
