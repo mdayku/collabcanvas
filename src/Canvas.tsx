@@ -3,7 +3,7 @@ import { Stage, Layer, Rect, Circle, Text as KText, Transformer, Group } from "r
 import { useCanvas } from "./state/store";
 import type { ShapeBase } from "./types";
 import { supabase } from "./lib/supabaseClient";
-import { interpret, interpretWithResponse, type AIResponse } from "./ai/agent";
+import { interpretWithResponse, type AIResponse } from "./ai/agent";
 
 // Web Speech API type declarations
 declare global {
@@ -619,7 +619,7 @@ function AIBox() {
   const [q, setQ] = useState("");
   const [working, setWorking] = useState(false);
   const [isListening, setIsListening] = useState(false);
-  const [recognition, setRecognition] = useState<SpeechRecognition | null>(null);
+  const [recognition, setRecognition] = useState<any | null>(null);
   const [aiResponse, setAiResponse] = useState<AIResponse | null>(null);
 
   // Initialize speech recognition

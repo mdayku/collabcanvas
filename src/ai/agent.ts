@@ -419,7 +419,7 @@ export async function interpret(text: string) {
   
   if (t.includes("navigation bar") || (t.includes("nav") && t.includes("menu"))) {
     const baseX = 100, baseY = 50;
-    const itemWidth = 120, itemHeight = 40;
+    const itemHeight = 40;
     const spacing = 140;
     
     // Create navigation background
