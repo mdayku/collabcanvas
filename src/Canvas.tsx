@@ -1506,6 +1506,9 @@ function ContextMenu({ x, y, shapeId, onClose }: {
   };
 
   const handleDelete = () => {
+    // Save history before deleting so it can be undone with all properties intact
+    useCanvas.getState().pushHistory();
+    
     useCanvas.getState().remove([shapeId]);
     
     // Broadcast to multiplayer
