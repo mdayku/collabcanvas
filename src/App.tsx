@@ -65,22 +65,63 @@ export default function App() {
       let profile = providedProfile;
       if (!profile) {
         console.log('Fetching user profile...');
-        const { data, error } = await supabase
-          .from('user_profiles')
-          .select('*')
-          .eq('id', authUser.id)
-          .single();
+        
+        try {
+          // Add timeout protection to prevent hanging
+          const profilePromise = supabase
+            .from('user_profiles')
+            .select('*')
+            .eq('id', authUser.id)
+            .single();
+            
+          const timeoutPromise = new Promise((_, reject) => 
+            setTimeout(() => reject(new Error('Profile fetch timeout')), 5000)
+          );
           
-        if (error) {
-          console.error('Profile fetch error:', error);
-          // If profile doesn't exist, create a fallback
+          const { data, error } = await Promise.race([profilePromise, timeoutPromise]) as any;
+          
+          if (error) {
+            console.warn('Profile fetch error (will create fallback):', error);
+            
+            // Check if this is a table doesn't exist error
+            if (error.code === 'PGRST116' || error.message?.includes('relation') || error.message?.includes('does not exist')) {
+              console.error('🚨 DATABASE SETUP REQUIRED! The user_profiles table does not exist.');
+              console.log('📋 Please run this SQL in your Supabase SQL Editor:');
+              console.log('https://supabase.com/dashboard → SQL Editor → paste supabase.sql contents');
+            }
+            
+            // Try to create profile in database
+            const fallbackProfile = {
+              id: authUser.id,
+              display_name: authUser.email?.split('@')[0] || 'User',
+              avatar_color: '#3b82f6'
+            };
+            
+            console.log('Attempting to create profile:', fallbackProfile);
+            const { error: insertError } = await supabase
+              .from('user_profiles')
+              .insert([fallbackProfile]);
+              
+            if (insertError) {
+              console.warn('Failed to create profile in DB, using memory only:', insertError);
+            } else {
+              console.log('Successfully created profile in database');
+            }
+            
+            profile = fallbackProfile;
+          } else {
+            profile = data;
+            console.log('Successfully fetched profile:', profile);
+          }
+        } catch (err) {
+          console.error('Profile fetch failed with timeout/error:', err);
+          // Create fallback profile
           profile = {
             id: authUser.id,
             display_name: authUser.email?.split('@')[0] || 'User',
             avatar_color: '#3b82f6'
           };
-        } else {
-          profile = data;
+          console.log('Using fallback profile:', profile);
         }
       }
 
