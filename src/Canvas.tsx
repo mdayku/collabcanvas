@@ -692,16 +692,17 @@ function CategorizedToolbar() {
     // Save history before creating
     useCanvas.getState().pushHistory();
     
-    const { me } = useCanvas.getState();
+    const { me, shapes } = useCanvas.getState();
     const fontSize = 32; // Larger size for emojis
-    const width = fontSize * 1.2;
-    const height = fontSize * 1.2;
+    const width = fontSize * 0.8; // Tighter fit for emojis
+    const height = fontSize * 0.8;
+    const position = findBlankArea(shapes, width, height);
     
     const s: ShapeBase = { 
       id: crypto.randomUUID(), 
       type: "text", 
-      x: 100 + Math.random() * 200, 
-      y: 100 + Math.random() * 200, 
+      x: position.x, 
+      y: position.y, 
       w: width, 
       h: height, 
       color: "#111", 
@@ -900,11 +901,46 @@ function Toolbar({ onSignOut }: ToolbarProps) {
   );
 }
 
+// Helper function to find a blank area on canvas
+function findBlankArea(shapes: Record<string, ShapeBase>, width: number, height: number): { x: number; y: number } {
+  const canvasWidth = 1200; // Canvas visible area width
+  const canvasHeight = 800; // Canvas visible area height
+  const margin = 20; // Minimum distance from other shapes
+  const maxAttempts = 50; // Prevent infinite loops
+  
+  for (let attempt = 0; attempt < maxAttempts; attempt++) {
+    const x = margin + Math.random() * (canvasWidth - width - margin * 2);
+    const y = margin + Math.random() * (canvasHeight - height - margin * 2);
+    
+    // Check if this position overlaps with any existing shape
+    let hasCollision = false;
+    for (const shape of Object.values(shapes)) {
+      if (x < shape.x + shape.w + margin &&
+          x + width + margin > shape.x &&
+          y < shape.y + shape.h + margin &&
+          y + height + margin > shape.y) {
+        hasCollision = true;
+        break;
+      }
+    }
+    
+    if (!hasCollision) {
+      return { x, y };
+    }
+  }
+  
+  // Fallback to random position if no blank area found
+  return {
+    x: 100 + Math.random() * 200,
+    y: 100 + Math.random() * 200
+  };
+}
+
 function addShape(type: ShapeType) {
   // Save history before creating
   useCanvas.getState().pushHistory();
   
-  const { me } = useCanvas.getState();
+  const { me, shapes } = useCanvas.getState();
   
   let s: ShapeBase;
   if (type === "text") {
@@ -929,14 +965,32 @@ function addShape(type: ShapeType) {
       updated_by: me.id 
     };
   } else {
+    // Other shapes with default colors
+    let color = "#3b82f6"; // Default blue
+    if (type === "circle") color = "#10b981"; // Green for circles
+    if (type === "triangle") color = "#10b981"; // Green
+    if (type === "star") color = "#fbbf24"; // Yellow
+    if (type === "heart") color = "#ef4444"; // Red
+    if (type === "pentagon") color = "#8b5cf6"; // Purple
+    if (type === "hexagon") color = "#06b6d4"; // Cyan
+    if (type === "octagon") color = "#f59e0b"; // Orange
+    if (type === "oval") color = "#84cc16"; // Lime
+    if (type === "trapezoid") color = "#ec4899"; // Pink
+    if (type === "rhombus") color = "#14b8a6"; // Teal
+    if (type === "parallelogram") color = "#f97316"; // Orange
+    
+    const w = 100;
+    const h = 80;
+    const position = findBlankArea(shapes, w, h);
+    
     s = { 
       id: crypto.randomUUID(), 
       type, 
-      x: 100 + Math.random() * 200, 
-      y: 100 + Math.random() * 200, 
-      w: 200, 
-      h: 120, 
-      color: undefined, 
+      x: position.x, 
+      y: position.y, 
+      w, 
+      h, 
+      color, 
       text: "", 
       updated_at: Date.now(), 
       updated_by: me.id 

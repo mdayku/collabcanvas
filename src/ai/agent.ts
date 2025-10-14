@@ -119,7 +119,14 @@ export const tools = {
     // Save history before AI creates shapes
     useCanvas.getState().pushHistory();
     const s: ShapeBase = { id: crypto.randomUUID(), type, x, y, w, h, color, text, rotation: 0, updated_at: Date.now(), updated_by: useCanvas.getState().me.id };
-    useCanvas.getState().upsert(s); broadcastUpsert(s); persist(s); return s.id;
+    useCanvas.getState().upsert(s); 
+    broadcastUpsert(s); 
+    persist(s);
+    
+    // Auto-select the newly created shape so user can see what was made
+    useCanvas.getState().select([s.id]);
+    
+    return s.id;
   },
   moveShape: (id:string, x:number, y:number) => up(id, { x, y }),
   resizeShape: (id:string, w:number, h:number) => up(id, { w, h }),
@@ -156,6 +163,9 @@ export const tools = {
       useCanvas.getState().upsert(updatedShape);
       broadcastUpsert(updatedShape);
       persist(updatedShape);
+      
+      // Auto-select the text shape
+      useCanvas.getState().select([id]);
     }
     
     return id;

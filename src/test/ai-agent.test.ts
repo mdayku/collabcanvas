@@ -10,6 +10,7 @@ vi.mock('../state/store', () => ({
       me: { id: 'user-1', name: 'Test User', color: '#3b82f6' },
       upsert: vi.fn(),
       shapes: {},
+      select: vi.fn(),
     })),
   },
 }));
@@ -143,6 +144,7 @@ describe('AI Agent', () => {
         pushHistory: mockPushHistory,
         me: { id: 'user-1', name: 'Test User', color: '#3b82f6' },
         upsert: mockUpsert,
+        select: vi.fn(),
         shapes: {
           'test-id': {
             id: 'test-id',
@@ -173,6 +175,7 @@ describe('AI Agent', () => {
         pushHistory: mockPushHistory,
         me: { id: 'user-1', name: 'Test User', color: '#3b82f6' },
         upsert: mockUpsert,
+        select: vi.fn(),
         shapes: {},
       } as any);
 

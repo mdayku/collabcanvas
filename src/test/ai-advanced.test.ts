@@ -14,6 +14,7 @@ vi.mock('../state/store', async (importOriginal) => {
         shapes: {},
         pushHistory: vi.fn(),
         upsert: vi.fn(),
+        select: vi.fn(),
       })),
       {
         getState: vi.fn(() => ({
@@ -21,6 +22,7 @@ vi.mock('../state/store', async (importOriginal) => {
           shapes: {},
           pushHistory: vi.fn(),
           upsert: vi.fn(),
+          select: vi.fn(),
         })),
         setState: vi.fn(),
         subscribe: vi.fn(),
