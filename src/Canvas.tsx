@@ -209,8 +209,10 @@ export default function Canvas({ onSignOut }: CanvasProps) {
   const [_scale, setScale] = useState(1);
   const [editingText, setEditingText] = useState<{id: string, x: number, y: number, value: string} | null>(null);
   const [status, setStatus] = useState<'connecting'|'online'|'reconnecting'|'offline'>('connecting');
+  const [canvasSize, setCanvasSize] = useState({ width: 800, height: 600 });
   const trRef = useRef<any>(null);
   const layerRef = useRef<any>(null);
+  const canvasContainerRef = useRef<HTMLDivElement>(null);
 
   // Realtime init with connection status tracking
   useEffect(() => {
@@ -280,6 +282,48 @@ export default function Canvas({ onSignOut }: CanvasProps) {
     return () => { 
       channel.unsubscribe(); 
       roomChannel = null;
+    };
+  }, []);
+
+  // Global mouse event listeners to handle panning outside canvas bounds
+  useEffect(() => {
+    const handleGlobalMouseUp = () => {
+      // Reset panning state when mouse is released anywhere
+      if (canvasStageRef.current) {
+        const stage = canvasStageRef.current;
+        stage.startPointerPos = null;
+        stage.startPos = null;
+      }
+    };
+
+    // Add global mouse up listener
+    document.addEventListener('mouseup', handleGlobalMouseUp);
+    document.addEventListener('mouseleave', handleGlobalMouseUp); // Also handle when mouse leaves the page
+
+    return () => {
+      document.removeEventListener('mouseup', handleGlobalMouseUp);
+      document.removeEventListener('mouseleave', handleGlobalMouseUp);
+    };
+  }, []);
+
+  // Canvas sizing effect
+  useEffect(() => {
+    const updateCanvasSize = () => {
+      if (canvasContainerRef.current) {
+        const container = canvasContainerRef.current;
+        const rect = container.getBoundingClientRect();
+        setCanvasSize({ width: rect.width, height: rect.height });
+      }
+    };
+
+    // Initial size calculation
+    updateCanvasSize();
+
+    // Update on window resize
+    window.addEventListener('resize', updateCanvasSize);
+
+    return () => {
+      window.removeEventListener('resize', updateCanvasSize);
     };
   }, []);
 
@@ -756,11 +800,11 @@ export default function Canvas({ onSignOut }: CanvasProps) {
       <TopRibbon onSignOut={onSignOut} stageRef={canvasStageRef} />
       <div className="flex-1 flex">
         <Toolbar onSignOut={onSignOut} status={status} />
-        <div className="flex-1 bg-slate-50 relative">
+        <div ref={canvasContainerRef} className="flex-1 bg-slate-50 relative overflow-hidden">
           <Stage 
             ref={canvasStageRef}
-            width={window.innerWidth - 256} 
-            height={window.innerHeight - 60} 
+            width={canvasSize.width} 
+            height={canvasSize.height} 
             onWheel={onWheel}
             onClick={onStageClick}
             onMouseDown={onStageMouseDown}
