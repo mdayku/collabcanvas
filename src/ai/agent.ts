@@ -3,6 +3,7 @@ import { useCanvas } from "../state/store";
 import { supabase } from "../lib/supabaseClient";
 import { callOpenAI, isOpenAIConfigured, type AIResponse as OpenAIResponse, type AIAction } from "../services/openaiService";
 import { callGroq, isGroqConfigured } from "../services/groqService";
+import { callServerlessAI } from "../services/serverlessAI";
 
 // Execute AI actions using our existing tools
 async function executeAIActions(actions: AIAction[]): Promise<any[]> {
@@ -226,10 +227,35 @@ export type AIResponse = {
 };
 
 export async function interpretWithResponse(text: string): Promise<AIResponse> {
-  // Try Groq first if configured (free and fast!)
+  // Try serverless AI endpoint first (most reliable in production)
+  try {
+    console.log('[AI] Trying serverless AI endpoint for:', text);
+    const serverlessResponse = await callServerlessAI(text);
+    
+    // Execute actions if any
+    if (serverlessResponse.actions && serverlessResponse.actions.length > 0) {
+      await executeAIActions(serverlessResponse.actions);
+    }
+    
+    // Convert serverless response to our AIResponse format
+    return {
+      type: serverlessResponse.intent === 'error' ? 'error' :
+            serverlessResponse.intent === 'clarify' ? 'clarification_needed' : 'success',
+      message: serverlessResponse.message,
+      result: serverlessResponse.actions,
+      suggestions: serverlessResponse.suggestions || []
+    };
+    
+  } catch (error) {
+    console.error('[AI] Serverless AI failed, trying browser-based APIs:', error);
+    // Fall through to browser-based APIs
+  }
+
+  // Try Groq browser client if configured (free and fast!)
+  console.log('[DEBUG] Checking Groq configuration...');
   if (isGroqConfigured()) {
     try {
-      console.log('[AI] Using Groq for:', text);
+      console.log('[AI] Using browser Groq for:', text);
       const groqResponse = await callGroq(text);
       
       // Execute actions if any
@@ -247,15 +273,16 @@ export async function interpretWithResponse(text: string): Promise<AIResponse> {
       };
       
     } catch (error) {
-      console.error('[AI] Groq failed, trying OpenAI:', error);
+      console.error('[AI] Browser Groq failed, trying OpenAI:', error);
       // Fall through to OpenAI
     }
   }
 
-  // Try OpenAI as backup if configured
+  // Try OpenAI browser client as backup if configured
+  console.log('[DEBUG] Checking OpenAI configuration...');
   if (isOpenAIConfigured()) {
     try {
-      console.log('[AI] Using OpenAI for:', text);
+      console.log('[AI] Using browser OpenAI for:', text);
       const openaiResponse = await callOpenAI(text);
       
       // Execute actions if any
@@ -273,7 +300,7 @@ export async function interpretWithResponse(text: string): Promise<AIResponse> {
       };
       
     } catch (error) {
-      console.error('[AI] OpenAI failed, falling back to rule-based system:', error);
+      console.error('[AI] Browser OpenAI failed, falling back to rule-based system:', error);
       // Fall through to rule-based system
     }
   }

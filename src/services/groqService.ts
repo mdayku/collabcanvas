@@ -171,5 +171,8 @@ export async function callGroq(userMessage: string): Promise<AIResponse> {
 
 // Helper function to check if Groq is configured
 export function isGroqConfigured(): boolean {
-  return !!import.meta.env.VITE_GROQ_API_KEY;
+  const apiKey = import.meta.env.VITE_GROQ_API_KEY;
+  console.log('[DEBUG] Groq API Key check:', apiKey ? `Found: ${apiKey.substring(0, 8)}...` : 'NOT FOUND');
+  console.log('[DEBUG] All env vars:', import.meta.env);
+  return !!apiKey;
 }
