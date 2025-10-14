@@ -105,6 +105,106 @@ function findShapeBy(criteria: { color?: string; type?: string }): ShapeBase | n
   return null;
 }
 
+// AI Response types for better UX
+export type AIResponse = {
+  type: 'success' | 'clarification_needed' | 'confirmation_required' | 'error';
+  message: string;
+  result?: any;
+  suggestions?: string[];
+  confirmAction?: () => Promise<void>;
+};
+
+export async function interpretWithResponse(text: string): Promise<AIResponse> {
+  const result = await interpret(text);
+  
+  if (result !== null) {
+    return {
+      type: 'success',
+      message: `✅ Successfully executed: "${text}"`,
+      result
+    };
+  }
+
+  // Analyze why it failed and provide helpful guidance
+  const t = text.toLowerCase();
+  
+  // Check for ambiguous commands
+  if (t.includes("create") && !t.includes("circle") && !t.includes("rectangle") && !t.includes("text") && !t.includes("grid") && !t.includes("form") && !t.includes("nav")) {
+    return {
+      type: 'clarification_needed',
+      message: "I understand you want to create something, but what would you like to create?",
+      suggestions: [
+        "Create a red circle",
+        "Create a 200x300 rectangle", 
+        "Create text saying 'Hello'",
+        "Create a 3x3 grid",
+        "Create a login form"
+      ]
+    };
+  }
+
+  if (t.includes("move") || t.includes("resize") || t.includes("rotate")) {
+    const shapes = tools.getCanvasState();
+    if (shapes.length === 0) {
+      return {
+        type: 'clarification_needed',
+        message: "I can't find any shapes to modify. Would you like to create some shapes first?",
+        suggestions: [
+          "Create a blue rectangle",
+          "Create a red circle", 
+          "Add some text first"
+        ]
+      };
+    }
+    
+    return {
+      type: 'clarification_needed',
+      message: "I found some shapes but need more details. Which shape should I modify?",
+      suggestions: [
+        `Move the ${shapes[0]?.type} to center`,
+        `Make the ${shapes[0]?.type} twice as big`,
+        `Rotate the ${shapes[0]?.type} 45 degrees`
+      ]
+    };
+  }
+
+  if (t.includes("delete") || t.includes("remove") || t.includes("clear")) {
+    const shapes = tools.getCanvasState();
+    if (shapes.length === 0) {
+      return {
+        type: 'error',
+        message: "There are no shapes to delete."
+      };
+    }
+    
+    return {
+      type: 'confirmation_required',
+      message: `⚠️ This will delete ${shapes.length} shape(s). Are you sure?`,
+      confirmAction: async () => {
+        // Clear all shapes
+        tools.getCanvasState().forEach(shape => {
+          useCanvas.getState().remove([shape.id]);
+          // Note: We'd need to implement broadcastRemove and deleteFromDB functions
+        });
+      }
+    };
+  }
+
+  // Generic "I don't understand" response
+  return {
+    type: 'clarification_needed',
+    message: "I don't understand that command. Could you rephrase it?",
+    suggestions: [
+      "Create a red circle",
+      "Add text saying 'Hello World'",
+      "Move the blue rectangle to center",
+      "Create a 2x2 grid",
+      "Create a login form"
+    ]
+  };
+}
+
+// Keep the original interpret function for backward compatibility
 export async function interpret(text: string) {
   const t = text.toLowerCase();
   
@@ -319,7 +419,7 @@ export async function interpret(text: string) {
   
   if (t.includes("navigation bar") || (t.includes("nav") && t.includes("menu"))) {
     const baseX = 100, baseY = 50;
-    const itemWidth = 120, itemHeight = 40;
+    const itemHeight = 40;
     const spacing = 140;
     
     // Create navigation background
