@@ -1,6 +1,7 @@
 import { create } from "zustand";
 import { immer } from "zustand/middleware/immer";
 import type { ShapeBase, CreateShapeData, UpdateShapeData, ShapeType, Cursor } from "../types";
+import type { Canvas } from "../services/canvasService";
 
 export type CanvasState = {
   shapes: Record<string, ShapeBase>;
@@ -11,6 +12,13 @@ export type CanvasState = {
   history: Record<string, ShapeBase>[];
   cursors: Record<string, Cursor>;
   onlineUsers: string[];
+  
+  // Canvas management
+  currentCanvas: Canvas | null;
+  canvasList: Canvas[];
+  isCanvasLoading: boolean;
+  canvasError: string | null;
+  hasUnsavedChanges: boolean;
   
   // Room management
   setRoom: (id: string) => void;
@@ -44,6 +52,17 @@ export type CanvasState = {
   updateShape: (id: string, updates: UpdateShapeData) => void;
   duplicateShapes: (ids: string[]) => void;
   
+  // Canvas management functions
+  setCurrentCanvas: (canvas: Canvas | null) => void;
+  setCanvasList: (canvases: Canvas[]) => void;
+  setCanvasLoading: (loading: boolean) => void;
+  setCanvasError: (error: string | null) => void;
+  setUnsavedChanges: (hasChanges: boolean) => void;
+  loadCanvas: (canvasId: string) => Promise<void>;
+  createNewCanvas: (title?: string) => Promise<Canvas>;
+  saveCurrentCanvas: (title?: string) => Promise<void>;
+  duplicateCurrentCanvas: (newTitle?: string) => Promise<Canvas>;
+  
   // Getters
   getSelectedShapes: () => ShapeBase[];
   getShape: (id: string) => ShapeBase | undefined;
@@ -58,6 +77,13 @@ export const useCanvas = create<CanvasState>()(immer((set, get) => ({
   history: [],
   cursors: {},
   onlineUsers: [],
+  
+  // Canvas management state
+  currentCanvas: null,
+  canvasList: [],
+  isCanvasLoading: false,
+  canvasError: null,
+  hasUnsavedChanges: false,
   
   // Room management
   setRoom: (id) => set((s) => { s.roomId = id; }),
@@ -188,6 +214,175 @@ export const useCanvas = create<CanvasState>()(immer((set, get) => ({
   
   getShape: (id) => {
     return get().shapes[id];
+  },
+  
+  // Canvas management functions
+  setCurrentCanvas: (canvas) => set((s) => { 
+    s.currentCanvas = canvas;
+    if (canvas) {
+      s.roomId = canvas.room_id;
+    }
+  }),
+  
+  setCanvasList: (canvases) => set((s) => { s.canvasList = canvases; }),
+  setCanvasLoading: (loading) => set((s) => { s.isCanvasLoading = loading; }),
+  setCanvasError: (error) => set((s) => { s.canvasError = error; }),
+  setUnsavedChanges: (hasChanges) => set((s) => { s.hasUnsavedChanges = hasChanges; }),
+  
+  loadCanvas: async (canvasId) => {
+    const { canvasService } = await import('../services/canvasService');
+    
+    try {
+      set((s) => { 
+        s.isCanvasLoading = true; 
+        s.canvasError = null; 
+      });
+      
+      // Load canvas metadata
+      const canvas = await canvasService.getCanvas(canvasId);
+      if (!canvas) {
+        throw new Error('Canvas not found');
+      }
+      
+      // Load canvas shapes
+      const shapes = await canvasService.getCanvasShapes(canvasId);
+      
+      set((s) => {
+        s.currentCanvas = canvas;
+        s.roomId = canvas.room_id;
+        s.shapes = {};
+        
+        // Convert shapes array to shapes object
+        shapes.forEach(shape => {
+          s.shapes[shape.id] = shape;
+        });
+        
+        s.selectedIds = [];
+        s.hasUnsavedChanges = false;
+        s.isCanvasLoading = false;
+      });
+      
+    } catch (error) {
+      set((s) => { 
+        s.canvasError = error instanceof Error ? error.message : 'Failed to load canvas';
+        s.isCanvasLoading = false;
+      });
+      throw error;
+    }
+  },
+  
+  createNewCanvas: async (title = 'Untitled Canvas') => {
+    const { canvasService } = await import('../services/canvasService');
+    
+    try {
+      set((s) => { 
+        s.isCanvasLoading = true; 
+        s.canvasError = null; 
+      });
+      
+      // Get current shapes to save to new canvas
+      const currentShapes = Object.values(get().shapes);
+      
+      const canvas = await canvasService.createCanvas({
+        title,
+        shapes: currentShapes
+      });
+      
+      set((s) => {
+        s.currentCanvas = canvas;
+        s.roomId = canvas.room_id;
+        s.hasUnsavedChanges = false;
+        s.isCanvasLoading = false;
+        s.history = []; // Clear history for new canvas
+      });
+      
+      return canvas;
+      
+    } catch (error) {
+      set((s) => { 
+        s.canvasError = error instanceof Error ? error.message : 'Failed to create canvas';
+        s.isCanvasLoading = false;
+      });
+      throw error;
+    }
+  },
+  
+  saveCurrentCanvas: async (title) => {
+    const { canvasService } = await import('../services/canvasService');
+    const { currentCanvas } = get();
+    
+    if (!currentCanvas) {
+      throw new Error('No canvas to save');
+    }
+    
+    try {
+      set((s) => { s.canvasError = null; });
+      
+      // Save canvas metadata
+      const saveData: any = {};
+      if (title !== undefined) {
+        saveData.title = title;
+      }
+      
+      await canvasService.saveCanvas(currentCanvas.id, saveData);
+      
+      // Save current shapes
+      const currentShapes = Object.values(get().shapes);
+      await canvasService.saveShapesToCanvas(currentCanvas.id, currentShapes);
+      
+      // Update local canvas state
+      if (title) {
+        set((s) => {
+          if (s.currentCanvas) {
+            s.currentCanvas.title = title;
+          }
+        });
+      }
+      
+      set((s) => { s.hasUnsavedChanges = false; });
+      
+    } catch (error) {
+      set((s) => { 
+        s.canvasError = error instanceof Error ? error.message : 'Failed to save canvas';
+      });
+      throw error;
+    }
+  },
+  
+  duplicateCurrentCanvas: async (newTitle) => {
+    const { canvasService } = await import('../services/canvasService');
+    const { currentCanvas } = get();
+    
+    if (!currentCanvas) {
+      throw new Error('No canvas to duplicate');
+    }
+    
+    try {
+      set((s) => { 
+        s.isCanvasLoading = true; 
+        s.canvasError = null; 
+      });
+      
+      // First save current changes
+      await get().saveCurrentCanvas();
+      
+      // Then duplicate the canvas
+      const duplicatedCanvas = await canvasService.duplicateCanvas(
+        currentCanvas.id, 
+        newTitle || `Copy of ${currentCanvas.title}`
+      );
+      
+      set((s) => { s.isCanvasLoading = false; });
+      
+      return duplicatedCanvas;
+      
+    } catch (error) {
+      set((s) => { 
+        s.canvasError = error instanceof Error ? error.message : 'Failed to duplicate canvas';
+        s.isCanvasLoading = false;
+      });
+      throw error;
+    }
   },
 })));
 

@@ -20,6 +20,7 @@ declare global {
 // TopRibbon Component with File Menu
 function TopRibbon({ onSignOut, stageRef }: { onSignOut: () => void; stageRef: React.RefObject<any> }) {
   const [showFileMenu, setShowFileMenu] = useState(false);
+  const { currentCanvas, hasUnsavedChanges } = useCanvas();
 
   const exportToPNG = () => {
     if (stageRef.current) {
@@ -57,30 +58,89 @@ function TopRibbon({ onSignOut, stageRef }: { onSignOut: () => void; stageRef: R
     }
   };
 
-  const handleNewCanvas = () => {
-    if (confirm('Create a new canvas? This will clear all current shapes.')) {
-      const canvasState = useCanvas.getState();
-      canvasState.pushHistory();
-      canvasState.clear();
+  const handleNewCanvas = async () => {
+    const canvasState = useCanvas.getState();
+    const hasShapes = Object.keys(canvasState.shapes).length > 0;
+    
+    let proceed = true;
+    if (hasShapes) {
+      proceed = confirm('Create a new canvas? Current shapes will be saved to the new canvas.');
+    }
+    
+    if (proceed) {
+      try {
+        const title = prompt('Enter canvas title:', 'New Canvas') || 'New Canvas';
+        await canvasState.createNewCanvas(title);
+      } catch (error) {
+        alert('Failed to create new canvas: ' + (error instanceof Error ? error.message : 'Unknown error'));
+      }
     }
     setShowFileMenu(false);
   };
 
-  const handleSave = () => {
-    // TODO: Implement proper save functionality
-    console.log('Save functionality coming soon!');
+  const handleSave = async () => {
+    const canvasState = useCanvas.getState();
+    
+    if (!canvasState.currentCanvas) {
+      // No current canvas - save as new
+      return handleSaveAs();
+    }
+    
+    try {
+      await canvasState.saveCurrentCanvas();
+      alert('Canvas saved successfully!');
+    } catch (error) {
+      alert('Failed to save canvas: ' + (error instanceof Error ? error.message : 'Unknown error'));
+    }
     setShowFileMenu(false);
   };
 
-  const handleSaveAs = () => {
-    // TODO: Implement save as functionality
-    console.log('Save As functionality coming soon!');
+  const handleSaveAs = async () => {
+    const canvasState = useCanvas.getState();
+    const currentTitle = canvasState.currentCanvas?.title || 'Untitled Canvas';
+    
+    const newTitle = prompt('Save canvas as:', currentTitle);
+    if (newTitle && newTitle.trim()) {
+      try {
+        if (canvasState.currentCanvas) {
+          // Save existing canvas with new title
+          await canvasState.saveCurrentCanvas(newTitle.trim());
+        } else {
+          // Create new canvas
+          await canvasState.createNewCanvas(newTitle.trim());
+        }
+        alert('Canvas saved successfully!');
+      } catch (error) {
+        alert('Failed to save canvas: ' + (error instanceof Error ? error.message : 'Unknown error'));
+      }
+    }
     setShowFileMenu(false);
   };
 
-  const handleDuplicate = () => {
-    // TODO: Implement duplicate canvas functionality
-    console.log('Duplicate canvas functionality coming soon!');
+  const handleDuplicate = async () => {
+    const canvasState = useCanvas.getState();
+    
+    if (!canvasState.currentCanvas) {
+      alert('Please save the current canvas first before duplicating.');
+      return;
+    }
+    
+    const currentTitle = canvasState.currentCanvas.title;
+    const newTitle = prompt('Duplicate canvas as:', `Copy of ${currentTitle}`);
+    
+    if (newTitle && newTitle.trim()) {
+      try {
+        const duplicatedCanvas = await canvasState.duplicateCurrentCanvas(newTitle.trim());
+        
+        // Ask if user wants to switch to the duplicated canvas
+        const switchToNew = confirm(`Canvas duplicated successfully! Switch to "${duplicatedCanvas.title}"?`);
+        if (switchToNew) {
+          await canvasState.loadCanvas(duplicatedCanvas.id);
+        }
+      } catch (error) {
+        alert('Failed to duplicate canvas: ' + (error instanceof Error ? error.message : 'Unknown error'));
+      }
+    }
     setShowFileMenu(false);
   };
 
@@ -175,12 +235,17 @@ function TopRibbon({ onSignOut, stageRef }: { onSignOut: () => void; stageRef: R
         <h1 className="text-lg font-semibold text-gray-800">CollabCanvas</h1>
       </div>
 
-      {/* Right side - Canvas Info */}
-      <div className="flex items-center space-x-4 text-sm text-gray-600">
-        <span>Untitled Canvas</span>
-        <span className="text-gray-400">•</span>
-        <span>Auto-saved</span>
-      </div>
+          {/* Right side - Canvas Info */}
+          <div className="flex items-center space-x-4 text-sm text-gray-600">
+            <span className="font-medium">
+              {currentCanvas?.title || 'Untitled Canvas'}
+              {hasUnsavedChanges && <span className="text-orange-500 ml-1">•</span>}
+            </span>
+            <span className="text-gray-400">•</span>
+            <span className={hasUnsavedChanges ? "text-orange-500" : "text-green-600"}>
+              {hasUnsavedChanges ? 'Unsaved changes' : 'Saved'}
+            </span>
+          </div>
     </div>
   );
 }
