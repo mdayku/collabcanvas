@@ -1639,28 +1639,28 @@ function ContextMenu({ x, y, shapeId, onClose }: {
             
             {/* Outline Width */}
             <div className="flex items-center justify-between">
-          <span className="text-sm">Outline Width:</span>
-          <input
-            type="range"
-            min="0"
-            max="10"
-            value={shape.strokeWidth || 1}
-            onChange={(e) => handleStrokeWidthChange(Number(e.target.value))}
-            className="w-16"
-          />
-          <span className="text-xs text-gray-500 w-6 text-center">{shape.strokeWidth || 1}</span>
-        </div>
-        
-        {/* Divider */}
-        <hr className="my-2" />
-        
-        {/* Delete */}
-        <button
-          onClick={handleDelete}
-          className="w-full text-left text-sm text-red-600 hover:bg-red-50 px-2 py-1 rounded"
-        >
-          Delete Shape
-        </button>
+              <span className="text-sm">Outline Width:</span>
+              <input
+                type="range"
+                min="0"
+                max="10"
+                value={shape.strokeWidth || 1}
+                onChange={(e) => handleStrokeWidthChange(Number(e.target.value))}
+                className="w-16"
+              />
+              <span className="text-xs text-gray-500 w-6 text-center">{shape.strokeWidth || 1}</span>
+            </div>
+            
+            {/* Divider */}
+            <hr className="my-2" />
+            
+            {/* Delete */}
+            <button
+              onClick={handleDelete}
+              className="w-full text-left text-sm text-red-600 hover:bg-red-50 px-2 py-1 rounded"
+            >
+              Delete Shape
+            </button>
           </>
         )}
       </div>
