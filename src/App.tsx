@@ -97,12 +97,17 @@ export default function App() {
 
   const handleAuthSuccess = async (authUser: any, providedProfile: any = null) => {
     try {
-      console.log('Handling auth success for:', authUser?.email || 'Demo User');
+      console.log('🎯 handleAuthSuccess called!');
+      console.log('👤 authUser:', authUser?.email || 'null (demo mode)');
+      console.log('📋 providedProfile:', providedProfile);
+      console.log('🏗️ Setting user...');
       setUser(authUser);
       
       // If we have a provided profile (demo mode or signup), use it directly
       if (providedProfile) {
-        console.log('Using provided profile:', providedProfile);
+        console.log('📦 Using provided profile for demo/signup');
+        console.log('📦 Profile data:', providedProfile);
+        console.log('🔧 Setting user profile...');
         setUserProfile(providedProfile);
         
         // Update the canvas store with user info
@@ -113,7 +118,10 @@ export default function App() {
           s.isAuthenticated = true;
         });
 
+        console.log('🎮 Canvas state updated for demo user');
+        console.log('⏹️ Setting loading to false...');
         setLoading(false);
+        console.log('✅ Demo auth success completed!');
         return;
       }
       
@@ -199,7 +207,8 @@ export default function App() {
 
       setLoading(false);
     } catch (error) {
-      console.error('Auth success handler failed:', error);
+      console.error('❌ Auth success handler failed:', error);
+      console.log('⏹️ Error: Setting loading to false...');
       setLoading(false);
     }
   };
