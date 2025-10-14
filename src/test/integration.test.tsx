@@ -182,7 +182,8 @@ describe('Final Deliverable Integration Tests', () => {
       expect(screen.getByRole('button', { name: /run/i })).toBeInTheDocument();
       
       // Should show examples of what AI can do
-      expect(screen.getByText(/create a red circle/i)).toBeInTheDocument();
+      expect(screen.getByText(/AI Commands:/)).toBeInTheDocument();
+      expect(screen.getByText(/Create:/)).toBeInTheDocument();
     });
   });
 

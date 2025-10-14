@@ -553,6 +553,7 @@ function Toolbar({ onSignOut }: ToolbarProps) {
         <button className="px-3 py-2 rounded bg-slate-200" onClick={addText}>Text</button>
       </div>
       <AIBox />
+      <AIExamples />
       <UserTips />
     </div>
   );
@@ -635,10 +636,29 @@ function AIBox() {
   );
 }
 
+function AIExamples() {
+  return (
+    <div className="text-xs text-slate-500 space-y-1 border-t pt-2 mt-2">
+      <div className="font-medium text-slate-600 mb-1">AI Commands:</div>
+      <div className="space-y-0.5">
+        <div><strong>Create:</strong> "Create a red circle"</div>
+        <div><strong>Text:</strong> "Add text saying 'Hello'"</div>
+        <div><strong>Move:</strong> "Move the blue rectangle to center"</div>
+        <div><strong>Resize:</strong> "Make the circle twice as big"</div>
+        <div><strong>Rotate:</strong> "Rotate the text 45 degrees"</div>
+        <div><strong>Arrange:</strong> "Arrange shapes in horizontal row"</div>
+        <div><strong>Grid:</strong> "Create a 3x3 grid"</div>
+        <div><strong>Form:</strong> "Create a login form"</div>
+        <div><strong>Nav:</strong> "Build a navigation bar with menu"</div>
+      </div>
+    </div>
+  );
+}
+
 function UserTips() {
   return (
-    <div className="text-xs text-slate-500 space-y-1">
-      <div className="font-medium text-slate-600 mb-1">Tips:</div>
+    <div className="text-xs text-slate-500 space-y-1 border-t pt-2 mt-2">
+      <div className="font-medium text-slate-600 mb-1">Shortcuts:</div>
       <div>• <kbd className="px-1 bg-slate-200 rounded text-xs">Ctrl+Z</kbd> to undo</div>
       <div>• <kbd className="px-1 bg-slate-200 rounded text-xs">Ctrl+D</kbd> to duplicate</div>
       <div>• <kbd className="px-1 bg-slate-200 rounded text-xs">Shift+Click</kbd> to multi-select</div>

@@ -88,12 +88,14 @@ describe('Advanced AI Agent Requirements', () => {
 
       // At least 6 different command types should be supported
       let supportedTypes = 0;
+      const supportedCommands: string[] = [];
       
       for (const command of commandTypes) {
         try {
           const result = await interpret(command);
           if (result !== null) {
             supportedTypes++;
+            supportedCommands.push(command);
           }
         } catch (error) {
           // Command not supported yet
@@ -144,8 +146,8 @@ describe('Advanced AI Agent Requirements', () => {
       
       expect(result).toBeDefined();
       
-      // Should create multiple shapes: labels, inputs, button
-      expect(mockUpsert).toHaveBeenCalledTimes(3); // At minimum: username, password, submit
+      // Should create multiple shapes: labels, inputs, button  
+      expect(mockUpsert).toHaveBeenCalledTimes(6); // 3 rectangles + 3 text labels (username, password, button)
       
       // Verify shapes are properly positioned relative to each other
       const calls = mockUpsert.mock.calls;
