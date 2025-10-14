@@ -15,11 +15,7 @@ export default function Auth({ onAuthSuccess }: AuthProps) {
   const [error, setError] = useState("");
 
   const handleDemoLogin = async (demoUser: { email: string; name: string; color: string }) => {
-    console.log('🔥 Demo login clicked for:', demoUser.name);
-    console.log('🔍 Current loading state:', loading);
-    
     try {
-      console.log('⚡ Setting loading to true...');
       setLoading(true);
       setError('');
       
@@ -33,22 +29,14 @@ export default function Auth({ onAuthSuccess }: AuthProps) {
         updated_at: new Date().toISOString()
       };
       
-      console.log('📝 Created demo profile:', demoProfile);
-      
       // Store demo user in localStorage to persist the session
       localStorage.setItem('demo-user', JSON.stringify(demoProfile));
-      console.log('💾 Saved to localStorage');
       
       // Call onAuthSuccess with the demo profile - pass null as user since it's demo mode
-      console.log('🚀 Calling onAuthSuccess...');
       onAuthSuccess(null, demoProfile);
-      console.log('✅ onAuthSuccess called successfully');
-      
     } catch (err) {
-      console.error('❌ Demo login error:', err);
       setError(err instanceof Error ? err.message : 'Demo login failed');
     } finally {
-      console.log('🏁 Setting loading to false...');
       setLoading(false);
     }
   };

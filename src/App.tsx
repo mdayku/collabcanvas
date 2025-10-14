@@ -10,6 +10,11 @@ export default function App() {
   const [userProfile, setUserProfile] = useState<any>(null);
 
   useEffect(() => {
+    // Set room from URL parameter
+    const params = new URLSearchParams(window.location.search);
+    const room = params.get("room") || "demo";
+    useCanvas.getState().setRoom(room);
+    
     // Check for demo user first
     const checkDemoUser = () => {
       const demoUser = localStorage.getItem('demo-user');
@@ -68,12 +73,9 @@ export default function App() {
         if (event === 'SIGNED_IN' && session?.user) {
           await handleAuthSuccess(session.user, null);
         } else if (event === 'SIGNED_OUT') {
-          console.log('Auth state: SIGNED_OUT detected');
-          
           // Don't interfere if this is a demo user session
           const demoUser = localStorage.getItem('demo-user');
           if (demoUser) {
-            console.log('Demo user detected during SIGNED_OUT, ignoring Supabase auth event');
             return;
           }
           
@@ -97,17 +99,10 @@ export default function App() {
 
   const handleAuthSuccess = async (authUser: any, providedProfile: any = null) => {
     try {
-      console.log('🎯 handleAuthSuccess called!');
-      console.log('👤 authUser:', authUser?.email || 'null (demo mode)');
-      console.log('📋 providedProfile:', providedProfile);
-      console.log('🏗️ Setting user...');
       setUser(authUser);
       
       // If we have a provided profile (demo mode or signup), use it directly
       if (providedProfile) {
-        console.log('📦 Using provided profile for demo/signup');
-        console.log('📦 Profile data:', providedProfile);
-        console.log('🔧 Setting user profile...');
         setUserProfile(providedProfile);
         
         // Update the canvas store with user info
@@ -118,10 +113,7 @@ export default function App() {
           s.isAuthenticated = true;
         });
 
-        console.log('🎮 Canvas state updated for demo user');
-        console.log('⏹️ Setting loading to false...');
         setLoading(false);
-        console.log('✅ Demo auth success completed!');
         return;
       }
       
@@ -207,16 +199,13 @@ export default function App() {
 
       setLoading(false);
     } catch (error) {
-      console.error('❌ Auth success handler failed:', error);
-      console.log('⏹️ Error: Setting loading to false...');
+      console.error('Auth success handler failed:', error);
       setLoading(false);
     }
   };
 
   const handleSignOut = async () => {
     try {
-      console.log('Signing out...');
-      
       // Clear demo user if it exists
       localStorage.removeItem('demo-user');
       
@@ -232,8 +221,6 @@ export default function App() {
       setUser(null);
       setUserProfile(null);
       setLoading(false); // Ensure we're not stuck in loading state
-      
-      console.log('Sign out complete');
     } catch (error) {
       console.error('Error signing out:', error);
       

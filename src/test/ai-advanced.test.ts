@@ -57,6 +57,7 @@ describe('Advanced AI Agent Requirements', () => {
       shapes: {},
       pushHistory: mockPushHistory,
       upsert: mockUpsert,
+      select: vi.fn(),
     } as any);
   });
 
@@ -130,6 +131,7 @@ describe('Advanced AI Agent Requirements', () => {
         shapes: existingShapes,
         pushHistory: mockPushHistory,
         upsert: mockUpsert,
+        select: vi.fn(),
       } as any);
 
       // This command should identify the blue rectangle by analyzing canvas state
@@ -226,6 +228,7 @@ describe('Advanced AI Agent Requirements', () => {
         shapes: { 'blue-rect': blueRect },
         pushHistory: mockPushHistory,
         upsert: mockUpsert,
+        select: vi.fn(),
       } as any);
 
       const result = await interpret('Move the blue rectangle to position 200, 300');
@@ -259,6 +262,7 @@ describe('Advanced AI Agent Requirements', () => {
         shapes: { 'test-circle': circle },
         pushHistory: mockPushHistory,
         upsert: mockUpsert,
+        select: vi.fn(),
       } as any);
 
       const result = await interpret('Make the red circle twice as big');
@@ -294,6 +298,7 @@ describe('Advanced AI Agent Requirements', () => {
         shapes: { 'test-text': textShape },
         pushHistory: mockPushHistory,
         upsert: mockUpsert,
+        select: vi.fn(),
       } as any);
 
       const result = await interpret('Rotate the text 45 degrees');
@@ -322,6 +327,7 @@ describe('Advanced AI Agent Requirements', () => {
         shapes,
         pushHistory: mockPushHistory,
         upsert: mockUpsert,
+        select: vi.fn(),
       } as any);
 
       const result = await interpret('Arrange all shapes in a horizontal row');

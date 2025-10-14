@@ -17,6 +17,13 @@ declare global {
 
 // const CANVAS_W = 2400, CANVAS_H = 1600;
 
+// Single channel instance to prevent missed broadcasts
+let roomChannel: ReturnType<typeof supabase.channel> | null = null;
+
+// Debounced persistence system
+const pending = new Map<string, any>();
+let flushTimer: number | null = null;
+
 interface CanvasProps {
   onSignOut: () => void;
 }
@@ -29,18 +36,22 @@ interface ContextMenuData {
 }
 
 export default function Canvas({ onSignOut }: CanvasProps) {
-  const { shapes, selectedIds, me, cursors } = useCanvas();
+  const { shapes, selectedIds, me, cursors, roomId } = useCanvas();
   const [contextMenu, setContextMenu] = useState<ContextMenuData | null>(null);
   const [_scale, setScale] = useState(1);
   const [editingText, setEditingText] = useState<{id: string, x: number, y: number, value: string} | null>(null);
+  const [status, setStatus] = useState<'connecting'|'online'|'reconnecting'|'offline'>('connecting');
   const trRef = useRef<any>(null);
   const layerRef = useRef<any>(null);
   const stageRef = useRef<any>(null);
 
-  // Realtime init
+  // Realtime init with connection status tracking
   useEffect(() => {
     const roomId = useCanvas.getState().roomId;
     const channel = supabase.channel(`room:${roomId}`, { config: { presence: { key: useCanvas.getState().me.id } } });
+    
+    // Set global channel reference
+    roomChannel = channel;
 
     channel.on("broadcast", { event: "shape:upsert" }, ({ payload }) => {
       useCanvas.getState().upsert(payload as ShapeBase | ShapeBase[]);
@@ -83,6 +94,7 @@ export default function Canvas({ onSignOut }: CanvasProps) {
 
     channel.subscribe(async (status) => {
       if (status === "SUBSCRIBED") {
+        setStatus('online');
         const { me } = useCanvas.getState();
         channel.track({ id: me.id, name: me.name || "Guest", x: 0, y: 0, color: me.color, last: Date.now() });
         // Load persisted shapes
@@ -94,7 +106,22 @@ export default function Canvas({ onSignOut }: CanvasProps) {
       }
     });
 
-    return () => { channel.unsubscribe(); };
+    // Connection status monitoring (only in production environment)
+    let statusChangeSubscription: any = null;
+    if (supabase.realtime && supabase.realtime.onStatusChange) {
+      statusChangeSubscription = supabase.realtime.onStatusChange((realtimeStatus) => {
+        setStatus(realtimeStatus === 'CONNECTED' ? 'online' : 
+                 realtimeStatus === 'CONNECTING' ? 'connecting' : 'reconnecting');
+      });
+    }
+
+    return () => { 
+      channel.unsubscribe(); 
+      roomChannel = null;
+      if (statusChangeSubscription?.subscription) {
+        statusChangeSubscription.subscription.unsubscribe();
+      }
+    };
   }, []);
 
   // Wheel zoom
@@ -565,7 +592,7 @@ export default function Canvas({ onSignOut }: CanvasProps) {
 
   return (
     <div className="h-screen w-screen flex">
-      <Toolbar onSignOut={onSignOut} />
+      <Toolbar onSignOut={onSignOut} status={status} />
       <div className="flex-1 bg-slate-50 relative">
         <Stage 
           width={window.innerWidth} 
@@ -662,6 +689,7 @@ export default function Canvas({ onSignOut }: CanvasProps) {
 
 interface ToolbarProps {
   onSignOut: () => void;
+  status: 'connecting'|'online'|'reconnecting'|'offline';
 }
 
 function CategorizedToolbar() {
@@ -845,12 +873,42 @@ function CategorizedToolbar() {
           </div>
         ))}
       </div>
+      
+      {/* Stress Test Button for Demos */}
+      <div className="mt-4 border-t pt-3">
+        <button 
+          className="px-3 py-2 rounded bg-slate-200 hover:bg-slate-300 transition-colors text-sm font-medium w-full"
+          onClick={() => {
+            const { me } = useCanvas.getState();
+            const batch: ShapeBase[] = [];
+            for (let i = 0; i < 500; i++) {
+              batch.push({ 
+                id: crypto.randomUUID(), 
+                type: "rect", 
+                x: 50 + (i % 25) * 90, 
+                y: 80 + Math.floor(i / 25) * 60, 
+                w: 80, 
+                h: 40, 
+                color: "#e5e7eb", 
+                updated_at: Date.now(), 
+                updated_by: me.id 
+              });
+            }
+            useCanvas.getState().upsert(batch); 
+            broadcastUpsert(batch); 
+            persist(batch);
+          }}
+          title="Create 500 shapes for stress testing"
+        >
+          🧪 +500 Stress Test
+        </button>
+      </div>
     </div>
   );
 }
 
-function Toolbar({ onSignOut }: ToolbarProps) {
-  const { me, onlineUsers, cursors } = useCanvas();
+function Toolbar({ onSignOut, status }: ToolbarProps) {
+  const { me, onlineUsers, cursors, roomId } = useCanvas();
   
   // Clear selection when clicking on sidebar
   const handleSidebarClick = () => {
@@ -903,6 +961,28 @@ function Toolbar({ onSignOut }: ToolbarProps) {
       
       <AIBox />
       <CategorizedToolbar />
+      
+      {/* Connection Status Badge */}
+      <div className="mt-4 pt-3 border-t">
+        <div className="text-xs text-slate-500 space-y-1">
+          <div className="flex items-center justify-between">
+            <span>Status:</span>
+            <span className={`font-medium ${
+              status === 'online' ? 'text-green-600' : 
+              status === 'connecting' ? 'text-yellow-600' : 
+              'text-orange-600'
+            }`}>
+              {status === 'online' ? '✅ Connected' : 
+               status === 'connecting' ? '⏳ Connecting...' : 
+               '↻ Reconnecting...'}
+            </span>
+          </div>
+          <div className="flex items-center justify-between">
+            <span>Room:</span>
+            <span className="font-mono font-medium">{roomId}</span>
+          </div>
+        </div>
+      </div>
     </div>
   );
 }
@@ -1889,21 +1969,31 @@ function HelpMenu() {
   );
 }
 
-// Broadcasting + persistence helpers
+// Broadcasting + persistence helpers with improvements
 async function broadcastUpsert(shapes: ShapeBase | ShapeBase[]) {
-  const channel = supabase.channel(`room:${useCanvas.getState().roomId}`);
-  await channel.send({ type: "broadcast", event: "shape:upsert", payload: shapes });
+  if (!roomChannel) return;
+  await roomChannel.send({ type: "broadcast", event: "shape:upsert", payload: shapes });
 }
 
 async function broadcastRemove(ids: string[]) {
-  const channel = supabase.channel(`room:${useCanvas.getState().roomId}`);
-  await channel.send({ type: "broadcast", event: "shape:remove", payload: ids });
+  if (!roomChannel) return;
+  await roomChannel.send({ type: "broadcast", event: "shape:remove", payload: ids });
 }
 
+// Debounced persistence for 60fps performance
 async function persist(shapes: ShapeBase | ShapeBase[]) {
   const list = Array.isArray(shapes) ? shapes : [shapes];
-  const rows = list.map((s) => ({ room_id: useCanvas.getState().roomId, ...s }));
-  await supabase.from("shapes").upsert(rows, { onConflict: "id" });
+  list.forEach(s => pending.set(s.id, s));
+  
+  if (flushTimer) window.clearTimeout(flushTimer);
+  flushTimer = window.setTimeout(async () => {
+    const rows = Array.from(pending.values()).map((s) => ({ 
+      room_id: useCanvas.getState().roomId, 
+      ...s 
+    }));
+    pending.clear();
+    await supabase.from("shapes").upsert(rows, { onConflict: "id" });
+  }, 150); // 150ms is the sweet spot for batching
 }
 
 async function deleteFromDB(ids: string[]) {
