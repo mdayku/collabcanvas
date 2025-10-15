@@ -1153,7 +1153,7 @@ function GridOverlay({ canvasSize }: { canvasSize: { width: number; height: numb
 
 // TabBar Component for Multi-Canvas Management
 function TabBar() {
-  const { openTabs, activeTabId, openCanvasInTab, closeTab, switchToTab, hasUnsavedTab } = useCanvas();
+  const { openTabs, activeTabId, openCanvasInTab, switchToTab, hasUnsavedTab } = useCanvas();
   const { colors } = useTheme();
 
   const handleNewTab = async () => {
@@ -1351,8 +1351,8 @@ interface ContextMenuData {
 }
 
 export default function Canvas({ onSignOut }: CanvasProps) {
-  const { shapes, selectedIds, me, cursors, roomId } = useCanvas();
-  const { colors, showGrid, snapToGrid, setSnapToGrid } = useTheme();
+  const { shapes, selectedIds, me, cursors } = useCanvas();
+  const { colors, showGrid, snapToGrid } = useTheme();
   const [contextMenu, setContextMenu] = useState<ContextMenuData | null>(null);
   const [_scale, setScale] = useState(1);
   const [editingText, setEditingText] = useState<{id: string, x: number, y: number, value: string} | null>(null);
@@ -2427,7 +2427,7 @@ export default function Canvas({ onSignOut }: CanvasProps) {
       <TopRibbon onSignOut={onSignOut} stageRef={canvasStageRef} setShowHelpPopup={setShowHelpPopup} />
       <TabBar />
       <div className="flex-1 flex min-h-0">
-        <Toolbar onSignOut={onSignOut} status={status} />
+        <Toolbar status={status} />
         <div 
           ref={canvasContainerRef} 
           className="flex-1 relative overflow-hidden"
@@ -2856,8 +2856,8 @@ function CategorizedToolbar() {
   );
 }
 
-function Toolbar({ onSignOut, status }: ToolbarProps) {
-  const { me, onlineUsers, cursors, roomId } = useCanvas();
+function Toolbar({ status }: Omit<ToolbarProps, 'onSignOut'>) {
+  const { me, onlineUsers, cursors } = useCanvas();
   const { colors } = useTheme();
   
   // Clear selection when clicking on sidebar background (not on interactive elements)
@@ -2927,7 +2927,7 @@ function Toolbar({ onSignOut, status }: ToolbarProps) {
       </div>
           <div className="flex items-center justify-between">
             <span>Room:</span>
-            <span className="font-mono font-medium">{roomId}</span>
+            <span className="font-mono font-medium">{useCanvas.getState().roomId}</span>
           </div>
         </div>
       </div>
@@ -3084,75 +3084,6 @@ function addShape(type: ShapeType, colors: any, snapToGrid: boolean = false) {
   useCanvas.getState().select([s.id]);
 }
 
-function ClearCanvasButton() {
-  const [showConfirmation, setShowConfirmation] = useState(false);
-  const { shapes } = useCanvas();
-  const shapeCount = Object.keys(shapes).length;
-
-  const handleClearCanvas = async () => {
-    // Save history before clearing so it can be undone
-    useCanvas.getState().pushHistory();
-    
-    // Get all shape IDs before clearing
-    const allShapeIds = Object.keys(shapes);
-    
-    // Clear all shapes locally
-    useCanvas.getState().clear();
-    
-    // Broadcast removal to other users (for multiplayer sync)
-    if (allShapeIds.length > 0) {
-      await broadcastRemove(allShapeIds);
-      
-      // Delete from database
-      await supabase.from("shapes").delete().eq("room_id", useCanvas.getState().roomId);
-    }
-    
-    // Close confirmation dialog
-    setShowConfirmation(false);
-  };
-
-  if (shapeCount === 0) {
-    return null; // Don't show button if canvas is already empty
-  }
-
-  return (
-    <div className="relative">
-      <button
-        onClick={() => setShowConfirmation(true)}
-        className="text-xs bg-red-100 text-red-700 px-2 py-1 rounded hover:bg-red-200 transition-colors"
-        title="Clear all shapes from canvas"
-      >
-        🗑️ Clear Canvas
-      </button>
-
-      {showConfirmation && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-lg p-6 max-w-sm mx-4 shadow-xl">
-            <h3 className="text-lg font-semibold mb-2">Clear Canvas?</h3>
-            <p className="text-gray-600 mb-4">
-              Are you sure you want to remove all {shapeCount} shape{shapeCount !== 1 ? 's' : ''} from the canvas? 
-              This action can be undone with Ctrl+Z.
-            </p>
-            <div className="flex gap-3 justify-end">
-              <button
-                onClick={() => setShowConfirmation(false)}
-                className="px-4 py-2 text-gray-600 bg-gray-100 rounded hover:bg-gray-200 transition-colors"
-              >
-                Cancel
-              </button>
-              <button
-                onClick={handleClearCanvas}
-                className="px-4 py-2 bg-red-600 text-white rounded hover:bg-red-700 transition-colors"
-              >
-                Yes, Clear All
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-    </div>
-  );
-}
 
 function AIBox() {
   const { colors } = useTheme();

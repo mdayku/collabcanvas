@@ -842,7 +842,8 @@ function getShapeDefaults(type: ShapeType): Partial<ShapeBase> {
         textAlign: 'left',
         fontStyle: 'normal',
         fontWeight: 'normal',
-        textDecoration: 'none'
+        textDecoration: 'none',
+        color: '#111111' // Always dark text for canvas visibility, regardless of theme
       };
     case 'image':
       return { x: 100, y: 100, w: 200, h: 150 };
@@ -854,8 +855,8 @@ function getShapeDefaults(type: ShapeType): Partial<ShapeBase> {
         h: 2, 
         x2: 220, 
         y2: 120, 
-        stroke: '#000', 
-        strokeWidth: 2 
+        stroke: '#111111', 
+        strokeWidth: 3 
       };
     case 'arrow':
       return { 
@@ -865,8 +866,8 @@ function getShapeDefaults(type: ShapeType): Partial<ShapeBase> {
         h: 2, 
         x2: 220, 
         y2: 120, 
-        stroke: '#000', 
-        strokeWidth: 2, 
+        stroke: '#111111', 
+        strokeWidth: 3, 
         arrowHead: 'end' 
       };
     default:
