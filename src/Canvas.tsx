@@ -153,18 +153,19 @@ function TopRibbon({ onSignOut, stageRef }: { onSignOut: () => void; stageRef: R
         
         // More detailed error handling for better debugging
         if (error instanceof Error) {
+          const errorDetails = error as Error;
           console.log('Full error details:', {
-            message: error.message,
-            stack: error.stack,
-            name: error.name
+            message: errorDetails.message,
+            stack: errorDetails.stack,
+            name: errorDetails.name
           });
           
-          if (error.message.includes('Failed to create canvas')) {
-            alert(`Canvas creation failed: ${error.message}. This may be a temporary database issue. Please try again in a moment.`);
-          } else if (error.message.includes('Failed to retrieve')) {
+          if (errorDetails.message.includes('Failed to create canvas')) {
+            alert(`Canvas creation failed: ${errorDetails.message}. This may be a temporary database issue. Please try again in a moment.`);
+          } else if (errorDetails.message.includes('Failed to retrieve')) {
             alert('Canvas was created but could not be loaded immediately. Please refresh the page and check your canvases.');
           } else {
-            alert(`Error: ${error.message}. Please try again or contact support if this continues.`);
+            alert(`Error: ${errorDetails.message}. Please try again or contact support if this continues.`);
           }
         } else {
           alert('Unable to create new canvas. Please check your connection and try again.');
@@ -840,7 +841,8 @@ function TabBar() {
       
       // More detailed error handling
       if (error instanceof Error) {
-        alert(`Tab creation failed: ${error.message}. Please try creating a new canvas from the File menu instead.`);
+        const errorDetails = error as Error;
+        alert(`Tab creation failed: ${errorDetails.message}. Please try creating a new canvas from the File menu instead.`);
       } else {
         alert('Unable to create new canvas tab. Please check your connection and try again.');
       }
@@ -1804,6 +1806,45 @@ function CategorizedToolbar() {
     useCanvas.getState().select([emojiShape.id]);
   };
 
+  const addIcon = (icon: string) => {
+    // Save history before creating
+    useCanvas.getState().pushHistory();
+    
+    const { me, shapes } = useCanvas.getState();
+    
+    // Convert icon to Twemoji image URL
+    const iconCodePoint = icon.codePointAt(0)?.toString(16);
+    if (!iconCodePoint) return;
+    
+    // Twemoji CDN URL (Twitter's emoji images)
+    const twemojiUrl = `https://cdn.jsdelivr.net/gh/twitter/twemoji@14.0.2/assets/72x72/${iconCodePoint}.png`;
+    
+    // Icon size - good default for functional icons
+    const size = 48; 
+    const position = findBlankArea(shapes, size, size);
+    
+    const iconShape: ShapeBase = { 
+      id: crypto.randomUUID(), 
+      type: "image", 
+      x: position.x, 
+      y: position.y, 
+      w: size, 
+      h: size, 
+      imageUrl: twemojiUrl,
+      originalWidth: 72, // Twemoji standard size
+      originalHeight: 72,
+      updated_at: Date.now(), 
+      updated_by: me.id 
+    };
+    
+    useCanvas.getState().upsert(iconShape); 
+    broadcastUpsert(iconShape); 
+    persist(iconShape);
+    
+    // Auto-select the new icon
+    useCanvas.getState().select([iconShape.id]);
+  };
+
   const toolCategories = [
     {
       id: 'lines-arrows',
@@ -1852,11 +1893,20 @@ function CategorizedToolbar() {
       ]
     },
     {
-      id: 'symbols',
-      name: 'Symbols',
-      emoji: '⭐',
+      id: 'icons',
+      name: 'Icons',
+      emoji: '🔧',
       tools: [
-        // Coming soon
+        { name: '⚙️', action: () => addIcon('⚙️'), available: true, tooltip: 'Settings' },
+        { name: '🏠', action: () => addIcon('🏠'), available: true, tooltip: 'Home' },
+        { name: '📧', action: () => addIcon('📧'), available: true, tooltip: 'Email' },
+        { name: '📞', action: () => addIcon('📞'), available: true, tooltip: 'Phone' },
+        { name: '🔒', action: () => addIcon('🔒'), available: true, tooltip: 'Lock' },
+        { name: '🔍', action: () => addIcon('🔍'), available: true, tooltip: 'Search' },
+        { name: '💾', action: () => addIcon('💾'), available: true, tooltip: 'Save' },
+        { name: '📁', action: () => addIcon('📁'), available: true, tooltip: 'Folder' },
+        { name: '🔗', action: () => addIcon('🔗'), available: true, tooltip: 'Link' },
+        { name: '⚡', action: () => addIcon('⚡'), available: true, tooltip: 'Power' },
       ]
     },
     {
@@ -1944,10 +1994,11 @@ function CategorizedToolbar() {
         style={{ borderColor: colors.border }}
       >
         <button 
-          className="px-3 py-2 rounded transition-colors text-sm font-medium w-full"
+          className="px-3 py-2 rounded transition-colors text-sm font-medium w-full border"
           style={{
             backgroundColor: colors.buttonBg,
             color: colors.text,
+            borderColor: colors.border,
           }}
           onMouseEnter={(e) => e.currentTarget.style.backgroundColor = colors.buttonHover}
           onMouseLeave={(e) => e.currentTarget.style.backgroundColor = colors.buttonBg}
@@ -2007,16 +2058,6 @@ function Toolbar({ onSignOut, status }: ToolbarProps) {
         <div className="text-xl font-semibold">CollabCanvas</div>
         <div className="flex gap-2">
           <HelpMenu />
-        <button
-          onClick={(e) => {
-            e.stopPropagation();
-            onSignOut();
-          }}
-          className="text-xs px-2 py-1 text-gray-600 hover:text-gray-800 hover:bg-gray-100 rounded transition-colors"
-          title="Sign out"
-        >
-          Sign out
-        </button>
         </div>
       </div>
       <div className="text-sm">Signed in as <span style={{color: me.color}}>{me.name||"Guest"}</span></div>
@@ -2536,6 +2577,7 @@ function FloatingAIWidget() {
   const [selectedLanguage, setSelectedLanguage] = useState(localStorage.getItem('ai-language') || 'en');
   const [isDragging, setIsDragging] = useState(false);
   const [dragOffset, setDragOffset] = useState({ x: 0, y: 0 });
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
   // Speech recognition language mapping
   const getSpeechLang = (aiLang: string): string => {
@@ -2641,15 +2683,23 @@ function FloatingAIWidget() {
     if (!prompt.trim() || isWorking) return;
 
     setIsWorking(true);
+    setErrorMessage(null); // Clear any previous errors
+    
     try {
       // Use the existing AIBox logic with language support
       const response = await interpretWithResponse(prompt.trim(), selectedLanguage);
       console.log('AI Response:', response);
       
-      // Clear the input after successful submission
-      setPrompt('');
+      // Check if the response indicates an error or lack of understanding
+      if (response.type === 'error') {
+        setErrorMessage(response.message || "I couldn't understand that command. Try being more specific or check the help menu for examples.");
+      } else {
+        // Clear the input after successful submission
+        setPrompt('');
+      }
     } catch (error) {
       console.error('AI Error:', error);
+      setErrorMessage("Something went wrong while processing your request. Please try again or use a simpler command.");
     } finally {
       setIsWorking(false);
     }
@@ -2774,6 +2824,42 @@ function FloatingAIWidget() {
             </form>
           </div>
         </>
+      )}
+      
+      {/* Error Dialog - positioned to the left of the widget */}
+      {errorMessage && (
+        <div 
+          className="fixed z-60 p-4 rounded-lg shadow-lg border max-w-sm"
+          style={{ 
+            bottom: position.y + 20, 
+            right: position.x + (isMinimized ? 80 : 420), // Position to the left of widget
+            backgroundColor: colors.bg,
+            borderColor: colors.error,
+            color: colors.text
+          }}
+        >
+          <div className="flex items-start gap-2">
+            <span className="text-lg">❌</span>
+            <div className="flex-1">
+              <div className="font-medium text-sm" style={{ color: colors.error }}>
+                {halloweenMode ? 'FrAInkenstein' : 'AI Assistant'} Error
+              </div>
+              <div className="text-sm mt-1">{errorMessage}</div>
+              <button
+                onClick={() => setErrorMessage(null)}
+                className="text-xs mt-2 px-2 py-1 rounded transition-colors"
+                style={{
+                  backgroundColor: colors.buttonBg,
+                  color: colors.textSecondary
+                }}
+                onMouseEnter={(e) => e.currentTarget.style.backgroundColor = colors.buttonHover}
+                onMouseLeave={(e) => e.currentTarget.style.backgroundColor = colors.buttonBg}
+              >
+                Dismiss
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );
@@ -3402,6 +3488,7 @@ function LanguageDropdown({ selectedLanguage, onLanguageChange }: {
 
 function HelpMenu() {
   const [isOpen, setIsOpen] = useState(false);
+  const { colors } = useTheme();
   const recognition = 'webkitSpeechRecognition' in window || 'SpeechRecognition' in window;
   const groqConfigured = isGroqConfigured();
   const openaiConfigured = isOpenAIConfigured();
@@ -3414,10 +3501,19 @@ function HelpMenu() {
           e.stopPropagation();
           setIsOpen(!isOpen);
         }}
-        className="text-lg px-3 py-2 text-gray-600 hover:text-gray-800 hover:bg-gray-100 rounded transition-colors font-bold"
+        className="text-2xl px-4 py-3 rounded transition-colors font-bold"
+        style={{ color: colors.textSecondary }}
+        onMouseEnter={(e) => {
+          e.currentTarget.style.color = colors.text;
+          e.currentTarget.style.backgroundColor = colors.buttonHover;
+        }}
+        onMouseLeave={(e) => {
+          e.currentTarget.style.color = colors.textSecondary;
+          e.currentTarget.style.backgroundColor = 'transparent';
+        }}
         title="Help & Examples"
       >
-        ?
+        ❓
       </button>
       
       {isOpen && (
