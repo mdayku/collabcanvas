@@ -34,31 +34,15 @@ function useFps() {
   return fps;
 }
 
-// FPS Overlay Component
-function FPSOverlay() {
-  const fps = useFps();
-  const { showFPS, colors } = useTheme();
-  
-  if (!showFPS) return null;
-  
-  return (
-    <div 
-      className="fixed top-2 right-2 z-50 px-2 py-1 rounded text-xs font-mono"
-      style={{ 
-        backgroundColor: colors.bgSecondary, 
-        color: colors.textMuted,
-        border: `1px solid ${colors.border}`
-      }}
-    >
-      FPS: {fps}
-    </div>
-  );
-}
 
 // const CANVAS_W = 2400, CANVAS_H = 1600;
 
 // TopRibbon Component with File Menu
-function TopRibbon({ onSignOut, stageRef }: { onSignOut: () => void; stageRef: React.RefObject<any> }) {
+function TopRibbon({ onSignOut, stageRef, setShowHelpPopup }: { 
+  onSignOut: () => void; 
+  stageRef: React.RefObject<any>; 
+  setShowHelpPopup: (show: boolean) => void;
+}) {
   const [showFileMenu, setShowFileMenu] = useState(false);
   const [showViewMenu, setShowViewMenu] = useState(false);
   const [showOpenDialog, setShowOpenDialog] = useState(false);
@@ -710,6 +694,22 @@ function TopRibbon({ onSignOut, stageRef }: { onSignOut: () => void; stageRef: R
             </div>
           )}
         </div>
+
+        {/* Help Menu */}
+        <div className="relative">
+          <button
+            onClick={() => setShowHelpPopup(true)}
+            className="px-3 py-1.5 text-sm font-medium rounded focus:outline-none focus:ring-2 focus:ring-blue-500"
+            style={{ 
+              color: colors.text,
+              backgroundColor: 'transparent'
+            }}
+            onMouseEnter={(e) => e.currentTarget.style.backgroundColor = colors.buttonHover}
+            onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
+          >
+            Help
+          </button>
+        </div>
       </div>
 
       {/* Open Canvas Dialog */}
@@ -826,6 +826,261 @@ function TopRibbon({ onSignOut, stageRef }: { onSignOut: () => void; stageRef: R
             </div>
             <SaveStatusIndicator />
           </div>
+    </div>
+  );
+}
+
+// Help Popup Component
+function HelpPopup({ isOpen, onClose }: { isOpen: boolean; onClose: () => void }) {
+  const [isMinimized, setIsMinimized] = useState(false);
+  const { colors } = useTheme();
+  const recognition = 'webkitSpeechRecognition' in window || 'SpeechRecognition' in window;
+  const groqConfigured = isGroqConfigured();
+  const openaiConfigured = isOpenAIConfigured();
+  const aiConfigured = groqConfigured || openaiConfigured;
+
+  if (!isOpen) return null;
+
+  return (
+    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-[10000]">
+      <div 
+        className={`bg-white rounded-lg shadow-xl border transition-all duration-300 ${
+          isMinimized 
+            ? 'w-80 h-12' 
+            : 'w-[90vw] max-w-4xl h-[80vh] max-h-[600px]'
+        }`}
+        style={{ 
+          backgroundColor: colors.bg,
+          borderColor: colors.border,
+          color: colors.text
+        }}
+      >
+        {/* Header */}
+        <div 
+          className="flex items-center justify-between p-4 border-b cursor-pointer"
+          style={{ borderColor: colors.border }}
+          onClick={() => isMinimized && setIsMinimized(false)}
+        >
+          <h2 className="text-lg font-semibold" style={{ color: colors.text }}>
+            📚 CollabCanvas Help & Guide
+          </h2>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                setIsMinimized(!isMinimized);
+              }}
+              className="px-2 py-1 rounded text-sm"
+              style={{ 
+                backgroundColor: colors.buttonHover,
+                color: colors.text
+              }}
+            >
+              {isMinimized ? '□' : '−'}
+            </button>
+            <button
+              onClick={onClose}
+              className="px-2 py-1 rounded text-sm"
+              style={{ 
+                backgroundColor: colors.buttonHover,
+                color: colors.text
+              }}
+            >
+              ✕
+            </button>
+          </div>
+        </div>
+
+        {/* Content */}
+        {!isMinimized && (
+          <div className="flex-1 overflow-y-auto p-6">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+              
+              {/* Left Column - AI Agent & Keyboard Shortcuts */}
+              <div className="space-y-6">
+                
+                {/* AI Agent Guide */}
+                <div>
+                  <h3 className="text-lg font-semibold mb-3" style={{ color: colors.text }}>
+                    🤖 AI Agent Guide
+                  </h3>
+                  {aiConfigured ? (
+                    <div className="space-y-3">
+                      <div className="text-sm" style={{ color: colors.textMuted }}>
+                        <strong>Quick Start:</strong> Select shapes, then give commands like "make it blue" or "move to center"
+                      </div>
+                      
+                      <div>
+                        <div className="font-medium text-sm mb-2" style={{ color: colors.text }}>Creation Commands:</div>
+                        <div className="text-xs space-y-1" style={{ color: colors.textMuted }}>
+                          <div>• "Create a blue 200x100 rectangle"</div>
+                          <div>• "Add text saying 'Hello World'"</div>
+                          <div>• "Make a red circle at 300, 200"</div>
+                          <div>• "Create a login form with buttons"</div>
+                          <div>• "Build a navigation bar with 4 items"</div>
+                        </div>
+                      </div>
+                      
+                      <div>
+                        <div className="font-medium text-sm mb-2" style={{ color: colors.text }}>Manipulation Commands:</div>
+                        <div className="text-xs space-y-1" style={{ color: colors.textMuted }}>
+                          <div>• "Move it to the center" | "Move right 100"</div>
+                          <div>• "Make it twice as big" | "Resize to 300x200"</div>
+                          <div>• "Rotate 45 degrees" | "Rotate clockwise"</div>
+                          <div>• "Change color to blue" | "Make it transparent"</div>
+                        </div>
+                      </div>
+
+                      <div>
+                        <div className="font-medium text-sm mb-2" style={{ color: colors.text }}>Selection Commands:</div>
+                        <div className="text-xs space-y-1" style={{ color: colors.textMuted }}>
+                          <div>• "Select all circles" | "Select the blue rectangle"</div>
+                          <div>• "Select all shapes" | "Select the largest circle"</div>
+                        </div>
+                      </div>
+                      
+                      <div>
+                        <div className="font-medium text-sm mb-2" style={{ color: colors.text }}>Layout Commands:</div>
+                        <div className="text-xs space-y-1" style={{ color: colors.textMuted }}>
+                          <div>• "Arrange in a row" | "Create a 3x2 grid"</div>
+                          <div>• "Space them evenly" | "Align to center"</div>
+                        </div>
+                      </div>
+
+                      {recognition && (
+                        <div className="text-xs text-blue-600 bg-blue-50 p-2 rounded" style={{ color: colors.primary }}>
+                          💬 <strong>Voice Input:</strong> Click the 🎤 microphone button to speak your commands!
+                        </div>
+                      )}
+                    </div>
+                  ) : (
+                    <div className="text-sm space-y-2" style={{ color: colors.textMuted }}>
+                      <div><strong>AI Agent Available!</strong> Configure API keys for advanced features:</div>
+                      <div>• Groq API (fastest) • OpenAI API (most capable)</div>
+                      <div className="text-xs">Basic commands still work: "Create a red circle", "Add text", "Make a 2x2 grid"</div>
+                      {recognition && <div className="text-blue-600">💬 Voice input supported!</div>}
+                    </div>
+                  )}
+                </div>
+
+                {/* Keyboard Shortcuts */}
+                <div>
+                  <h3 className="text-lg font-semibold mb-3" style={{ color: colors.text }}>
+                    ⌨️ Keyboard Shortcuts
+                  </h3>
+                  <div className="space-y-3 text-xs" style={{ color: colors.textMuted }}>
+                    <div>
+                      <div className="font-medium mb-2" style={{ color: colors.text }}>Selection:</div>
+                      <div className="space-y-1">
+                        <div>• <kbd className="px-1 bg-slate-200 rounded text-xs">Ctrl+A</kbd> Select all shapes</div>
+                        <div>• <kbd className="px-1 bg-slate-200 rounded text-xs">Escape</kbd> Deselect all</div>
+                        <div>• <kbd className="px-1 bg-slate-200 rounded text-xs">Shift+Click</kbd> Multi-select shapes</div>
+                      </div>
+                    </div>
+                    
+                    <div>
+                      <div className="font-medium mb-2" style={{ color: colors.text }}>Editing:</div>
+                      <div className="space-y-1">
+                        <div>• <kbd className="px-1 bg-slate-200 rounded text-xs">Ctrl+C</kbd> Copy selected</div>
+                        <div>• <kbd className="px-1 bg-slate-200 rounded text-xs">Ctrl+X</kbd> Cut selected</div>
+                        <div>• <kbd className="px-1 bg-slate-200 rounded text-xs">Ctrl+V</kbd> Paste</div>
+                        <div>• <kbd className="px-1 bg-slate-200 rounded text-xs">Ctrl+D</kbd> Duplicate selected</div>
+                        <div>• <kbd className="px-1 bg-slate-200 rounded text-xs">Delete</kbd> Remove selected</div>
+                      </div>
+                    </div>
+                    
+                    <div>
+                      <div className="font-medium mb-2" style={{ color: colors.text }}>History:</div>
+                      <div className="space-y-1">
+                        <div>• <kbd className="px-1 bg-slate-200 rounded text-xs">Ctrl+Z</kbd> Undo last action</div>
+                        <div>• <kbd className="px-1 bg-slate-200 rounded text-xs">Ctrl+R</kbd> Redo last undo</div>
+                      </div>
+                    </div>
+                    
+                    <div>
+                      <div className="font-medium mb-2" style={{ color: colors.text }}>Movement:</div>
+                      <div className="space-y-1">
+                        <div>• <kbd className="px-1 bg-slate-200 rounded text-xs">Arrow Keys</kbd> Move selection 5px</div>
+                        <div>• <kbd className="px-1 bg-slate-200 rounded text-xs">Shift+Arrows</kbd> Move selection 25px</div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Right Column - Canvas Features & Tips */}
+              <div className="space-y-6">
+                
+                {/* Canvas Features */}
+                <div>
+                  <h3 className="text-lg font-semibold mb-3" style={{ color: colors.text }}>
+                    🎨 Canvas Features
+                  </h3>
+                  <div className="space-y-3 text-xs" style={{ color: colors.textMuted }}>
+                    <div>
+                      <div className="font-medium mb-2" style={{ color: colors.text }}>Drawing Tools:</div>
+                      <div className="space-y-1">
+                        <div>• <strong>Shapes:</strong> Rectangle, Circle, Triangle</div>
+                        <div>• <strong>Lines & Arrows:</strong> Draw connections and flows</div>
+                        <div>• <strong>Text:</strong> Double-click to edit, rich formatting</div>
+                        <div>• <strong>Icons:</strong> 10+ common interface icons</div>
+                      </div>
+                    </div>
+                    
+                    <div>
+                      <div className="font-medium mb-2" style={{ color: colors.text }}>Canvas Controls:</div>
+                      <div className="space-y-1">
+                        <div>• <strong>Zoom:</strong> Mouse wheel or trackpad</div>
+                        <div>• <strong>Pan:</strong> Drag empty canvas area</div>
+                        <div>• <strong>Right-click:</strong> Context menu for shapes</div>
+                        <div>• <strong>Layer Order:</strong> Move to front/back via context menu</div>
+                        <div>• <strong>Duplicate:</strong> Right-click → Duplicate</div>
+                      </div>
+                    </div>
+                    
+                    <div>
+                      <div className="font-medium mb-2" style={{ color: colors.text }}>Themes:</div>
+                      <div className="space-y-1">
+                        <div>• <strong>Light/Dark:</strong> Automatic or manual</div>
+                        <div>• <strong>Halloween Mode:</strong> Spooky theme with FrAInkenstein!</div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Pro Tips */}
+                <div>
+                  <h3 className="text-lg font-semibold mb-3" style={{ color: colors.text }}>
+                    💡 Pro Tips
+                  </h3>
+                  <div className="space-y-2 text-xs" style={{ color: colors.textMuted }}>
+                    <div>• <strong>Quick Shapes:</strong> Use AI commands like "Create 5 blue circles in a row"</div>
+                    <div>• <strong>Precision:</strong> AI understands exact coordinates: "Move to 100, 200"</div>
+                    <div>• <strong>Bulk Operations:</strong> Select multiple shapes, then use AI or shortcuts</div>
+                    <div>• <strong>Voice Control:</strong> Great for hands-free design iteration</div>
+                    <div>• <strong>Context Menus:</strong> Right-click for quick formatting options</div>
+                    <div>• <strong>Auto-save:</strong> Your work is automatically saved</div>
+                    <div>• <strong>Multiplayer:</strong> Share your canvas URL for real-time collaboration</div>
+                  </div>
+                </div>
+
+                {/* Performance */}
+                <div>
+                  <h3 className="text-lg font-semibold mb-3" style={{ color: colors.text }}>
+                    ⚡ Performance
+                  </h3>
+                  <div className="space-y-2 text-xs" style={{ color: colors.textMuted }}>
+                    <div>• <strong>FPS Counter:</strong> Monitor performance (top ribbon)</div>
+                    <div>• <strong>Stress Test:</strong> Test with 500+ shapes (toolbar)</div>
+                    <div>• <strong>Optimized:</strong> Handles hundreds of shapes smoothly</div>
+                    <div>• <strong>Real-time Sync:</strong> Sub-100ms multiplayer updates</div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
     </div>
   );
 }
@@ -1035,6 +1290,7 @@ export default function Canvas({ onSignOut }: CanvasProps) {
   const [contextMenu, setContextMenu] = useState<ContextMenuData | null>(null);
   const [_scale, setScale] = useState(1);
   const [editingText, setEditingText] = useState<{id: string, x: number, y: number, value: string} | null>(null);
+  const [showHelpPopup, setShowHelpPopup] = useState(false);
   const [status, setStatus] = useState<'connecting'|'online'|'reconnecting'|'offline'>('connecting');
   const [canvasSize, setCanvasSize] = useState({ width: 800, height: 600 });
   const trRef = useRef<any>(null);
@@ -1443,7 +1699,7 @@ export default function Canvas({ onSignOut }: CanvasProps) {
           
           // Move each selected shape
           selectedIds.forEach(id => {
-            const shape = useCanvas.getState().shapes[id];
+    const shape = useCanvas.getState().shapes[id];
             if (shape) {
               const updatedShape = {
                 ...shape,
@@ -1892,7 +2148,7 @@ export default function Canvas({ onSignOut }: CanvasProps) {
       style={{ backgroundColor: colors.bgSecondary }}
     >
       {/* Layout fix v2: Force cache refresh for production deployment */}
-      <TopRibbon onSignOut={onSignOut} stageRef={canvasStageRef} />
+      <TopRibbon onSignOut={onSignOut} stageRef={canvasStageRef} setShowHelpPopup={setShowHelpPopup} />
       <TabBar />
       <div className="flex-1 flex min-h-0">
         <Toolbar onSignOut={onSignOut} status={status} />
@@ -1994,6 +2250,9 @@ export default function Canvas({ onSignOut }: CanvasProps) {
       
       {/* Floating AI Agent Widget - Bottom Right */}
       <FloatingAIWidget />
+      
+      {/* Help Popup */}
+      <HelpPopup isOpen={showHelpPopup} onClose={() => setShowHelpPopup(false)} />
     </div>
   );
 }
@@ -2327,9 +2586,6 @@ function Toolbar({ onSignOut, status }: ToolbarProps) {
     >
       <div className="flex items-center justify-between">
         <div className="text-xl font-semibold">CollabCanvas</div>
-        <div className="flex gap-2">
-          <HelpMenu />
-        </div>
       </div>
       <div className="text-sm">Signed in as <span style={{color: me.color}}>{me.name||"Guest"}</span></div>
       
@@ -3165,7 +3421,7 @@ function FloatingAIWidget() {
                       </button>
                     ))}
                   </div>
-                </div>
+          </div>
               )}
               
               <div className="flex items-center justify-between">
@@ -3191,8 +3447,8 @@ function FloatingAIWidget() {
                     >
                       {isListening ? '🔴' : '🎤'}
                     </button>
-                  )}
-          </div>
+        )}
+      </div>
                 
                 {/* Send Button - aligned to right */}
                 <button
@@ -4019,114 +4275,6 @@ function LanguageDropdown({ selectedLanguage, onLanguageChange }: {
   );
 }
 
-function HelpMenu() {
-  const [isOpen, setIsOpen] = useState(false);
-  const { colors } = useTheme();
-  const recognition = 'webkitSpeechRecognition' in window || 'SpeechRecognition' in window;
-  const groqConfigured = isGroqConfigured();
-  const openaiConfigured = isOpenAIConfigured();
-  const aiConfigured = groqConfigured || openaiConfigured;
-
-  return (
-    <div className="relative">
-      <button
-        onClick={(e) => {
-          e.stopPropagation();
-          setIsOpen(!isOpen);
-        }}
-        className="text-2xl px-4 py-3 rounded transition-colors font-bold"
-        style={{ color: colors.textSecondary }}
-        onMouseEnter={(e) => {
-          e.currentTarget.style.color = colors.text;
-          e.currentTarget.style.backgroundColor = colors.buttonHover;
-        }}
-        onMouseLeave={(e) => {
-          e.currentTarget.style.color = colors.textSecondary;
-          e.currentTarget.style.backgroundColor = 'transparent';
-        }}
-        title="Help & Examples"
-      >
-        ❓
-      </button>
-      
-      {isOpen && (
-        <>
-          {/* Backdrop */}
-          <div 
-            className="fixed inset-0 z-[9998]" 
-            onClick={() => setIsOpen(false)}
-          ></div>
-          
-          {/* Help Menu */}
-          <div className="absolute left-0 top-full mt-1 w-80 bg-white border rounded-lg shadow-lg p-4 z-[9999] max-h-96 overflow-y-auto">
-            <div className="space-y-4">
-              {/* AI Command Examples */}
-              <div>
-                <div className="font-medium text-slate-600 mb-2">AI Agent Command Examples</div>
-                {aiConfigured ? (
-                  <div className="text-xs text-slate-500 space-y-1">
-                    <div><strong>Create:</strong> "Make a blue dashboard with 3 cards"</div>
-                    <div><strong>Move:</strong> "Move the red circle to the center"</div>
-                    <div><strong>Complex:</strong> "Create a login form with styled buttons"</div>
-                    <div><strong>Arrange:</strong> "Arrange all shapes in a row"</div>
-                    <div><strong>Layout:</strong> "Create a navigation bar with 4 menu items"</div>
-                    <div><strong>Grid:</strong> "Create a 3x3 grid of circles"</div>
-                    {recognition && <div className="mt-1 text-blue-600">💬 Click 🎤 for voice input</div>}
-                  </div>
-                ) : (
-                  <div className="text-xs text-slate-500">
-                    <strong>Basic Commands:</strong> "Create a red circle", "Add text saying hello", "Create a 2x2 grid"
-                    {recognition && <span className="text-blue-600"> • Click 🎤 for voice input</span>}
-                  </div>
-                )}
-              </div>
-              
-              {/* Keyboard Shortcuts */}
-              <div className="border-t pt-3">
-                <div className="font-medium text-slate-600 mb-2">Keyboard Shortcuts</div>
-                <div className="text-xs text-slate-500 space-y-1">
-                  <div className="font-medium text-slate-600 mb-1">Selection:</div>
-                  <div>• <kbd className="px-1 bg-slate-200 rounded text-xs">Ctrl+A</kbd> select all</div>
-                  <div>• <kbd className="px-1 bg-slate-200 rounded text-xs">Escape</kbd> deselect all</div>
-                  <div>• <kbd className="px-1 bg-slate-200 rounded text-xs">Shift+Click</kbd> multi-select</div>
-                  
-                  <div className="font-medium text-slate-600 mb-1 mt-2">Editing:</div>
-                  <div>• <kbd className="px-1 bg-slate-200 rounded text-xs">Ctrl+C</kbd> copy selected</div>
-                  <div>• <kbd className="px-1 bg-slate-200 rounded text-xs">Ctrl+X</kbd> cut selected</div>
-                  <div>• <kbd className="px-1 bg-slate-200 rounded text-xs">Ctrl+V</kbd> paste</div>
-                  <div>• <kbd className="px-1 bg-slate-200 rounded text-xs">Ctrl+D</kbd> duplicate</div>
-                  <div>• <kbd className="px-1 bg-slate-200 rounded text-xs">Delete</kbd> remove selected</div>
-                  <div>• <kbd className="px-1 bg-slate-200 rounded text-xs">Ctrl+Z</kbd> undo</div>
-                  <div>• <kbd className="px-1 bg-slate-200 rounded text-xs">Ctrl+R</kbd> redo</div>
-                  
-                  <div className="font-medium text-slate-600 mb-1 mt-2">Movement:</div>
-                  <div>• <kbd className="px-1 bg-slate-200 rounded text-xs">Arrow Keys</kbd> move 5px</div>
-                  <div>• <kbd className="px-1 bg-slate-200 rounded text-xs">Shift+Arrows</kbd> move 25px</div>
-                  
-                  <div className="font-medium text-slate-600 mb-1 mt-2">Other:</div>
-                  <div>• <kbd className="px-1 bg-slate-200 rounded text-xs">Double-click</kbd> edit text</div>
-                  <div>• <kbd className="px-1 bg-slate-200 rounded text-xs">Mouse wheel</kbd> zoom</div>
-                </div>
-              </div>
-              
-              {/* AI Testing (Development only) */}
-              {import.meta.env.DEV && (
-                <div className="border-t pt-3">
-                  <div className="font-medium text-slate-600 mb-2">🤖 AI Agent Testing</div>
-                  <div className="space-y-2">
-                  </div>
-                  <div className="text-xs text-slate-400 mt-1">
-                    Check browser console for results
-                  </div>
-                </div>
-              )}
-            </div>
-          </div>
-        </>
-      )}
-    </div>
-  );
-}
 
 // Broadcasting + persistence helpers with improvements
 async function broadcastUpsert(shapes: ShapeBase | ShapeBase[]) {
