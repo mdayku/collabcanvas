@@ -149,7 +149,7 @@ ALTER TABLE public.shapes ENABLE ROW LEVEL SECURITY;
 CREATE OR REPLACE FUNCTION safe_recreate_shape_policies()
 RETURNS void AS $$
 BEGIN
-    -- Drop all possible existing shape policies
+    -- Drop all possible existing shape policies (including both naming conventions)
     DROP POLICY IF EXISTS "Enable read access for all users" ON public.shapes;
     DROP POLICY IF EXISTS "Enable insert for all users" ON public.shapes;
     DROP POLICY IF EXISTS "Enable update for all users" ON public.shapes;
@@ -158,6 +158,12 @@ BEGIN
     DROP POLICY IF EXISTS "Enable insert for all shapes" ON public.shapes;
     DROP POLICY IF EXISTS "Enable update for all shapes" ON public.shapes;
     DROP POLICY IF EXISTS "Enable delete for all shapes" ON public.shapes;
+    
+    -- Drop the new naming convention policies too
+    DROP POLICY IF EXISTS "shapes_select_policy" ON public.shapes;
+    DROP POLICY IF EXISTS "shapes_insert_policy" ON public.shapes;
+    DROP POLICY IF EXISTS "shapes_update_policy" ON public.shapes;
+    DROP POLICY IF EXISTS "shapes_delete_policy" ON public.shapes;
 
     -- Create new canvas-aware policies for shapes
     -- For now, allow all users to access all shapes (for legacy support)
