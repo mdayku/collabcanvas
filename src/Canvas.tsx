@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
-import { Stage, Layer, Rect, Circle, Text as KText, Transformer, Group, Line, RegularPolygon } from "react-konva";
+import { Stage, Layer, Rect, Circle, Text as KText, Transformer, Group, Line, RegularPolygon, Image as KonvaImage } from "react-konva";
 import { useCanvas } from "./state/store";
 import type { ShapeBase, ShapeType } from "./types";
 import { supabase } from "./lib/supabaseClient";
@@ -171,6 +171,79 @@ function TopRibbon({ onSignOut, stageRef }: { onSignOut: () => void; stageRef: R
     }
   };
 
+  const handleImportImage = () => {
+    setShowFileMenu(false);
+    
+    // Create hidden file input
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.accept = 'image/*';
+    input.onchange = (e: any) => {
+      const file = e.target.files[0];
+      if (file) {
+        const reader = new FileReader();
+        reader.onload = (e) => {
+          const imageUrl = e.target?.result as string;
+          createImageShape(imageUrl, file.name);
+        };
+        reader.readAsDataURL(file);
+      }
+    };
+    input.click();
+  };
+
+  const createImageShape = (imageUrl: string, fileName: string) => {
+    // Create an Image object to get dimensions
+    const img = new Image();
+    img.onload = () => {
+      const { shapes, me } = useCanvas.getState();
+      
+      // Calculate reasonable size (max 300px, preserve aspect ratio)
+      const maxSize = 300;
+      const aspectRatio = img.width / img.height;
+      let width = img.width;
+      let height = img.height;
+      
+      if (width > maxSize || height > maxSize) {
+        if (aspectRatio > 1) {
+          width = maxSize;
+          height = maxSize / aspectRatio;
+        } else {
+          height = maxSize;
+          width = maxSize * aspectRatio;
+        }
+      }
+      
+      // Find blank area for placement
+      const position = findBlankArea(shapes, width, height);
+      
+      // Save history before creating
+      useCanvas.getState().pushHistory();
+      
+      const imageShape: ShapeBase = {
+        id: crypto.randomUUID(),
+        type: "image",
+        x: position.x,
+        y: position.y,
+        w: width,
+        h: height,
+        imageUrl: imageUrl,
+        originalWidth: img.width,
+        originalHeight: img.height,
+        updated_at: Date.now(),
+        updated_by: me.id
+      };
+      
+      useCanvas.getState().upsert(imageShape);
+      broadcastUpsert(imageShape);
+      persist(imageShape);
+      
+      // Auto-select the new image
+      useCanvas.getState().select([imageShape.id]);
+    };
+    img.src = imageUrl;
+  };
+
   const handleLoadCanvas = async (canvasId: string) => {
     try {
       const canvasState = useCanvas.getState();
@@ -251,6 +324,17 @@ function TopRibbon({ onSignOut, stageRef }: { onSignOut: () => void; stageRef: R
               >
                 <span className="mr-2">📋</span>
                 Duplicate Canvas
+              </button>
+              
+              <hr className="my-1 border-gray-200" />
+              
+              {/* Import */}
+              <button
+                onClick={handleImportImage}
+                className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 flex items-center"
+              >
+                <span className="mr-2">🖼️</span>
+                Import Image
               </button>
               
               <hr className="my-1 border-gray-200" />
@@ -925,7 +1009,7 @@ export default function Canvas({ onSignOut }: CanvasProps) {
       // Select the shape when right-clicking
       useCanvas.getState().select([s.id]);
     };
-
+    
     return (
       <Group 
         key={s.id}
@@ -939,7 +1023,7 @@ export default function Canvas({ onSignOut }: CanvasProps) {
         onDragEnd={(e) => onDragEnd(s.id, e)}
       >
         {s.type === "rect" && (
-          <Rect
+            <Rect 
             x={0}
             y={0}
             width={s.w}
@@ -961,11 +1045,11 @@ export default function Canvas({ onSignOut }: CanvasProps) {
         )}
         {s.type === "text" && (
           <>
-            <KText
+            <KText 
               x={0}
               y={0}
               text={s.text || "Text"}
-              fontSize={fontSize}
+              fontSize={fontSize} 
               fontFamily={s.fontFamily || "Arial"}
               fill={s.color || "#111"} 
               stroke={s.stroke}
@@ -981,6 +1065,13 @@ export default function Canvas({ onSignOut }: CanvasProps) {
               }}
             />
           </>
+        )}
+        {s.type === "image" && s.imageUrl && (
+          <ImageShape
+            imageUrl={s.imageUrl}
+            width={s.w}
+            height={s.h}
+          />
         )}
         {s.type === "triangle" && (
           <TriangleShape
@@ -1081,22 +1172,22 @@ export default function Canvas({ onSignOut }: CanvasProps) {
   const canvasStageRef = useRef<any>(null);
 
   return (
-    <div className="h-screen w-screen flex flex-col">
+    <div className="h-screen w-screen flex flex-col overflow-hidden">
       <TopRibbon onSignOut={onSignOut} stageRef={canvasStageRef} />
       <TabBar />
-      <div className="flex-1 flex">
+      <div className="flex-1 flex min-h-0">
         <Toolbar onSignOut={onSignOut} status={status} />
         <div ref={canvasContainerRef} className="flex-1 bg-slate-50 relative overflow-hidden">
-          <Stage 
+        <Stage 
             ref={canvasStageRef}
             width={canvasSize.width} 
             height={canvasSize.height} 
-            onWheel={onWheel}
-            onClick={onStageClick}
-            onMouseDown={onStageMouseDown}
-            onMouseMove={onStageMouseMove}
-            onMouseUp={onStageMouseUp}
-          >
+          onWheel={onWheel}
+          onClick={onStageClick}
+          onMouseDown={onStageMouseDown}
+          onMouseMove={onStageMouseMove}
+          onMouseUp={onStageMouseUp}
+        >
           <Layer ref={layerRef}>
             <Rect 
               x={-2000} 
@@ -1176,7 +1267,7 @@ export default function Canvas({ onSignOut }: CanvasProps) {
           />
         )}
       </div>
-    </div>
+      </div>
     </div>
   );
 }
@@ -1220,29 +1311,38 @@ function CategorizedToolbar() {
     useCanvas.getState().pushHistory();
     
     const { me, shapes } = useCanvas.getState();
-    const fontSize = 32; // Larger size for emojis
-    // Make emoji bounds match the visual fontSize for better resize behavior
-    const width = fontSize * 1.1; // Slightly larger than fontSize for padding
-    const height = fontSize * 1.1; // Square bounds work better for emojis
-    const position = findBlankArea(shapes, width, height);
     
-    const s: ShapeBase = { 
+    // Convert emoji to Twemoji image URL
+    const emojiCodePoint = emoji.codePointAt(0)?.toString(16);
+    if (!emojiCodePoint) return;
+    
+    // Twemoji CDN URL (Twitter's emoji images)
+    const twemojiUrl = `https://cdn.jsdelivr.net/gh/twitter/twemoji@14.0.2/assets/72x72/${emojiCodePoint}.png`;
+    
+    // Emoji size - much better for resizing as images
+    const size = 48; // Good default size for emoji images
+    const position = findBlankArea(shapes, size, size);
+    
+    const emojiShape: ShapeBase = { 
       id: crypto.randomUUID(), 
-      type: "text", 
+      type: "image", 
       x: position.x, 
       y: position.y, 
-      w: width, 
-      h: height, 
-      color: "#111", 
-      text: emoji,
-      fontSize: fontSize,
+      w: size, 
+      h: size, 
+      imageUrl: twemojiUrl,
+      originalWidth: 72, // Twemoji standard size
+      originalHeight: 72,
       updated_at: Date.now(), 
       updated_by: me.id 
     };
     
-    useCanvas.getState().upsert(s); 
-    broadcastUpsert(s); 
-    persist(s);
+    useCanvas.getState().upsert(emojiShape); 
+    broadcastUpsert(emojiShape); 
+    persist(emojiShape);
+    
+    // Auto-select the new emoji
+    useCanvas.getState().select([emojiShape.id]);
   };
 
   const toolCategories = [
@@ -1409,7 +1509,7 @@ function Toolbar({ onSignOut, status }: ToolbarProps) {
     // Only clear selection if clicking directly on the sidebar background,
     // not on buttons, scrollable areas, or other interactive elements
     if (e.target === e.currentTarget) {
-      useCanvas.getState().select([]);
+    useCanvas.getState().select([]);
     }
   };
   
@@ -1419,16 +1519,16 @@ function Toolbar({ onSignOut, status }: ToolbarProps) {
         <div className="text-xl font-semibold">CollabCanvas</div>
         <div className="flex gap-2">
           <HelpMenu />
-          <button
-            onClick={(e) => {
-              e.stopPropagation();
-              onSignOut();
-            }}
-            className="text-xs px-2 py-1 text-gray-600 hover:text-gray-800 hover:bg-gray-100 rounded transition-colors"
-            title="Sign out"
-          >
-            Sign out
-          </button>
+        <button
+          onClick={(e) => {
+            e.stopPropagation();
+            onSignOut();
+          }}
+          className="text-xs px-2 py-1 text-gray-600 hover:text-gray-800 hover:bg-gray-100 rounded transition-colors"
+          title="Sign out"
+        >
+          Sign out
+        </button>
         </div>
       </div>
       <div className="text-sm">Signed in as <span style={{color: me.color}}>{me.name||"Guest"}</span></div>
@@ -1743,7 +1843,7 @@ function AIBox() {
     setSelectedLanguage(lang);
     localStorage.setItem('ai-language', lang);
   };
-
+  
   const onRun = async () => { 
     setWorking(true);
     setAiResponse(null);
@@ -1861,8 +1961,8 @@ function AIBox() {
           onLanguageChange={handleLanguageChange}
         />
         <button className="px-3 py-2 rounded bg-emerald-500 text-white disabled:opacity-60 flex-1" disabled={!q||working} onClick={onRun}>
-          {working?"Thinking…":"Run"}
-        </button>
+        {working?"Thinking…":"Run"}
+      </button>
       </div>
 
       {/* AI Response Section */}
@@ -1923,7 +2023,7 @@ function AIBox() {
 
       <div className="mt-2 pt-2 border-t border-gray-200">
         <ClearCanvasButton />
-      </div>
+            </div>
     </div>
   );
 }
@@ -1946,7 +2046,7 @@ function ColorPicker({ color, onChange }: { color: string; onChange: (color: str
       <div className="text-sm font-medium mb-3">Choose Color</div>
       <div className="grid grid-cols-6 gap-2">
         {colors.map((c) => (
-          <button
+              <button
             key={c}
             className={`w-8 h-8 rounded-md border-2 hover:scale-110 transition-transform ${
               color === c ? 'border-blue-500 border-4' : 'border-gray-300'
@@ -2097,7 +2197,7 @@ function ContextMenu({ x, y, shapeId, onClose }: {
                 style={{ backgroundColor: shape.stroke || '#000000' }}
                 onClick={() => setShowColorPicker(showColorPicker === 'stroke' ? null : 'stroke')}
               />
-            </div>
+          </div>
             
             {/* Text Outline Width */}
             <div className="flex items-center justify-between">
@@ -2111,7 +2211,7 @@ function ContextMenu({ x, y, shapeId, onClose }: {
                 className="w-16"
               />
               <span className="text-xs text-gray-500 w-6 text-center">{shape.strokeWidth || 0}</span>
-            </div>
+          </div>
           </>
         )}
         
@@ -2126,7 +2226,7 @@ function ContextMenu({ x, y, shapeId, onClose }: {
                 style={{ backgroundColor: shape.color }}
                 onClick={() => setShowColorPicker(showColorPicker === 'fill' ? null : 'fill')}
               />
-            </div>
+      </div>
             
             {/* Outline Color */}
             <div className="flex items-center justify-between">
@@ -2185,6 +2285,50 @@ function ContextMenu({ x, y, shapeId, onClose }: {
 }
 
 // Custom Shape Components
+function ImageShape({ imageUrl, width, height }: {
+  imageUrl: string; width: number; height: number;
+}) {
+  const [image, setImage] = useState<HTMLImageElement | null>(null);
+
+  useEffect(() => {
+    const img = new window.Image();
+    img.crossOrigin = 'anonymous'; // Handle CORS
+    img.onload = () => {
+      setImage(img);
+    };
+    img.onerror = () => {
+      console.error('Failed to load image:', imageUrl);
+    };
+    img.src = imageUrl;
+  }, [imageUrl]);
+
+  if (!image) {
+    // Show loading placeholder
+    return (
+      <Rect
+        x={0}
+        y={0}
+        width={width}
+        height={height}
+        fill="#f0f0f0"
+        stroke="#ddd"
+        strokeWidth={2}
+        dash={[5, 5]}
+      />
+    );
+  }
+
+  return (
+    <KonvaImage
+      image={image}
+      x={0}
+      y={0}
+      width={width}
+      height={height}
+    />
+  );
+}
+
 function TriangleShape({ width, height, fill, stroke, strokeWidth }: {
   width: number; height: number; fill: string; stroke: string; strokeWidth: number;
 }) {
@@ -2457,12 +2601,12 @@ function HelpMenu() {
               <div className="border-t pt-3">
                 <div className="font-medium text-slate-600 mb-2">Keyboard Shortcuts</div>
                 <div className="text-xs text-slate-500 space-y-1">
-                  <div>• <kbd className="px-1 bg-slate-200 rounded text-xs">Ctrl+Z</kbd> to undo</div>
-                  <div>• <kbd className="px-1 bg-slate-200 rounded text-xs">Ctrl+D</kbd> to duplicate</div>
-                  <div>• <kbd className="px-1 bg-slate-200 rounded text-xs">Shift+Click</kbd> to multi-select</div>
-                  <div>• <kbd className="px-1 bg-slate-200 rounded text-xs">Double-click</kbd> text to edit</div>
-                  <div>• <kbd className="px-1 bg-slate-200 rounded text-xs">Delete</kbd> to remove selected</div>
-                  <div>• <kbd className="px-1 bg-slate-200 rounded text-xs">Mouse wheel</kbd> to zoom</div>
+      <div>• <kbd className="px-1 bg-slate-200 rounded text-xs">Ctrl+Z</kbd> to undo</div>
+      <div>• <kbd className="px-1 bg-slate-200 rounded text-xs">Ctrl+D</kbd> to duplicate</div>
+      <div>• <kbd className="px-1 bg-slate-200 rounded text-xs">Shift+Click</kbd> to multi-select</div>
+      <div>• <kbd className="px-1 bg-slate-200 rounded text-xs">Double-click</kbd> text to edit</div>
+      <div>• <kbd className="px-1 bg-slate-200 rounded text-xs">Delete</kbd> to remove selected</div>
+      <div>• <kbd className="px-1 bg-slate-200 rounded text-xs">Mouse wheel</kbd> to zoom</div>
                 </div>
               </div>
             </div>
@@ -2496,7 +2640,7 @@ async function persist(shapes: ShapeBase | ShapeBase[]) {
       ...s 
     }));
     pending.clear();
-    await supabase.from("shapes").upsert(rows, { onConflict: "id" });
+  await supabase.from("shapes").upsert(rows, { onConflict: "id" });
   }, 150); // 150ms is the sweet spot for batching
 }
 

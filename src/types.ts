@@ -1,4 +1,4 @@
-export type ShapeType = "rect" | "circle" | "text" | "triangle" | "star" | "heart" | "pentagon" | "hexagon" | "octagon" | "trapezoid" | "rhombus" | "parallelogram" | "oval";
+export type ShapeType = "rect" | "circle" | "text" | "image" | "triangle" | "star" | "heart" | "pentagon" | "hexagon" | "octagon" | "trapezoid" | "rhombus" | "parallelogram" | "oval";
 
 export type ShapeBase = {
   id: string;
@@ -14,6 +14,9 @@ export type ShapeBase = {
   text?: string; // for text shapes
   fontSize?: number; // for text shapes
   fontFamily?: string; // for text shapes
+  imageUrl?: string; // for image shapes (data URL or external URL)
+  originalWidth?: number; // for image shapes (original image dimensions)
+  originalHeight?: number; // for image shapes (original image dimensions)
   updated_at: number;
   updated_by: string;
 };
