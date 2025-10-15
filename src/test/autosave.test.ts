@@ -176,21 +176,37 @@ describe('Auto-Save Service', () => {
   });
 
   describe('Auto-Save Timer', () => {
-    it('should start and stop auto-save timer', () => {
+    it('should start and stop auto-save timer', async () => {
       const setIntervalSpy = vi.spyOn(global, 'setInterval');
       const clearIntervalSpy = vi.spyOn(global, 'clearInterval');
       
-      autoSaveService.startAutoSaveTimer();
+      // Create fresh instance after spies are set up
+      const { AutoSaveService } = await import('../services/autoSaveService');
+      const freshService = new AutoSaveService();
+      
+      // Stop any existing timer from constructor
+      freshService.stopAutoSaveTimer();
+      setIntervalSpy.mockClear();
+      clearIntervalSpy.mockClear();
+      
+      freshService.startAutoSaveTimer();
       expect(setIntervalSpy).toHaveBeenCalledWith(expect.any(Function), 30000);
       
-      autoSaveService.stopAutoSaveTimer();
+      freshService.stopAutoSaveTimer();
       expect(clearIntervalSpy).toHaveBeenCalled();
     });
 
-    it('should update timer interval when settings change', () => {
+    it('should update timer interval when settings change', async () => {
       const setIntervalSpy = vi.spyOn(global, 'setInterval');
       
-      autoSaveService.updateSettings({ intervalMs: 15000 });
+      // Create fresh instance after spies are set up  
+      const { AutoSaveService } = await import('../services/autoSaveService');
+      const freshService = new AutoSaveService();
+      
+      // Clear any calls from constructor
+      setIntervalSpy.mockClear();
+      
+      freshService.updateSettings({ intervalMs: 15000 });
       
       expect(setIntervalSpy).toHaveBeenCalledWith(expect.any(Function), 15000);
     });
@@ -228,6 +244,18 @@ describe('Zustand Store Auto-Save Integration', () => {
     // Import store after mocking
     const storeModule = await import('../state/store');
     useCanvas = storeModule.useCanvas;
+    
+    // Reset store state to defaults
+    useCanvas.setState({
+      shapes: {},
+      selectedIds: [],
+      currentCanvas: null,
+      hasUnsavedChanges: false,
+      saveStatus: 'idle',
+      saveMessage: null,
+      isCanvasLoading: false,
+      canvasError: null
+    });
   });
 
   it('should mark canvas as unsaved when shapes are modified', () => {

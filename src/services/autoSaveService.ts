@@ -428,6 +428,9 @@ class AutoSaveService {
   }
 }
 
+// Export class for testing
+export { AutoSaveService };
+
 // Export singleton instance
 export const autoSaveService = new AutoSaveService();
 export default autoSaveService;
