@@ -1613,6 +1613,51 @@ export default function Canvas({ onSignOut }: CanvasProps) {
             strokeWidth={s.strokeWidth || 1}
           />
         )}
+        {s.type === "line" && (
+          <>
+            {/* Invisible hit area for easier selection */}
+            <Line
+              points={[0, 0, s.x2! - s.x, s.y2! - s.y]}
+              stroke="transparent"
+              strokeWidth={Math.max(10, (s.strokeWidth || 1) + 8)} // At least 10px hit area
+              lineCap="round"
+              lineJoin="round"
+            />
+            {/* Actual visible line */}
+            <LineShape
+              x1={0}
+              y1={0}
+              x2={s.x2! - s.x}
+              y2={s.y2! - s.y}
+              stroke={s.stroke || "#000"}
+              strokeWidth={s.strokeWidth || 1}
+              dash={s.dashPattern}
+            />
+          </>
+        )}
+        {s.type === "arrow" && (
+          <>
+            {/* Invisible hit area for easier selection */}
+            <Line
+              points={[0, 0, s.x2! - s.x, s.y2! - s.y]}
+              stroke="transparent"
+              strokeWidth={Math.max(10, (s.strokeWidth || 1) + 8)} // At least 10px hit area
+              lineCap="round"
+              lineJoin="round"
+            />
+            {/* Actual visible arrow */}
+            <ArrowShape
+              x1={0}
+              y1={0}
+              x2={s.x2! - s.x}
+              y2={s.y2! - s.y}
+              stroke={s.stroke || "#000"}
+              strokeWidth={s.strokeWidth || 1}
+              dash={s.dashPattern}
+              arrowHead={s.arrowHead || "end"}
+            />
+          </>
+        )}
       </Group>
     );
   }), [shapes, selectedIds]);
@@ -1740,7 +1785,7 @@ interface ToolbarProps {
 function CategorizedToolbar() {
   const { colors } = useTheme();
   const [expandedCategories, setExpandedCategories] = useState<Set<string>>(
-    new Set(['shapes', 'emojis']) // Start with shapes and emojis expanded
+    new Set(['lines-arrows', 'shapes', 'emojis']) // Start with lines-arrows, shapes and emojis expanded
   );
   
   const toggleCategory = (category: string) => {
@@ -1753,19 +1798,23 @@ function CategorizedToolbar() {
     setExpandedCategories(newExpanded);
   };
 
-  const addRect = () => addShape("rect");
-  const addCircle = () => addShape("circle");
-  const addText = () => addShape("text");
-  const addTriangle = () => addShape("triangle");
-  const addStar = () => addShape("star");
-  const addHeart = () => addShape("heart");
-  const addPentagon = () => addShape("pentagon");
-  const addHexagon = () => addShape("hexagon");
-  const addOctagon = () => addShape("octagon");
-  const addOval = () => addShape("oval");
-  const addTrapezoid = () => addShape("trapezoid");
-  const addRhombus = () => addShape("rhombus");
-  const addParallelogram = () => addShape("parallelogram");
+  const addRect = () => addShape("rect", colors);
+  const addCircle = () => addShape("circle", colors);
+  const addText = () => addShape("text", colors);
+  const addTriangle = () => addShape("triangle", colors);
+  const addStar = () => addShape("star", colors);
+  const addHeart = () => addShape("heart", colors);
+  const addPentagon = () => addShape("pentagon", colors);
+  const addHexagon = () => addShape("hexagon", colors);
+  const addOctagon = () => addShape("octagon", colors);
+  const addOval = () => addShape("oval", colors);
+  const addTrapezoid = () => addShape("trapezoid", colors);
+  const addRhombus = () => addShape("rhombus", colors);
+  const addParallelogram = () => addShape("parallelogram", colors);
+  
+  // Line and arrow creation functions
+  const addLine = () => addShape("line", colors);
+  const addArrow = () => addShape("arrow", colors);
   
   const addEmoji = (emoji: string) => {
     // Save history before creating
@@ -1851,7 +1900,8 @@ function CategorizedToolbar() {
       name: 'Lines & Arrows',
       emoji: '📏',
       tools: [
-        // Coming soon
+        { name: '─', action: addLine, available: true, tooltip: 'Line' },
+        { name: '→', action: addArrow, available: true, tooltip: 'Arrow' },
       ]
     },
     {
@@ -1927,13 +1977,13 @@ function CategorizedToolbar() {
       ]
     }
   ];
-
+  
   return (
     <div className="border-t pt-3">
       <div className="space-y-2">
         {toolCategories.map((category) => (
           <div key={category.id} className="border rounded-lg">
-            <button
+        <button
               onClick={() => toggleCategory(category.id)}
               className="w-full flex items-center justify-between p-3 text-left hover:bg-gray-50 transition-colors"
             >
@@ -1978,7 +2028,7 @@ function CategorizedToolbar() {
                         }}
                       >
                         {tool.name}
-                      </button>
+        </button>
                     ))}
                   </div>
                 )}
@@ -2160,12 +2210,11 @@ function findBlankArea(shapes: Record<string, ShapeBase>, width: number, height:
   };
 }
 
-function addShape(type: ShapeType) {
+function addShape(type: ShapeType, colors: any) {
   // Save history before creating
   useCanvas.getState().pushHistory();
   
   const { me, shapes } = useCanvas.getState();
-  const { colors } = useTheme();
   
   let s: ShapeBase;
   if (type === "text") {
@@ -2189,6 +2238,27 @@ function addShape(type: ShapeType) {
       color: colors.text, 
       text: defaultText,
       fontSize: fontSize,
+      updated_at: Date.now(), 
+      updated_by: me.id 
+    };
+  } else if (type === "line" || type === "arrow") {
+    // Lines and arrows use start/end points instead of width/height
+    const defaultLength = 120;
+    const position = findBlankArea(shapes, defaultLength, 2); // Minimal height for findBlankArea
+    
+    s = { 
+      id: crypto.randomUUID(), 
+      type, 
+      x: position.x, 
+      y: position.y + 20, // Start point
+      w: defaultLength, // Use w to store length for collision detection
+      h: 2, // Minimal height for collision detection  
+      x2: position.x + defaultLength, // End point
+      y2: position.y + 20,
+      stroke: colors.text, // Lines use stroke, not fill
+      strokeWidth: 3,
+      arrowHead: type === "arrow" ? "end" : "none",
+      text: "", 
       updated_at: Date.now(), 
       updated_by: me.id 
     };
@@ -2230,6 +2300,9 @@ function addShape(type: ShapeType) {
   useCanvas.getState().upsert(s); 
   broadcastUpsert(s); 
   persist(s);
+  
+  // Auto-select the new shape
+  useCanvas.getState().select([s.id]);
 }
 
 function ClearCanvasButton() {
@@ -2732,7 +2805,7 @@ function FloatingAIWidget() {
           className="w-full h-full flex items-center justify-center text-2xl rounded-xl hover:scale-105 transition-transform"
           title={halloweenMode ? "Open FrAInkenstein" : "Open AI Assistant"}
         >
-          {halloweenMode ? '🎃' : '🤖'}
+          {halloweenMode ? '🧟' : '🤖'}
               </button>
       ) : (
         <>
@@ -2747,7 +2820,7 @@ function FloatingAIWidget() {
             onMouseDown={handleMouseDown}
           >
             <div className="flex items-center gap-2">
-              <span className="text-xl">{halloweenMode ? '🎃' : '🤖'}</span>
+              <span className="text-xl">{halloweenMode ? '🧟' : '🤖'}</span>
               <span className="font-medium">{halloweenMode ? 'FrAInkenstein' : 'AI Assistant'}</span>
             </div>
             
@@ -2806,7 +2879,7 @@ function FloatingAIWidget() {
                       {isListening ? '🔴' : '🎤'}
                     </button>
                   )}
-                </div>
+          </div>
                 
                 {/* Send Button - aligned to right */}
                 <button
@@ -2843,7 +2916,7 @@ function FloatingAIWidget() {
             <div className="flex-1">
               <div className="font-medium text-sm" style={{ color: colors.error }}>
                 {halloweenMode ? 'FrAInkenstein' : 'AI Assistant'} Error
-              </div>
+      </div>
               <div className="text-sm mt-1">{errorMessage}</div>
               <button
                 onClick={() => setErrorMessage(null)}
@@ -3257,6 +3330,78 @@ function ImageShape({ imageUrl, width, height, stroke, strokeWidth }: {
         width={width}
         height={height}
       />
+    </>
+  );
+}
+
+// Line and Arrow Shape Components
+function LineShape({ x1, y1, x2, y2, stroke, strokeWidth, dash }: {
+  x1: number; y1: number; x2: number; y2: number; stroke: string; strokeWidth: number; dash?: number[];
+}) {
+  return (
+    <Line
+      points={[x1, y1, x2, y2]}
+      stroke={stroke}
+      strokeWidth={strokeWidth}
+      dash={dash}
+      lineCap="round"
+      lineJoin="round"
+    />
+  );
+}
+
+function ArrowShape({ x1, y1, x2, y2, stroke, strokeWidth, dash, arrowHead }: {
+  x1: number; y1: number; x2: number; y2: number; stroke: string; strokeWidth: number; dash?: number[]; arrowHead: string;
+}) {
+  // Calculate arrow head points
+  const angle = Math.atan2(y2 - y1, x2 - x1);
+  const headLength = Math.max(10, strokeWidth * 3);
+  const headAngle = Math.PI / 6; // 30 degrees
+  
+  // Arrow head points
+  const x3 = x2 - headLength * Math.cos(angle - headAngle);
+  const y3 = y2 - headLength * Math.sin(angle - headAngle);
+  const x4 = x2 - headLength * Math.cos(angle + headAngle);
+  const y4 = y2 - headLength * Math.sin(angle + headAngle);
+  
+  return (
+    <>
+      {/* Main line */}
+      <Line
+        points={[x1, y1, x2, y2]}
+        stroke={stroke}
+        strokeWidth={strokeWidth}
+        dash={dash}
+        lineCap="round"
+        lineJoin="round"
+      />
+      {/* Arrow head */}
+      {(arrowHead === "end" || arrowHead === "both") && (
+        <Line
+          points={[x3, y3, x2, y2, x4, y4]}
+          stroke={stroke}
+          strokeWidth={strokeWidth}
+          lineCap="round"
+          lineJoin="round"
+        />
+      )}
+      {/* Start arrow head if both */}
+      {arrowHead === "both" && (
+        <Line
+          points={[
+            x1 + headLength * Math.cos(angle - headAngle + Math.PI),
+            y1 + headLength * Math.sin(angle - headAngle + Math.PI),
+            x1,
+            y1,
+            x1 + headLength * Math.cos(angle + headAngle + Math.PI),
+            y1 + headLength * Math.sin(angle + headAngle + Math.PI)
+          ]}
+          stroke={stroke}
+          strokeWidth={strokeWidth}
+          lineCap="round"
+          lineJoin="round"
+        />
+      )}
     </>
   );
 }

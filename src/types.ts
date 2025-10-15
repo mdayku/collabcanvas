@@ -1,4 +1,4 @@
-export type ShapeType = "rect" | "circle" | "text" | "image" | "triangle" | "star" | "heart" | "pentagon" | "hexagon" | "octagon" | "trapezoid" | "rhombus" | "parallelogram" | "oval";
+export type ShapeType = "rect" | "circle" | "text" | "image" | "triangle" | "star" | "heart" | "pentagon" | "hexagon" | "octagon" | "trapezoid" | "rhombus" | "parallelogram" | "oval" | "line" | "arrow";
 
 export type ShapeBase = {
   id: string;
@@ -18,6 +18,11 @@ export type ShapeBase = {
   imageUrl?: string; // for image shapes (data URL or external URL)
   originalWidth?: number; // for image shapes (original image dimensions)
   originalHeight?: number; // for image shapes (original image dimensions)
+  // Line and arrow properties
+  x2?: number; // end point x for lines and arrows
+  y2?: number; // end point y for lines and arrows
+  arrowHead?: 'start' | 'end' | 'both' | 'none'; // arrow head configuration
+  dashPattern?: number[]; // dash pattern for lines [dash, gap, dash, gap...]
   updated_at: number;
   updated_by: string;
 };

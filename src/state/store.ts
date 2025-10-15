@@ -671,6 +671,29 @@ function getShapeDefaults(type: ShapeType): Partial<ShapeBase> {
       };
     case 'image':
       return { x: 100, y: 100, w: 200, h: 150 };
+    case 'line':
+      return { 
+        x: 100, 
+        y: 120, 
+        w: 120, 
+        h: 2, 
+        x2: 220, 
+        y2: 120, 
+        stroke: '#000', 
+        strokeWidth: 2 
+      };
+    case 'arrow':
+      return { 
+        x: 100, 
+        y: 120, 
+        w: 120, 
+        h: 2, 
+        x2: 220, 
+        y2: 120, 
+        stroke: '#000', 
+        strokeWidth: 2, 
+        arrowHead: 'end' 
+      };
     default:
       return { x: 100, y: 100, w: 100, h: 100 };
   }
