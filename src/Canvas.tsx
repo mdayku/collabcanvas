@@ -8,6 +8,7 @@ import { isOpenAIConfigured } from "./services/openaiService";
 import { isGroqConfigured } from "./services/groqService";
 import { SaveStatusIndicator } from "./components/SaveStatusIndicator";
 import { useTheme } from "./contexts/ThemeContext";
+import { runAgentSmokeTests, testCommand } from "./ai/devEval";
 
 // Web Speech API type declarations
 declare global {
@@ -1080,9 +1081,36 @@ export default function Canvas({ onSignOut }: CanvasProps) {
         const { me } = useCanvas.getState();
         channel.track({ id: me.id, name: me.name || "Guest", x: 0, y: 0, color: me.color, last: Date.now() });
         // Load persisted shapes
-        const { data } = await supabase.from("shapes").select("*").eq("room_id", useCanvas.getState().roomId);
-        if (data) {
-          const mapped = data.map((r: any) => ({ id: r.id, type: r.type, x: r.x, y: r.y, w: r.w, h: r.h, rotation: r.rotation, color: r.color, text: r.text, updated_at: r.updated_at, updated_by: r.updated_by }));
+        const { data, error } = await supabase.from("shapes").select("*").eq("room_id", useCanvas.getState().roomId);
+        if (error) {
+          console.error("Failed to load shapes from database:", error);
+        } else if (data) {
+          const mapped = data.map((r: any) => ({
+            id: r.id,
+            type: r.type,
+            x: r.x,
+            y: r.y,
+            w: r.w,
+            h: r.h,
+            rotation: r.rotation || 0,
+            color: r.color,
+            stroke: r.stroke,
+            strokeWidth: r.strokeWidth,
+            zIndex: r.zIndex || 0,
+            text: r.text,
+            fontSize: r.fontSize,
+            fontFamily: r.fontFamily,
+            imageUrl: r.imageUrl,
+            originalWidth: r.originalWidth,
+            originalHeight: r.originalHeight,
+            x2: r.x2,
+            y2: r.y2,
+            arrowHead: r.arrowHead,
+            dashPattern: r.dashPattern,
+            updated_at: r.updated_at,
+            updated_by: r.updated_by
+          }));
+          console.log(`Loaded ${mapped.length} shapes from database for room: ${useCanvas.getState().roomId}`);
           useCanvas.getState().upsert(mapped as any);
         }
       }
@@ -1183,6 +1211,16 @@ export default function Canvas({ onSignOut }: CanvasProps) {
     const handleKeyDown = (e: KeyboardEvent) => {
       // Don't handle shortcuts while editing text
       if (editingText) return;
+      
+      // Don't handle shortcuts when user is typing in input fields
+      const activeElement = document.activeElement;
+      if (activeElement && (
+        activeElement.tagName === 'INPUT' ||
+        activeElement.tagName === 'TEXTAREA' ||
+        (activeElement as HTMLElement).contentEditable === 'true'
+      )) {
+        return;
+      }
       
       // Undo with Ctrl+Z
       if (e.ctrlKey && e.key === 'z') {
@@ -1433,13 +1471,28 @@ export default function Canvas({ onSignOut }: CanvasProps) {
       textWidth = dims.width;
       textHeight = dims.height;
     }
-    const onClick = () => {
-      if (selectedIds.includes(s.id)) {
-        if (selectedIds.length === 1) {
-          useCanvas.getState().select([]);
+    const onClick = (e: any) => {
+      e.cancelBubble = true; // Prevent event from bubbling to stage
+      if (e.evt.shiftKey) {
+        const currentSelection = useCanvas.getState().selectedIds;
+        if (currentSelection.includes(s.id)) {
+          // Remove from selection if already selected
+          const newSelection = currentSelection.filter(id => id !== s.id);
+          useCanvas.getState().select(newSelection);
+        } else {
+          // Add to selection
+          const newSelection = [...currentSelection, s.id];
+          useCanvas.getState().select(newSelection);
         }
       } else {
-        useCanvas.getState().select([s.id]);
+        // Single selection
+        if (selectedIds.includes(s.id)) {
+          if (selectedIds.length === 1) {
+            useCanvas.getState().select([]);
+          }
+        } else {
+          useCanvas.getState().select([s.id]);
+        }
       }
     };
 
@@ -2651,6 +2704,54 @@ function FloatingAIWidget() {
   const [isDragging, setIsDragging] = useState(false);
   const [dragOffset, setDragOffset] = useState({ x: 0, y: 0 });
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [selectedCommandType, setSelectedCommandType] = useState('Custom');
+
+  // Command type categories for hints
+  const commandTypes = {
+    'Custom': {
+      icon: '✨',
+      placeholder: 'What do you want on your canvas today?',
+      examples: ['Create a dashboard layout', 'Build a login form', 'Make a navigation bar']
+    },
+    'Create': {
+      icon: '🎨',
+      placeholder: 'create a red circle',
+      examples: ['create a red circle', 'add a 200x300 rectangle', 'make text saying "Hello"']
+    },
+    'Rotate': {
+      icon: '🔄',
+      placeholder: 'rotate 45 degrees',
+      examples: ['rotate 45', 'turn clockwise', 'spin left']
+    },
+    'Move': {
+      icon: '📍',
+      placeholder: 'move right 100',
+      examples: ['move right 100', 'move down 50', 'move to center', 'move to 200 300']
+    },
+    'Resize': {
+      icon: '📏',
+      placeholder: 'make it twice as big',
+      examples: ['make it twice as big', 'resize to 200x300', 'make it bigger']
+    },
+    'Layout': {
+      icon: '📐',
+      placeholder: 'arrange in a row',
+      examples: ['arrange in a row', 'create 3x2 grid', 'layout horizontally']
+    },
+    'Select': {
+      icon: '🎯',
+      placeholder: 'select all rectangles',
+      examples: ['select the blue circle', 'select all rectangles', 'select all shapes', 'select the largest shape']
+    }
+  };
+
+  // Handle command type change
+  const handleCommandTypeChange = (type: string) => {
+    setSelectedCommandType(type);
+    if (type !== 'Custom' && commandTypes[type as keyof typeof commandTypes]) {
+      setPrompt(commandTypes[type as keyof typeof commandTypes].placeholder);
+    }
+  };
 
   // Speech recognition language mapping
   const getSpeechLang = (aiLang: string): string => {
@@ -2840,20 +2941,64 @@ function FloatingAIWidget() {
           {/* Chat Input */}
           <div className="p-4">
             <form onSubmit={handleSubmit} className="space-y-3">
-              <textarea
-                value={prompt}
-                onChange={(e) => setPrompt(e.target.value)}
-                onKeyPress={handleKeyPress}
-                placeholder="What do you want on your canvas today?"
-                className="w-full p-3 rounded-lg border resize-none focus:outline-none focus:ring-2 focus:ring-blue-500"
-                style={{
-                  backgroundColor: colors.bgSecondary,
-                  borderColor: colors.border,
-                  color: colors.text,
-                  minHeight: '60px'
-                }}
-                disabled={isWorking}
-              />
+              {/* Command Type Dropdown */}
+              <div className="flex gap-2">
+                <select
+                  value={selectedCommandType}
+                  onChange={(e) => handleCommandTypeChange(e.target.value)}
+                  className="px-3 py-2 rounded-lg border text-sm font-medium min-w-0 flex-shrink-0"
+                  style={{
+                    backgroundColor: colors.bgSecondary,
+                    borderColor: colors.border,
+                    color: colors.text,
+                  }}
+                  disabled={isWorking}
+                >
+                  {Object.entries(commandTypes).map(([type, info]) => (
+                    <option key={type} value={type}>
+                      {info.icon} {type}
+                    </option>
+                  ))}
+                </select>
+                
+                <textarea
+                  value={prompt}
+                  onChange={(e) => setPrompt(e.target.value)}
+                  onKeyPress={handleKeyPress}
+                  placeholder={commandTypes[selectedCommandType as keyof typeof commandTypes]?.placeholder || "What do you want on your canvas today?"}
+                  className="flex-1 p-3 rounded-lg border resize-none focus:outline-none focus:ring-2 focus:ring-blue-500 min-w-0"
+                  style={{
+                    backgroundColor: colors.bgSecondary,
+                    borderColor: colors.border,
+                    color: colors.text,
+                    minHeight: '60px'
+                  }}
+                  disabled={isWorking}
+                />
+              </div>
+              
+              {/* Command Examples Hint */}
+              {selectedCommandType !== 'Custom' && (
+                <div className="text-xs space-y-1" style={{ color: colors.textMuted }}>
+                  <div className="font-medium">⚡ Fast commands for {selectedCommandType}:</div>
+                  <div className="flex flex-wrap gap-1">
+                    {commandTypes[selectedCommandType as keyof typeof commandTypes]?.examples.map((example, i) => (
+                      <button
+                        key={i}
+                        type="button"
+                        onClick={() => setPrompt(example)}
+                        className="px-2 py-1 rounded text-xs hover:opacity-80 transition-opacity"
+                        style={{
+                          backgroundColor: colors.buttonBg,
+                          color: colors.textSecondary
+                        }}
+                      >
+                        "{example}"
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
               
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2">
@@ -3705,6 +3850,36 @@ function HelpMenu() {
       <div>• <kbd className="px-1 bg-slate-200 rounded text-xs">Mouse wheel</kbd> to zoom</div>
                 </div>
               </div>
+              
+              {/* AI Testing (Development only) */}
+              {import.meta.env.DEV && (
+                <div className="border-t pt-3">
+                  <div className="font-medium text-slate-600 mb-2">🤖 AI Agent Testing</div>
+                  <div className="space-y-2">
+                    <button
+                      onClick={async () => {
+                        console.log('🧪 Running AI Agent Smoke Tests...');
+                        await runAgentSmokeTests();
+                      }}
+                      className="w-full px-3 py-1 bg-blue-100 text-blue-700 rounded text-xs hover:bg-blue-200 transition-colors"
+                    >
+                      Run Smoke Tests
+                    </button>
+                    <button
+                      onClick={async () => {
+                        const cmd = prompt('Test AI command:');
+                        if (cmd) await testCommand(cmd);
+                      }}
+                      className="w-full px-3 py-1 bg-green-100 text-green-700 rounded text-xs hover:bg-green-200 transition-colors"
+                    >
+                      Test Single Command
+                    </button>
+                  </div>
+                  <div className="text-xs text-slate-400 mt-1">
+                    Check browser console for results
+                  </div>
+                </div>
+              )}
             </div>
           </div>
         </>

@@ -237,6 +237,39 @@ export type AIResponse = {
 };
 
 export async function interpretWithResponse(text: string, language: string = 'en'): Promise<AIResponse> {
+  console.log('[AI] Processing command:', text);
+  
+  // PRIORITIZE: Try rule-based parser first for instant responses
+  console.log('[AI] Trying enhanced rule-based parser first...');
+  const ruleResult = await interpret(text);
+  
+  // If rule-based parser handled it successfully, return immediately
+  if (ruleResult && typeof ruleResult === 'object') {
+    if (ruleResult.ok) {
+      console.log('[AI] ⚡ Rule-based parser SUCCESS:', ruleResult);
+      return {
+        type: 'success',
+        message: `✅ Successfully executed: "${text}"`,
+        result: ruleResult.tool_calls || ruleResult
+      };
+    }
+    if (ruleResult.error) {
+      console.log('[AI] Rule-based parser error:', ruleResult.error);
+      return {
+        type: 'clarification_needed',
+        message: ruleResult.error,
+        suggestions: [
+          "Try selecting a shape first",
+          "Be more specific (e.g., 'rotate the blue rectangle 45°')",
+          "Create some shapes to work with"
+        ]
+      };
+    }
+  }
+  
+  // If rule-based parser didn't handle it, fall back to LLMs for complex commands
+  console.log('[AI] Rule-based parser didn\'t handle command, trying LLMs...');
+  
   // Try serverless AI endpoint first (only in production)
   if (import.meta.env.PROD) {
     try {
@@ -319,16 +352,16 @@ export async function interpretWithResponse(text: string, language: string = 'en
     }
   }
 
-  console.log('[AI] Using rule-based system for:', text);
+  console.log('[AI] All AI services failed, using legacy rule-based fallback');
   
-  // Fallback to rule-based system
-  const result = await interpret(text);
+  // Final fallback to legacy parser
+  const legacyResult = await interpretLegacy(text);
   
-  if (result !== null) {
+  if (legacyResult !== null) {
     return {
-      type: 'success',
+      type: 'success', 
       message: `✅ Successfully executed: "${text}"`,
-      result
+      result: legacyResult
     };
   }
 
@@ -411,8 +444,299 @@ export async function interpretWithResponse(text: string, language: string = 'en
   };
 }
 
-// Keep the original interpret function for backward compatibility
+// === NEW: Enhanced hybrid rule-based parser ===
 export async function interpret(text: string) {
+  const raw = text.trim();
+  const t = normalize(raw);
+
+  // 0) target resolution (selected > mentioned > last by type)
+  const resolve = (hint?: Partial<Hint>) => resolveTarget({ ...extractHint(t), ...hint });
+
+  // ROTATE
+  if (/(rotate|spin|turn)\b/.test(t)) {
+    const angle = parseAngle(t) ?? 90; // default 90°
+    const target = resolve();
+    if (!target) return { error: "No target to rotate. Select a shape or mention it (e.g., 'rotate the blue rectangle 45°')" };
+    tools.rotateShape(target.id, angle);
+    return { ok: true, tool_calls: [{ name:"rotateShape", args:{ id: target.id, degrees: angle }}] };
+  }
+
+  // MOVE to center / positions / relative directions
+  if (/move\b/.test(t)) {
+    const target = resolve();
+    if (!target) return { error: "No target to move. Select a shape or mention it (e.g., 'move the circle to center')" };
+    
+    // Move to center
+    if (/\b(center|centre|middle)\b/.test(t)) {
+      const x = 400, y = 300; // Canvas center
+      tools.moveShape(target.id, x, y);
+      return { ok: true, tool_calls: [{ name:"moveShape", args:{ id: target.id, x, y }}] };
+    }
+    
+    // Relative directional movement: "move right 100", "move down 250", etc.
+    const relativeMove = /move\s+(right|left|up|down)\s+(\d+)/.exec(t);
+    if (relativeMove) {
+      const direction = relativeMove[1];
+      const distance = +relativeMove[2];
+      const currentShape = target.shape;
+      let newX = currentShape.x;
+      let newY = currentShape.y;
+      
+      switch (direction) {
+        case 'right': newX += distance; break;
+        case 'left': newX -= distance; break;
+        case 'down': newY += distance; break;
+        case 'up': newY -= distance; break;
+      }
+      
+      tools.moveShape(target.id, newX, newY);
+      return { ok: true, tool_calls: [{ name:"moveShape", args:{ id: target.id, x: newX, y: newY }}] };
+    }
+    
+    // Absolute position: "move to 100 200"
+    const pos = /(\d+)[ ,x]+(\d+)/.exec(t);
+    if (pos) {
+      const x = +pos[1], y = +pos[2];
+      tools.moveShape(target.id, x, y);
+      return { ok: true, tool_calls: [{ name:"moveShape", args:{ id: target.id, x, y }}] };
+    }
+  }
+
+  // RESIZE (absolute or relative)
+  if (/\b(resize|scale|make)\b/.test(t) && /\b(big|bigger|small|smaller|twice|half|\d+x\d+)\b/.test(t)) {
+    const target = resolve();
+    if (!target) return { error: "No target to resize. Select a shape or mention it (e.g., 'make the rectangle twice as big')" };
+    const wh = parseSize(t, target.shape);
+    tools.resizeShape(target.id, wh.w, wh.h);
+    return { ok: true, tool_calls: [{ name:"resizeShape", args:{ id: target.id, ...wh }}] };
+  }
+
+  // CREATE basic shapes
+  if (/create|make|add/.test(t)) {
+    if (/\b(circle)\b/.test(t))  {
+      const id = tools.createShape("circle", 200, 200, 120, 120, parseColor(t));
+      return { ok: true, tool_calls: [{ name:"createShape", args:{ type:"circle", id }}] };
+    }
+    if (/\b(rect|rectangle)\b/.test(t)) {
+      const { w, h } = parseSize(t) ?? { w: 200, h: 120 };
+      const id = tools.createShape("rect", 300, 220, w, h, parseColor(t));
+      return { ok: true, tool_calls: [{ name:"createShape", args:{ type:"rect", id }}] };
+    }
+    if (/\b(text|label)\b/.test(t)) {
+      const content = parseText(t) ?? "Hello World";
+      const id = tools.createText(content, 180, 180, 24, parseColor(t));
+      return { ok: true, tool_calls: [{ name:"createText", args:{ text: content, id }}] };
+    }
+  }
+
+  // GRID / ROW layout (simple)
+  if (/grid/.test(t) && /(\d+)x(\d+)/.test(t)) {
+    const [_, gx, gy] = t.match(/(\d+)x(\d+)/)!;
+    const ids:string[] = [];
+    for (let i=0;i<+gx;i++) for (let j=0;j<+gy;j++)
+      ids.push(tools.createShape("rect", 80+ i*110, 80+ j*110, 90, 90, "#ddd") as any);
+    return { ok: true, tool_calls: [{ name:"createGrid", args:{ gx:+gx, gy:+gy, ids }}] };
+  }
+  if (/\b(row|horizontal)\b/.test(t) && /\barrange|align|layout\b/.test(t)) {
+    const ids = getSelectionOrAll(3); // pick first 3 by default
+    if (ids.length) {
+      arrangeRow(ids, 16);
+      return { ok: true, tool_calls: [{ name:"arrangeRow", args:{ ids, gap:16 }}] };
+    }
+  }
+
+  // SELECT shapes by various criteria
+  if (/select\b/.test(t)) {
+    try {
+      const shapes = Object.values(useCanvas.getState().shapes);
+      const color = parseColor(t);
+      const type = extractHint(t).type;
+      let selectedIds: string[] = [];
+
+      // Select all shapes
+      if (/\ball\s+(shapes?|objects?)\b/.test(t) || /select\s+all\b/.test(t)) {
+        selectedIds = shapes.map(s => s.id);
+      }
+      // Select by type: "select all rectangles", "select the circles"
+      else if (/\b(rectangle|rect|square)s?\b/.test(t)) {
+        selectedIds = shapes.filter(s => s.type === 'rect').map(s => s.id);
+      }
+      else if (/\bcircles?\b/.test(t)) {
+        selectedIds = shapes.filter(s => s.type === 'circle').map(s => s.id);
+      }
+      else if (/\b(text|labels?)\b/.test(t)) {
+        selectedIds = shapes.filter(s => s.type === 'text').map(s => s.id);
+      }
+      else if (/\b(lines?)\b/.test(t)) {
+        selectedIds = shapes.filter(s => s.type === 'line').map(s => s.id);
+      }
+      else if (/\b(arrows?)\b/.test(t)) {
+        selectedIds = shapes.filter(s => s.type === 'arrow').map(s => s.id);
+      }
+      // Select by color: "select the blue circle", "select all red shapes"
+      else if (color || type) {
+        if (color && type) {
+          // Specific color + type: "select the blue circle"
+          selectedIds = shapes.filter(s => s.type === type && s.color && s.color.includes(color)).map(s => s.id);
+        } else if (color) {
+          // All shapes of a color: "select all red shapes"
+          selectedIds = shapes.filter(s => s.color && s.color.includes(color)).map(s => s.id);
+        } else if (type) {
+          // All shapes of a type: "select the rectangle"
+          selectedIds = shapes.filter(s => s.type === type).map(s => s.id);
+        }
+      }
+
+      // Select by size: "select the largest shape", "select the smallest circle"
+      if (/\b(largest|biggest)\b/.test(t)) {
+        const filteredShapes = type ? shapes.filter(s => s.type === type) : shapes;
+        if (filteredShapes.length > 0) {
+          const largest = filteredShapes.reduce((prev, current) => 
+            (prev.w * prev.h) > (current.w * current.h) ? prev : current
+          );
+          selectedIds = [largest.id];
+        }
+      }
+      else if (/\b(smallest|tiniest)\b/.test(t)) {
+        const filteredShapes = type ? shapes.filter(s => s.type === type) : shapes;
+        if (filteredShapes.length > 0) {
+          const smallest = filteredShapes.reduce((prev, current) => 
+            (prev.w * prev.h) < (current.w * current.h) ? prev : current
+          );
+          selectedIds = [smallest.id];
+        }
+      }
+
+      if (selectedIds.length > 0) {
+        useCanvas.getState().select(selectedIds);
+        return { 
+          ok: true, 
+          tool_calls: [{ 
+            name: "selectShapes", 
+            args: { ids: selectedIds, count: selectedIds.length } 
+          }] 
+        };
+      } else {
+        return { error: "No shapes found matching the selection criteria" };
+      }
+    } catch (error) {
+      return { error: `Selection failed: ${(error as Error).message}` };
+    }
+  }
+
+  // LOGIN FORM shortcut
+  if (/login form/.test(t)) {
+    const baseX = 400, baseY = 200; const gap = 60; const W=280, H=40;
+    const u = tools.createShape("rect", baseX, baseY, W, H, "#ffffff");
+    const p = tools.createShape("rect", baseX, baseY+gap, W, H, "#ffffff");
+    const b = tools.createShape("rect", baseX, baseY+gap*2, W, H, "#0ea5e9");
+    tools.createText("Username", baseX-120, baseY-26, 16, "#444");
+    tools.createText("Password", baseX-120, baseY+gap-26, 16, "#444");
+    tools.createText("Sign in", baseX+W/2-34, baseY+gap*2+10, 18, "#fff");
+    return { ok: true, tool_calls: [{ name:"createLoginForm", args:{ ids:[u,p,b] }}] };
+  }
+
+  // FALLBACK to original parsing for compatibility
+  return await interpretLegacy(text);
+}
+
+// === Rule-based parser helpers ===
+type Hint = { type?: "rect"|"circle"|"text"; color?: string; selected?: boolean };
+
+function normalize(s:string){ return s.toLowerCase().replace(/\s+/g,' ').trim(); }
+
+function parseAngle(t:string): number | null {
+  // "rotate 45", "rotate -30", "rotate 90 degrees", "rotate clockwise/counterclockwise"
+  const m = t.match(/\b(-?\d{1,4})\s*(deg|degree|degrees)?\b/);
+  if (m) return clampAngle(parseInt(m[1],10));
+  if (/\bclockwise\b/.test(t)) return 90;
+  if (/\bcounter[- ]?clockwise\b/.test(t)) return -90;
+  if (/\bleft\b/.test(t)) return -90;
+  if (/\bright\b/.test(t)) return 90;
+  return null;
+}
+
+function clampAngle(a:number){ a%=360; if (a>180) a-=360; if (a<-180) a+=360; return a; }
+
+function parseSize(t:string, target?: ShapeBase): { w:number; h:number } {
+  const m = t.match(/(\d+)\s*[x×]\s*(\d+)/); // 200x300
+  if (m) return { w:+m[1], h:+m[2] };
+  if (/\btwice|2x|double\b/.test(t) && target) return { w: target.w*2, h: target.h*2 };
+  if (/\bhalf|0\.5x\b/.test(t) && target)        return { w: Math.max(10,target.w/2), h: Math.max(10,target.h/2) };
+  if (/\b(bigger|larger)\b/.test(t) && target)   return { w: target.w*1.25, h: target.h*1.25 };
+  if (/\b(smaller|shrink)\b/.test(t) && target)  return { w: target.w*0.8,  h: target.h*0.8  };
+  return { w: 200, h: 120 };
+}
+
+function parseColor(t:string): string | undefined {
+  const m = t.match(/\b(red|blue|green|yellow|purple|orange|black|white|gray|grey)\b/);
+  if (!m) return undefined;
+  const map:any = { 
+    red:"#ef4444", blue:"#3b82f6", green:"#10b981", yellow:"#f59e0b", 
+    purple:"#8b5cf6", orange:"#f97316", black:"#111827", white:"#ffffff", 
+    gray:"#6b7280", grey:"#6b7280" 
+  };
+  return map[m[1]];
+}
+
+function parseText(t:string): string | null {
+  const m = t.match(/(?:say|text|label|that says)\s+["']([^"']+)["']/) || t.match(/["']([^"']+)["']/);
+  return m?.[1] ?? null;
+}
+
+function getSelectionOrAll(n=0): string[] {
+  const s = useCanvas.getState(); 
+  const ids = s.selectedIds.length ? s.selectedIds : Object.keys(s.shapes);
+  return n ? ids.slice(0,n) : ids;
+}
+
+function resolveTarget(hint?: Partial<Hint>): { id:string; shape: ShapeBase } | null {
+  const s = useCanvas.getState();
+  
+  // Prefer currently selected shapes
+  if (s.selectedIds.length) {
+    const id = s.selectedIds[0]; 
+    return { id, shape: s.shapes[id] };
+  }
+  
+  // by explicit type words
+  if (hint?.type) {
+    const found = Object.values(s.shapes).find(x => x.type === hint!.type); 
+    if (found) return { id: found.id, shape: found };
+  }
+  
+  // by color mention (e.g., "blue rectangle")
+  if (hint?.color) {
+    const found = Object.values(s.shapes).find(x => x.color && x.color.includes(hint!.color!)); 
+    if (found) return { id: found.id, shape: found };
+  }
+  
+  // last created as fallback
+  const last = Object.values(s.shapes).sort((a,b)=>b.updated_at-a.updated_at)[0];
+  return last ? { id: last.id, shape: last } : null;
+}
+
+function extractHint(t:string): Hint {
+  const type = /\b(rect|rectangle)\b/.test(t) ? "rect" : 
+               /\bcircle\b/.test(t) ? "circle" : 
+               /\btext|label\b/.test(t) ? "text" : undefined;
+  const c = parseColor(t);
+  return { type, color: c };
+}
+
+// Simple row layout
+function arrangeRow(ids:string[], gap=12) {
+  const s = useCanvas.getState();
+  let x = 80, y = 200;
+  ids.forEach((id,i) => {
+    const sh = s.shapes[id]; if (!sh) return;
+    up(id, { x: x, y }); 
+    x += (sh.w + gap);
+  });
+}
+
+// LEGACY: Keep original interpret function for backward compatibility
+async function interpretLegacy(text: string) {
   const t = text.toLowerCase();
   
   // MANIPULATION COMMANDS - Move existing shapes
