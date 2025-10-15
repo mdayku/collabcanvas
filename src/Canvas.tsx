@@ -3123,6 +3123,7 @@ function ContextMenu({ x, y, shapeId, onClose }: {
 }) {
   const [showColorPicker, setShowColorPicker] = useState<'fill' | 'stroke' | null>(null);
   const shape = useCanvas(state => state.shapes[shapeId]);
+  const { colors } = useTheme();
   
   if (!shape) return null;
 
@@ -3215,8 +3216,16 @@ function ContextMenu({ x, y, shapeId, onClose }: {
   };
 
   return (
-    <div style={menuStyle} className="bg-white rounded-lg shadow-lg border p-3 min-w-[200px]">
-      <div className="text-sm font-medium mb-2">
+    <div 
+      style={{
+        ...menuStyle,
+        backgroundColor: colors.bg,
+        borderColor: colors.border,
+        color: colors.text
+      }} 
+      className="rounded-lg shadow-lg border p-3 min-w-[200px]"
+    >
+      <div className="text-sm font-medium mb-2" style={{ color: colors.text }}>
         {shape.type === 'text' ? 'Text Options' : 'Shape Options'}
       </div>
       
@@ -3226,7 +3235,7 @@ function ContextMenu({ x, y, shapeId, onClose }: {
           <>
             {/* Text Color */}
             <div className="flex items-center justify-between">
-              <span className="text-sm">Text Color:</span>
+              <span className="text-sm" style={{ color: colors.text }}>Text Color:</span>
               <button
                 className="w-6 h-6 rounded border border-gray-300 hover:border-gray-500"
                 style={{ backgroundColor: shape.color || '#111111' }}
@@ -3236,7 +3245,7 @@ function ContextMenu({ x, y, shapeId, onClose }: {
             
             {/* Font Size */}
             <div className="flex flex-col space-y-1">
-              <span className="text-sm">Font Size:</span>
+              <span className="text-sm" style={{ color: colors.text }}>Font Size:</span>
               <div className="flex items-center space-x-2">
                 <input
                   type="number"
@@ -3245,6 +3254,11 @@ function ContextMenu({ x, y, shapeId, onClose }: {
                   value={shape.fontSize || 20}
                   onChange={(e) => updateShape({ fontSize: Math.max(1, Math.min(256, parseInt(e.target.value) || 20)) })}
                   className="w-16 text-xs border rounded px-2 py-1"
+                  style={{ 
+                    backgroundColor: colors.bg,
+                    borderColor: colors.border,
+                    color: colors.text 
+                  }}
                 />
                 <input
                   type="range"
@@ -3254,17 +3268,22 @@ function ContextMenu({ x, y, shapeId, onClose }: {
                   onChange={(e) => updateShape({ fontSize: parseInt(e.target.value) })}
                   className="flex-1"
                 />
-                <span className="text-xs text-gray-500 w-8">px</span>
+                <span className="text-xs w-8" style={{ color: colors.textMuted }}>px</span>
               </div>
             </div>
             
             {/* Font Family */}
             <div className="flex flex-col">
-              <span className="text-sm mb-1">Font Family:</span>
+              <span className="text-sm mb-1" style={{ color: colors.text }}>Font Family:</span>
               <select
                 value={shape.fontFamily || "Arial"}
                 onChange={(e) => updateShape({ fontFamily: e.target.value })}
                 className="text-xs border rounded px-2 py-1"
+                style={{ 
+                  backgroundColor: colors.bg,
+                  borderColor: colors.border,
+                  color: colors.text 
+                }}
               >
                 <option value="Arial">Arial</option>
                 <option value="Helvetica">Helvetica</option>
@@ -3279,7 +3298,7 @@ function ContextMenu({ x, y, shapeId, onClose }: {
             
             {/* Text Outline Color */}
             <div className="flex items-center justify-between">
-              <span className="text-sm">Outline Color:</span>
+              <span className="text-sm" style={{ color: colors.text }}>Outline Color:</span>
               <button
                 className="w-6 h-6 rounded border border-gray-300 hover:border-gray-500"
                 style={{ backgroundColor: shape.stroke || '#000000' }}
@@ -3289,7 +3308,7 @@ function ContextMenu({ x, y, shapeId, onClose }: {
             
             {/* Text Outline Width */}
             <div className="flex items-center justify-between">
-              <span className="text-sm">Outline Width:</span>
+              <span className="text-sm" style={{ color: colors.text }}>Outline Width:</span>
               <input
                 type="range"
                 min="0"
@@ -3298,7 +3317,7 @@ function ContextMenu({ x, y, shapeId, onClose }: {
                 onChange={(e) => updateShape({ strokeWidth: Number(e.target.value) })}
                 className="w-16"
               />
-              <span className="text-xs text-gray-500 w-6 text-center">{shape.strokeWidth || 0}</span>
+              <span className="text-xs w-6 text-center" style={{ color: colors.textMuted }}>{shape.strokeWidth || 0}</span>
           </div>
           </>
         )}
@@ -3308,7 +3327,7 @@ function ContextMenu({ x, y, shapeId, onClose }: {
           <>
             {/* Fill Color */}
             <div className="flex items-center justify-between">
-              <span className="text-sm">Fill Color:</span>
+              <span className="text-sm" style={{ color: colors.text }}>Fill Color:</span>
               <button
                 className="w-6 h-6 rounded border border-gray-300 hover:border-gray-500"
                 style={{ backgroundColor: shape.color }}
@@ -3318,7 +3337,7 @@ function ContextMenu({ x, y, shapeId, onClose }: {
             
             {/* Outline Color */}
             <div className="flex items-center justify-between">
-              <span className="text-sm">Outline Color:</span>
+              <span className="text-sm" style={{ color: colors.text }}>Outline Color:</span>
               <button
                 className="w-6 h-6 rounded border border-gray-300 hover:border-gray-500"
                 style={{ backgroundColor: shape.stroke || '#000000' }}
@@ -3328,7 +3347,7 @@ function ContextMenu({ x, y, shapeId, onClose }: {
             
             {/* Outline Width */}
             <div className="flex items-center justify-between">
-              <span className="text-sm">Outline Width:</span>
+              <span className="text-sm" style={{ color: colors.text }}>Outline Width:</span>
               <input
                 type="range"
                 min="0"
@@ -3337,47 +3356,62 @@ function ContextMenu({ x, y, shapeId, onClose }: {
                 onChange={(e) => handleStrokeWidthChange(Number(e.target.value))}
                 className="w-16"
               />
-              <span className="text-xs text-gray-500 w-6 text-center">{shape.strokeWidth || 1}</span>
+              <span className="text-xs w-6 text-center" style={{ color: colors.textMuted }}>{shape.strokeWidth || 1}</span>
             </div>
             
             {/* Divider */}
-            <hr className="my-2" />
+            <hr className="my-2" style={{ borderColor: colors.border }} />
             
             {/* Layer Commands */}
             <div className="space-y-1">
-              <div className="text-xs font-medium text-gray-500 mb-1">Layer Order</div>
+              <div className="text-xs font-medium mb-1" style={{ color: colors.textMuted }}>Layer Order</div>
               <button
                 onClick={() => { handleLayerCommand('front'); }}
-                className="w-full text-left text-sm hover:bg-gray-50 px-2 py-1 rounded"
+                className="w-full text-left text-sm px-2 py-1 rounded"
+                style={{ color: colors.text }}
+                onMouseEnter={(e) => e.currentTarget.style.backgroundColor = colors.buttonHover}
+                onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
               >
                 🔝 Move to Front
               </button>
               <button
                 onClick={() => { handleLayerCommand('up'); }}
-                className="w-full text-left text-sm hover:bg-gray-50 px-2 py-1 rounded"
+                className="w-full text-left text-sm px-2 py-1 rounded"
+                style={{ color: colors.text }}
+                onMouseEnter={(e) => e.currentTarget.style.backgroundColor = colors.buttonHover}
+                onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
               >
                 ⬆️ Move Up
               </button>
               <button
                 onClick={() => { handleLayerCommand('down'); }}
-                className="w-full text-left text-sm hover:bg-gray-50 px-2 py-1 rounded"
+                className="w-full text-left text-sm px-2 py-1 rounded"
+                style={{ color: colors.text }}
+                onMouseEnter={(e) => e.currentTarget.style.backgroundColor = colors.buttonHover}
+                onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
               >
                 ⬇️ Move Down
               </button>
               <button
                 onClick={() => { handleLayerCommand('back'); }}
-                className="w-full text-left text-sm hover:bg-gray-50 px-2 py-1 rounded"
+                className="w-full text-left text-sm px-2 py-1 rounded"
+                style={{ color: colors.text }}
+                onMouseEnter={(e) => e.currentTarget.style.backgroundColor = colors.buttonHover}
+                onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
               >
                 🔻 Move to Back
               </button>
             </div>
             
-            <hr className="my-2" />
+            <hr className="my-2" style={{ borderColor: colors.border }} />
             
             {/* Delete */}
             <button
               onClick={handleDelete}
-              className="w-full text-left text-sm text-red-600 hover:bg-red-50 px-2 py-1 rounded"
+              className="w-full text-left text-sm px-2 py-1 rounded"
+              style={{ color: '#dc2626' }}
+              onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#fef2f2'}
+              onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
             >
               Delete Shape
             </button>
