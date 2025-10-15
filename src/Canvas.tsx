@@ -893,7 +893,7 @@ function HelpPopup({ isOpen, onClose }: { isOpen: boolean; onClose: () => void }
 
         {/* Content */}
         {!isMinimized && (
-          <div className="flex-1 overflow-y-auto p-6">
+          <div className="flex-1 overflow-y-auto p-6" style={{ maxHeight: 'calc(90vh - 120px)' }}>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
               
               {/* Left Column - AI Agent & Keyboard Shortcuts */}
@@ -972,36 +972,36 @@ function HelpPopup({ isOpen, onClose }: { isOpen: boolean; onClose: () => void }
                     <div>
                       <div className="font-medium mb-2" style={{ color: colors.text }}>Selection:</div>
                       <div className="space-y-1">
-                        <div>• <kbd className="px-1 bg-slate-200 rounded text-xs">Ctrl+A</kbd> Select all shapes</div>
-                        <div>• <kbd className="px-1 bg-slate-200 rounded text-xs">Escape</kbd> Deselect all</div>
-                        <div>• <kbd className="px-1 bg-slate-200 rounded text-xs">Shift+Click</kbd> Multi-select shapes</div>
+                        <div>• <kbd className="px-1 rounded text-xs" style={{ backgroundColor: colors.buttonHover, color: colors.text }}>Ctrl+A</kbd> Select all shapes</div>
+                        <div>• <kbd className="px-1 rounded text-xs" style={{ backgroundColor: colors.buttonHover, color: colors.text }}>Escape</kbd> Deselect all</div>
+                        <div>• <kbd className="px-1 rounded text-xs" style={{ backgroundColor: colors.buttonHover, color: colors.text }}>Shift+Click</kbd> Multi-select shapes</div>
                       </div>
                     </div>
                     
                     <div>
                       <div className="font-medium mb-2" style={{ color: colors.text }}>Editing:</div>
                       <div className="space-y-1">
-                        <div>• <kbd className="px-1 bg-slate-200 rounded text-xs">Ctrl+C</kbd> Copy selected</div>
-                        <div>• <kbd className="px-1 bg-slate-200 rounded text-xs">Ctrl+X</kbd> Cut selected</div>
-                        <div>• <kbd className="px-1 bg-slate-200 rounded text-xs">Ctrl+V</kbd> Paste</div>
-                        <div>• <kbd className="px-1 bg-slate-200 rounded text-xs">Ctrl+D</kbd> Duplicate selected</div>
-                        <div>• <kbd className="px-1 bg-slate-200 rounded text-xs">Delete</kbd> Remove selected</div>
+                        <div>• <kbd className="px-1 rounded text-xs" style={{ backgroundColor: colors.buttonHover, color: colors.text }}>Ctrl+C</kbd> Copy selected</div>
+                        <div>• <kbd className="px-1 rounded text-xs" style={{ backgroundColor: colors.buttonHover, color: colors.text }}>Ctrl+X</kbd> Cut selected</div>
+                        <div>• <kbd className="px-1 rounded text-xs" style={{ backgroundColor: colors.buttonHover, color: colors.text }}>Ctrl+V</kbd> Paste</div>
+                        <div>• <kbd className="px-1 rounded text-xs" style={{ backgroundColor: colors.buttonHover, color: colors.text }}>Ctrl+D</kbd> Duplicate selected</div>
+                        <div>• <kbd className="px-1 rounded text-xs" style={{ backgroundColor: colors.buttonHover, color: colors.text }}>Delete</kbd> Remove selected</div>
                       </div>
                     </div>
                     
                     <div>
                       <div className="font-medium mb-2" style={{ color: colors.text }}>History:</div>
                       <div className="space-y-1">
-                        <div>• <kbd className="px-1 bg-slate-200 rounded text-xs">Ctrl+Z</kbd> Undo last action</div>
-                        <div>• <kbd className="px-1 bg-slate-200 rounded text-xs">Ctrl+R</kbd> Redo last undo</div>
+                        <div>• <kbd className="px-1 rounded text-xs" style={{ backgroundColor: colors.buttonHover, color: colors.text }}>Ctrl+Z</kbd> Undo last action</div>
+                        <div>• <kbd className="px-1 rounded text-xs" style={{ backgroundColor: colors.buttonHover, color: colors.text }}>Ctrl+R</kbd> Redo last undo</div>
                       </div>
                     </div>
                     
                     <div>
                       <div className="font-medium mb-2" style={{ color: colors.text }}>Movement:</div>
                       <div className="space-y-1">
-                        <div>• <kbd className="px-1 bg-slate-200 rounded text-xs">Arrow Keys</kbd> Move selection 5px</div>
-                        <div>• <kbd className="px-1 bg-slate-200 rounded text-xs">Shift+Arrows</kbd> Move selection 25px</div>
+                        <div>• <kbd className="px-1 rounded text-xs" style={{ backgroundColor: colors.buttonHover, color: colors.text }}>Arrow Keys</kbd> Move selection 5px</div>
+                        <div>• <kbd className="px-1 rounded text-xs" style={{ backgroundColor: colors.buttonHover, color: colors.text }}>Shift+Arrows</kbd> Move selection 25px</div>
                       </div>
                     </div>
                   </div>
@@ -3572,8 +3572,39 @@ function ContextMenu({ x, y, shapeId, onClose }: {
   onClose: () => void;
 }) {
   const [showColorPicker, setShowColorPicker] = useState<'fill' | 'stroke' | null>(null);
+  const [position, setPosition] = useState({ x, y });
+  const menuRef = useRef<HTMLDivElement>(null);
   const shape = useCanvas(state => state.shapes[shapeId]);
   const { colors } = useTheme();
+  
+  // Smart positioning to keep menu on screen
+  useEffect(() => {
+    if (menuRef.current) {
+      const menu = menuRef.current;
+      const menuRect = menu.getBoundingClientRect();
+      const viewportWidth = window.innerWidth;
+      const viewportHeight = window.innerHeight;
+      
+      let newX = x;
+      let newY = y;
+      
+      // Adjust horizontal position if menu would go off right edge
+      if (x + menuRect.width > viewportWidth - 20) {
+        newX = Math.max(20, viewportWidth - menuRect.width - 20);
+      }
+      
+      // Adjust vertical position if menu would go off bottom edge  
+      if (y + menuRect.height > viewportHeight - 20) {
+        newY = Math.max(20, viewportHeight - menuRect.height - 20);
+      }
+      
+      // Ensure menu doesn't go off left/top edges
+      newX = Math.max(20, newX);
+      newY = Math.max(20, newY);
+      
+      setPosition({ x: newX, y: newY });
+    }
+  }, [x, y, showColorPicker]); // Recalculate when color picker opens/closes
   
   if (!shape) return null;
 
@@ -3688,17 +3719,14 @@ function ContextMenu({ x, y, shapeId, onClose }: {
     onClose();
   };
 
-  const menuStyle = {
-    position: 'fixed' as const,
-    left: Math.min(x, window.innerWidth - 250),
-    top: Math.min(y, window.innerHeight - 200),
-    zIndex: 1000,
-  };
-
   return (
     <div 
+      ref={menuRef}
       style={{
-        ...menuStyle,
+        position: 'fixed',
+        left: position.x,
+        top: position.y,
+        zIndex: 1000,
         backgroundColor: colors.bg,
         borderColor: colors.border,
         color: colors.text
