@@ -1085,6 +1085,45 @@ function HelpPopup({ isOpen, onClose }: { isOpen: boolean; onClose: () => void }
   );
 }
 
+// Grid Overlay Component
+function GridOverlay({ canvasSize }: { canvasSize: { width: number; height: number } }) {
+  const { colors } = useTheme();
+  
+  const gridSize = 25; // 25px grid spacing
+  const gridColor = colors.textMuted; // Use theme-aware muted text color
+  const gridOpacity = 0.3; // Make it subtle
+  
+  const lines = [];
+  
+  // Vertical lines
+  for (let i = 0; i <= canvasSize.width; i += gridSize) {
+    lines.push(
+      <Line
+        key={`v-${i}`}
+        points={[i, 0, i, canvasSize.height]}
+        stroke={gridColor}
+        strokeWidth={0.5}
+        opacity={gridOpacity}
+      />
+    );
+  }
+  
+  // Horizontal lines  
+  for (let i = 0; i <= canvasSize.height; i += gridSize) {
+    lines.push(
+      <Line
+        key={`h-${i}`}
+        points={[0, i, canvasSize.width, i]}
+        stroke={gridColor}
+        strokeWidth={0.5}
+        opacity={gridOpacity}
+      />
+    );
+  }
+  
+  return <>{lines}</>;
+}
+
 // TabBar Component for Multi-Canvas Management
 function TabBar() {
   const { openTabs, activeTabId, openCanvasInTab, closeTab, switchToTab, hasUnsavedTab } = useCanvas();
@@ -1286,7 +1325,7 @@ interface ContextMenuData {
 
 export default function Canvas({ onSignOut }: CanvasProps) {
   const { shapes, selectedIds, me, cursors, roomId } = useCanvas();
-  const { colors } = useTheme();
+  const { colors, showGrid } = useTheme();
   const [contextMenu, setContextMenu] = useState<ContextMenuData | null>(null);
   const [_scale, setScale] = useState(1);
   const [editingText, setEditingText] = useState<{id: string, x: number, y: number, value: string} | null>(null);
@@ -2204,6 +2243,9 @@ export default function Canvas({ onSignOut }: CanvasProps) {
               onClick={() => useCanvas.getState().select([])}
               onTap={() => useCanvas.getState().select([])}
             />
+            
+            {/* Grid Overlay */}
+            {showGrid && <GridOverlay canvasSize={canvasSize} />}
             {shapeEls}
             <Transformer ref={trRef} rotateEnabled={true} onTransformEnd={onTransformEnd} />
           </Layer>
