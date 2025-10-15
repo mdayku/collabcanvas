@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { Stage, Layer, Rect, Circle, Text as KText, Transformer, Group, Line, RegularPolygon, Image as KonvaImage } from "react-konva";
+import Konva from 'konva';
 import { useCanvas } from "./state/store";
 import type { ShapeBase, ShapeType } from "./types";
 import { supabase } from "./lib/supabaseClient";
@@ -38,10 +39,12 @@ function useFps() {
 // const CANVAS_W = 2400, CANVAS_H = 1600;
 
 // TopRibbon Component with File Menu
-function TopRibbon({ onSignOut, stageRef, setShowHelpPopup }: { 
+function TopRibbon({ onSignOut, stageRef, setShowHelpPopup, centerOnNewShape, setCenterOnNewShape }: { 
   onSignOut: () => void; 
   stageRef: React.RefObject<any>; 
   setShowHelpPopup: (show: boolean) => void;
+  centerOnNewShape: boolean;
+  setCenterOnNewShape: (value: boolean) => void;
 }) {
   const [showFileMenu, setShowFileMenu] = useState(false);
   const [showViewMenu, setShowViewMenu] = useState(false);
@@ -663,6 +666,33 @@ function TopRibbon({ onSignOut, stageRef, setShowHelpPopup }: {
                     <span className="mr-2">⚏</span>
                     Show Grid
                     {showGrid && <span className="ml-auto text-xs">✓</span>}
+                  </button>
+                  <button
+                    onClick={() => {
+                      const newValue = !centerOnNewShape;
+                      setCenterOnNewShape(newValue);
+                      localStorage.setItem('centerOnNewShape', newValue.toString());
+                      setShowViewMenu(false);
+                    }}
+                    className="w-full text-left px-2 py-1 text-sm rounded flex items-center transition-colors"
+                    style={{
+                      backgroundColor: centerOnNewShape ? colors.primary : 'transparent',
+                      color: centerOnNewShape ? colors.bg : colors.text
+                    }}
+                    onMouseEnter={(e) => {
+                      if (!centerOnNewShape) {
+                        e.currentTarget.style.backgroundColor = colors.buttonHover;
+                      }
+                    }}
+                    onMouseLeave={(e) => {
+                      if (!centerOnNewShape) {
+                        e.currentTarget.style.backgroundColor = 'transparent';
+                      }
+                    }}
+                  >
+                    <span className="mr-2">🎯</span>
+                    Center on New Shape
+                    {centerOnNewShape && <span className="ml-auto text-xs">✓</span>}
                   </button>
                   <button
                     onClick={() => {
@@ -1356,6 +1386,9 @@ export default function Canvas({ onSignOut }: CanvasProps) {
   const [contextMenu, setContextMenu] = useState<ContextMenuData | null>(null);
   const [_scale, setScale] = useState(1);
   const [editingText, setEditingText] = useState<{id: string, x: number, y: number, value: string} | null>(null);
+  const [centerOnNewShape, setCenterOnNewShape] = useState(() => 
+    localStorage.getItem('centerOnNewShape') === 'true'
+  );
   const [showHelpPopup, setShowHelpPopup] = useState(false);
   const [status, setStatus] = useState<'connecting'|'online'|'reconnecting'|'offline'>('connecting');
   const [canvasSize, setCanvasSize] = useState({ width: 800, height: 600 });
@@ -2424,10 +2457,16 @@ export default function Canvas({ onSignOut }: CanvasProps) {
       style={{ backgroundColor: colors.bgSecondary }}
     >
       {/* Layout fix v2: Force cache refresh for production deployment */}
-      <TopRibbon onSignOut={onSignOut} stageRef={canvasStageRef} setShowHelpPopup={setShowHelpPopup} />
+      <TopRibbon 
+        onSignOut={onSignOut} 
+        stageRef={canvasStageRef} 
+        setShowHelpPopup={setShowHelpPopup}
+        centerOnNewShape={centerOnNewShape}
+        setCenterOnNewShape={setCenterOnNewShape}
+      />
       <TabBar />
       <div className="flex-1 flex min-h-0">
-        <Toolbar status={status} />
+        <Toolbar status={status} centerOnNewShape={centerOnNewShape} stageRef={canvasStageRef} />
         <div 
           ref={canvasContainerRef} 
           className="flex-1 relative overflow-hidden"
@@ -2541,7 +2580,10 @@ interface ToolbarProps {
   status: 'connecting'|'online'|'reconnecting'|'offline';
 }
 
-function CategorizedToolbar() {
+function CategorizedToolbar({ centerOnNewShape, stageRef }: { 
+  centerOnNewShape: boolean; 
+  stageRef: React.RefObject<Konva.Stage>; 
+}) {
   const { colors, snapToGrid } = useTheme();
   const [expandedCategories, setExpandedCategories] = useState<Set<string>>(
     new Set(['lines-arrows', 'shapes', 'emojis']) // Start with lines-arrows, shapes and emojis expanded
@@ -2557,23 +2599,23 @@ function CategorizedToolbar() {
     setExpandedCategories(newExpanded);
   };
 
-  const addRect = () => addShape("rect", colors, snapToGrid);
-  const addCircle = () => addShape("circle", colors, snapToGrid);
-  const addText = () => addShape("text", colors, snapToGrid);
-  const addTriangle = () => addShape("triangle", colors, snapToGrid);
-  const addStar = () => addShape("star", colors, snapToGrid);
-  const addHeart = () => addShape("heart", colors, snapToGrid);
-  const addPentagon = () => addShape("pentagon", colors, snapToGrid);
-  const addHexagon = () => addShape("hexagon", colors, snapToGrid);
-  const addOctagon = () => addShape("octagon", colors, snapToGrid);
-  const addOval = () => addShape("oval", colors, snapToGrid);
-  const addTrapezoid = () => addShape("trapezoid", colors, snapToGrid);
-  const addRhombus = () => addShape("rhombus", colors, snapToGrid);
-  const addParallelogram = () => addShape("parallelogram", colors, snapToGrid);
+  const addRect = () => addShape("rect", colors, snapToGrid, centerOnNewShape, stageRef);
+  const addCircle = () => addShape("circle", colors, snapToGrid, centerOnNewShape, stageRef);
+  const addText = () => addShape("text", colors, snapToGrid, centerOnNewShape, stageRef);
+  const addTriangle = () => addShape("triangle", colors, snapToGrid, centerOnNewShape, stageRef);
+  const addStar = () => addShape("star", colors, snapToGrid, centerOnNewShape, stageRef);
+  const addHeart = () => addShape("heart", colors, snapToGrid, centerOnNewShape, stageRef);
+  const addPentagon = () => addShape("pentagon", colors, snapToGrid, centerOnNewShape, stageRef);
+  const addHexagon = () => addShape("hexagon", colors, snapToGrid, centerOnNewShape, stageRef);
+  const addOctagon = () => addShape("octagon", colors, snapToGrid, centerOnNewShape, stageRef);
+  const addOval = () => addShape("oval", colors, snapToGrid, centerOnNewShape, stageRef);
+  const addTrapezoid = () => addShape("trapezoid", colors, snapToGrid, centerOnNewShape, stageRef);
+  const addRhombus = () => addShape("rhombus", colors, snapToGrid, centerOnNewShape, stageRef);
+  const addParallelogram = () => addShape("parallelogram", colors, snapToGrid, centerOnNewShape, stageRef);
   
   // Line and arrow creation functions
-  const addLine = () => addShape("line", colors, snapToGrid);
-  const addArrow = () => addShape("arrow", colors, snapToGrid);
+  const addLine = () => addShape("line", colors, snapToGrid, centerOnNewShape, stageRef);
+  const addArrow = () => addShape("arrow", colors, snapToGrid, centerOnNewShape, stageRef);
   
   const addEmoji = (emoji: string) => {
     // Save history before creating
@@ -2619,6 +2661,11 @@ function CategorizedToolbar() {
     
     // Auto-select the new emoji
     useCanvas.getState().select([emojiShape.id]);
+
+    // Center on new shape if enabled
+    if (centerOnNewShape && stageRef.current) {
+      centerStageOnShape(emojiShape, stageRef);
+    }
   };
 
   const addIcon = (icon: string) => {
@@ -2638,11 +2685,18 @@ function CategorizedToolbar() {
     const size = 48; 
     const position = findBlankArea(shapes, size, size);
     
+    // Helper function to apply snapping if enabled
+    const applySnap = (value: number) => {
+      if (!snapToGrid) return value;
+      const gridSize = 25;
+      return Math.round(value / gridSize) * gridSize;
+    };
+    
     const iconShape: ShapeBase = { 
       id: crypto.randomUUID(), 
       type: "image", 
-      x: position.x, 
-      y: position.y, 
+      x: applySnap(position.x), 
+      y: applySnap(position.y), 
       w: size, 
       h: size, 
       imageUrl: twemojiUrl,
@@ -2658,6 +2712,11 @@ function CategorizedToolbar() {
     
     // Auto-select the new icon
     useCanvas.getState().select([iconShape.id]);
+
+    // Center on new shape if enabled
+    if (centerOnNewShape && stageRef.current) {
+      centerStageOnShape(iconShape, stageRef);
+    }
   };
 
   const toolCategories = [
@@ -2856,7 +2915,10 @@ function CategorizedToolbar() {
   );
 }
 
-function Toolbar({ status }: Omit<ToolbarProps, 'onSignOut'>) {
+function Toolbar({ status, centerOnNewShape, stageRef }: Omit<ToolbarProps, 'onSignOut'> & { 
+  centerOnNewShape: boolean; 
+  stageRef: React.RefObject<Konva.Stage>; 
+}) {
   const { me, onlineUsers, cursors } = useCanvas();
   const { colors } = useTheme();
   
@@ -2908,7 +2970,7 @@ function Toolbar({ status }: Omit<ToolbarProps, 'onSignOut'>) {
         </div>
       )}
       
-      <CategorizedToolbar />
+      <CategorizedToolbar centerOnNewShape={centerOnNewShape} stageRef={stageRef} />
       
       {/* Connection Status Badge */}
       <div className="mt-4 pt-3 border-t">
@@ -2982,7 +3044,33 @@ function findBlankArea(shapes: Record<string, ShapeBase>, width: number, height:
   };
 }
 
-function addShape(type: ShapeType, colors: any, snapToGrid: boolean = false) {
+// Helper function to center the stage on a shape
+function centerStageOnShape(shape: ShapeBase, stageRef: React.RefObject<Konva.Stage>) {
+  const stage = stageRef.current;
+  if (!stage) return;
+
+  const stageWidth = stage.width();
+  const stageHeight = stage.height();
+  const scale = stage.scaleX(); // Assuming uniform scaling
+
+  // Calculate shape center
+  const shapeCenterX = shape.x + (shape.w || 0) / 2;
+  const shapeCenterY = shape.y + (shape.h || 0) / 2;
+
+  // Calculate new stage position to center the shape
+  const newX = stageWidth / 2 - shapeCenterX * scale;
+  const newY = stageHeight / 2 - shapeCenterY * scale;
+
+  // Smooth animation to new position
+  stage.to({
+    x: newX,
+    y: newY,
+    duration: 0.3,
+    easing: Konva.Easings.EaseOut
+  });
+}
+
+function addShape(type: ShapeType, colors: any, snapToGrid: boolean = false, centerOnNew: boolean = false, stageRef?: React.RefObject<Konva.Stage>) {
   // Save history before creating
   useCanvas.getState().pushHistory();
   
@@ -3014,7 +3102,7 @@ function addShape(type: ShapeType, colors: any, snapToGrid: boolean = false) {
       y: applySnap(position.y), 
       w: width, 
       h: height, 
-      color: colors.text, 
+      color: "#111111", // Always dark text for canvas visibility, regardless of theme
       text: defaultText,
       fontSize: fontSize,
       updated_at: Date.now(), 
@@ -3034,7 +3122,7 @@ function addShape(type: ShapeType, colors: any, snapToGrid: boolean = false) {
       h: 2, // Minimal height for collision detection  
       x2: applySnap(position.x + defaultLength), // End point with snap
       y2: applySnap(position.y + 20),
-      stroke: colors.text, // Lines use stroke, not fill
+      stroke: "#111111", // Always dark stroke for canvas visibility, regardless of theme
       strokeWidth: 3,
       arrowHead: type === "arrow" ? "end" : "none",
       text: "", 
@@ -3082,271 +3170,16 @@ function addShape(type: ShapeType, colors: any, snapToGrid: boolean = false) {
   
   // Auto-select the new shape
   useCanvas.getState().select([s.id]);
+
+  // Center on new shape if enabled
+  if (centerOnNew && stageRef) {
+    centerStageOnShape(s, stageRef);
+  }
 }
 
 
-function AIBox() {
-  const { colors } = useTheme();
-  const [q, setQ] = useState("");
-  const [working, setWorking] = useState(false);
-  const [isListening, setIsListening] = useState(false);
-  const [recognition, setRecognition] = useState<any | null>(null);
-  const [aiResponse, setAiResponse] = useState<AIResponse | null>(null);
-  const [selectedLanguage, setSelectedLanguage] = useState(localStorage.getItem('ai-language') || 'en');
 
-  // Speech recognition language mapping
-  const getSpeechLang = (aiLang: string): string => {
-    const langMap: Record<string, string> = {
-      'en': 'en-US',
-      'zh': 'zh-CN', // Mandarin Chinese
-      'es': 'es-ES', // Spanish (Spain)
-      'fr': 'fr-FR', // French (France)
-      'de': 'de-DE', // German (Germany)
-      'ja': 'ja-JP', // Japanese
-      'ar': 'ar-SA', // Arabic (Saudi Arabia)
-    };
-    return langMap[aiLang] || 'en-US';
-  };
-
-  // Initialize speech recognition
-  useEffect(() => {
-    if ('webkitSpeechRecognition' in window || 'SpeechRecognition' in window) {
-      const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
-      const recognition = new SpeechRecognition();
-      
-      recognition.continuous = false;
-      recognition.interimResults = false;
-      recognition.lang = getSpeechLang(selectedLanguage);
-
-      recognition.onstart = () => {
-        setIsListening(true);
-      };
-
-      recognition.onresult = (event: any) => {
-        const transcript = event.results[0][0].transcript;
-        setQ(transcript);
-        setIsListening(false);
-      };
-
-      recognition.onerror = (event: any) => {
-        console.error('Speech recognition error:', event.error);
-        setIsListening(false);
-      };
-
-      recognition.onend = () => {
-        setIsListening(false);
-      };
-
-      setRecognition(recognition);
-    }
-  }, [selectedLanguage]); // Re-initialize when language changes
-
-  const startListening = () => {
-    if (recognition) {
-      recognition.start();
-    }
-  };
-
-  const stopListening = () => {
-    if (recognition) {
-      recognition.stop();
-    }
-  };
-  
-  // Save language preference to localStorage
-  const handleLanguageChange = (lang: string) => {
-    setSelectedLanguage(lang);
-    localStorage.setItem('ai-language', lang);
-  };
-  
-  const onRun = async () => { 
-    setWorking(true);
-    setAiResponse(null);
-    
-    try {
-      const response = await interpretWithResponse(q, selectedLanguage);
-      setAiResponse(response);
-      
-      if (response.type === 'success') {
-        setQ(""); // Clear input on success
-      }
-    } catch (error) {
-      setAiResponse({
-        type: 'error',
-        message: 'An error occurred while processing your request.'
-      });
-    }
-    
-    setWorking(false);
-  };
-
-  const useSuggestion = (suggestion: string) => {
-    setQ(suggestion);
-    setAiResponse(null);
-  };
-
-  const confirmAction = async () => {
-    if (aiResponse?.confirmAction) {
-      setWorking(true);
-      await aiResponse.confirmAction();
-      setAiResponse({
-        type: 'success',
-        message: '✅ Action completed successfully!'
-      });
-      setQ("");
-      setWorking(false);
-    }
-  };
-
-  const cancelAction = () => {
-    setAiResponse(null);
-  };
-  
-  const handleKeyDown = (e: React.KeyboardEvent) => {
-    if (e.key === 'Enter' && !working && q.trim()) {
-      onRun();
-    }
-  };
-  
-  const groqConfigured = isGroqConfigured();
-  const openaiConfigured = isOpenAIConfigured();
-  const aiConfigured = groqConfigured || openaiConfigured;
-  
-  const getAIStatus = () => {
-    if (groqConfigured) return { label: 'Groq (Free)', color: 'bg-green-100 text-green-700' };
-    if (openaiConfigured) return { label: '🤖 GPT-3.5', color: 'bg-blue-100 text-blue-700' };
-    return { label: '📝 Basic', color: 'bg-yellow-100 text-yellow-700' };
-  };
-  
-  const aiStatus = getAIStatus();
-  
-  return (
-    <div className="mt-4 space-y-2">
-      <div className="flex items-center justify-between">
-        <div className="font-medium">AI Agent</div>
-        <div className={`text-xs px-2 py-1 rounded ${aiStatus.color}`}>
-          {aiStatus.label}
-        </div>
-      </div>
-
-      {!aiConfigured && (
-        <div className="text-xs bg-blue-50 border border-blue-200 rounded p-2 text-blue-700">
-          <strong>💡 Upgrade to Smart AI:</strong><br />
-          • <strong>Free:</strong> Add <code>VITE_GROQ_API_KEY</code> (recommended!)<br />
-          • <strong>Paid:</strong> Add <code>VITE_OPENAI_API_KEY</code> for GPT-3.5
-        </div>
-      )}
-      
-      <div className="flex gap-2">
-        <input 
-          className="flex-1 border rounded px-2 py-1 min-w-0" 
-          placeholder={aiConfigured 
-            ? "Try: 'Create a dashboard layout' or 'Make 5 blue circles'" 
-            : "e.g., Create a 200x300 rectangle"
-          }
-          value={q} 
-          onChange={(e)=>setQ(e.target.value)}
-          onKeyDown={handleKeyDown}
-        />
-        {recognition && (
-          <button
-            className={`px-2 py-1 rounded text-white transition-colors flex-shrink-0 ${
-              isListening 
-                ? 'bg-red-500 hover:bg-red-600' 
-                : 'bg-blue-500 hover:bg-blue-600'
-            }`}
-            onClick={isListening ? stopListening : startListening}
-            disabled={working}
-            title={isListening ? "Stop listening" : "Start voice input"}
-          >
-            {isListening ? '🔴' : '🎤'}
-          </button>
-        )}
-      </div>
-
-      {isListening && (
-        <p className="text-xs text-blue-600 animate-pulse">
-          🎤 Listening in {selectedLanguage === 'zh' ? 'Chinese' : selectedLanguage === 'es' ? 'Spanish' : selectedLanguage === 'fr' ? 'French' : selectedLanguage === 'de' ? 'German' : selectedLanguage === 'ja' ? 'Japanese' : selectedLanguage === 'ar' ? 'Arabic' : 'English'}... speak your command
-        </p>
-      )}
-
-      <div className="flex gap-2">
-        <LanguageDropdown 
-          selectedLanguage={selectedLanguage}
-          onLanguageChange={handleLanguageChange}
-        />
-        <button 
-          className="px-3 py-2 rounded disabled:opacity-60 flex-1 font-medium"
-          style={{
-            backgroundColor: colors.primary,
-            color: colors.bg, // Use background color as text for contrast
-          }}
-          disabled={!q||working} 
-          onClick={onRun}
-        >
-        {working?"Thinking…":"Run"}
-      </button>
-      </div>
-
-      {/* AI Response Section */}
-      {aiResponse && (
-        <div className={`p-3 rounded-md text-sm ${
-          aiResponse.type === 'success' ? 'bg-green-50 border border-green-200' :
-          aiResponse.type === 'error' ? 'bg-red-50 border border-red-200' :
-          aiResponse.type === 'confirmation_required' ? 'bg-orange-50 border border-orange-200' :
-          'bg-blue-50 border border-blue-200'
-        }`}>
-          <p className={`font-medium ${
-            aiResponse.type === 'success' ? 'text-green-700' :
-            aiResponse.type === 'error' ? 'text-red-700' :
-            aiResponse.type === 'confirmation_required' ? 'text-orange-700' :
-            'text-blue-700'
-          }`}>
-            {aiResponse.message}
-          </p>
-
-          {/* Suggestions */}
-          {aiResponse.suggestions && aiResponse.suggestions.length > 0 && (
-            <div className="mt-2">
-              <p className="text-xs text-gray-600 mb-1">Try these suggestions:</p>
-              <div className="flex flex-wrap gap-1">
-                {aiResponse.suggestions.map((suggestion, index) => (
-                  <button
-                    key={index}
-                    className="px-2 py-1 text-xs bg-white border rounded hover:bg-gray-50"
-                    onClick={() => useSuggestion(suggestion)}
-                  >
-                    {suggestion}
-                  </button>
-                ))}
-              </div>
-            </div>
-          )}
-
-          {/* Confirmation Actions */}
-          {aiResponse.type === 'confirmation_required' && (
-            <div className="mt-2 flex gap-2">
-              <button
-                className="px-3 py-1 text-xs bg-orange-500 text-white rounded hover:bg-orange-600"
-                onClick={confirmAction}
-                disabled={working}
-              >
-                Yes, proceed
-              </button>
-              <button
-                className="px-3 py-1 text-xs bg-gray-500 text-white rounded hover:bg-gray-600"
-                onClick={cancelAction}
-              >
-                Cancel
-              </button>
-            </div>
-          )}
-        </div>
-      )}
-
-            </div>
-  );
-}
+// Removed orphaned JSX code
 
 // ChatGPT-style AI Widget - Bottom Right
 function FloatingAIWidget() {
