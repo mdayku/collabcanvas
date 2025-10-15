@@ -20,6 +20,9 @@ declare global {
 // TopRibbon Component with File Menu
 function TopRibbon({ onSignOut, stageRef }: { onSignOut: () => void; stageRef: React.RefObject<any> }) {
   const [showFileMenu, setShowFileMenu] = useState(false);
+  const [showOpenDialog, setShowOpenDialog] = useState(false);
+  const [availableCanvases, setAvailableCanvases] = useState<any[]>([]);
+  const [isLoadingCanvases, setIsLoadingCanvases] = useState(false);
   const { currentCanvas, hasUnsavedChanges } = useCanvas();
 
   const exportToPNG = () => {
@@ -70,9 +73,13 @@ function TopRibbon({ onSignOut, stageRef }: { onSignOut: () => void; stageRef: R
     if (proceed) {
       try {
         const title = prompt('Enter canvas title:', 'New Canvas') || 'New Canvas';
-        await canvasState.createNewCanvas(title);
+        const newCanvas = await canvasState.createNewCanvas(title);
+        
+        // Open the new canvas in a tab
+        canvasState.openCanvasInTab(newCanvas);
       } catch (error) {
-        alert('Failed to create new canvas: ' + (error instanceof Error ? error.message : 'Unknown error'));
+        console.error('Canvas creation error:', error);
+      alert('Unable to create new canvas. Please check your connection and try again.');
       }
     }
     setShowFileMenu(false);
@@ -133,8 +140,9 @@ function TopRibbon({ onSignOut, stageRef }: { onSignOut: () => void; stageRef: R
         const duplicatedCanvas = await canvasState.duplicateCurrentCanvas(newTitle.trim());
         
         // Ask if user wants to switch to the duplicated canvas
-        const switchToNew = confirm(`Canvas duplicated successfully! Switch to "${duplicatedCanvas.title}"?`);
+        const switchToNew = confirm(`Canvas duplicated successfully! Open "${duplicatedCanvas.title}" in a new tab?`);
         if (switchToNew) {
+          canvasState.openCanvasInTab(duplicatedCanvas);
           await canvasState.loadCanvas(duplicatedCanvas.id);
         }
       } catch (error) {
@@ -142,6 +150,48 @@ function TopRibbon({ onSignOut, stageRef }: { onSignOut: () => void; stageRef: R
       }
     }
     setShowFileMenu(false);
+  };
+
+  const handleOpen = async () => {
+    try {
+      setIsLoadingCanvases(true);
+      setShowFileMenu(false);
+      
+      const { canvasService } = await import('./services/canvasService');
+      const canvases = await canvasService.getUserCanvases();
+      
+      setAvailableCanvases(canvases);
+      setShowOpenDialog(true);
+    } catch (error) {
+      alert('Failed to load canvases: ' + (error instanceof Error ? error.message : 'Unknown error'));
+    } finally {
+      setIsLoadingCanvases(false);
+    }
+  };
+
+  const handleLoadCanvas = async (canvasId: string) => {
+    try {
+      const canvasState = useCanvas.getState();
+      
+      // Get the canvas to open
+      const { canvasService } = await import('./services/canvasService');
+      const canvasToOpen = await canvasService.getCanvas(canvasId);
+      
+      if (!canvasToOpen) {
+        alert('Canvas not found');
+        return;
+      }
+      
+      // Open canvas in a new tab (or switch to existing tab)
+      canvasState.openCanvasInTab(canvasToOpen);
+      
+      // Load the canvas shapes
+      await canvasState.loadCanvas(canvasId);
+      
+      setShowOpenDialog(false);
+    } catch (error) {
+      alert('Failed to load canvas: ' + (error instanceof Error ? error.message : 'Unknown error'));
+    }
   };
 
   return (
@@ -158,15 +208,24 @@ function TopRibbon({ onSignOut, stageRef }: { onSignOut: () => void; stageRef: R
         {showFileMenu && (
           <div className="absolute left-0 top-full mt-1 w-48 bg-white rounded-md shadow-lg border border-gray-200 z-50">
             <div className="py-1">
-              <button
-                onClick={handleNewCanvas}
-                className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 flex items-center"
-              >
-                <span className="mr-2">📄</span>
-                New Canvas
-              </button>
-              
-              <hr className="my-1 border-gray-200" />
+                <button
+                  onClick={handleNewCanvas}
+                  className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 flex items-center"
+                >
+                  <span className="mr-2">📄</span>
+                  New Canvas
+                </button>
+                
+                <button
+                  onClick={handleOpen}
+                  disabled={isLoadingCanvases}
+                  className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 flex items-center disabled:opacity-50"
+                >
+                  <span className="mr-2">📂</span>
+                  {isLoadingCanvases ? 'Loading...' : 'Open Canvas'}
+                </button>
+                
+                <hr className="my-1 border-gray-200" />
               
               <button
                 onClick={handleSave}
@@ -230,6 +289,54 @@ function TopRibbon({ onSignOut, stageRef }: { onSignOut: () => void; stageRef: R
         )}
       </div>
 
+      {/* Open Canvas Dialog */}
+      {showOpenDialog && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg shadow-xl max-w-md w-full mx-4 max-h-96 flex flex-col">
+            <div className="px-6 py-4 border-b border-gray-200">
+              <h3 className="text-lg font-medium text-gray-900">Open Canvas</h3>
+            </div>
+            
+            <div className="flex-1 overflow-y-auto p-4">
+              {availableCanvases.length === 0 ? (
+                <div className="text-center py-8 text-gray-500">
+                  <span className="block text-4xl mb-2">📂</span>
+                  No saved canvases found
+                </div>
+              ) : (
+                <div className="space-y-2">
+                  {availableCanvases.map((canvas) => (
+                    <button
+                      key={canvas.id}
+                      onClick={() => handleLoadCanvas(canvas.id)}
+                      className="w-full text-left p-3 rounded-md border border-gray-200 hover:bg-gray-50 hover:border-gray-300 transition-colors"
+                    >
+                      <div className="font-medium text-gray-900">{canvas.title}</div>
+                      <div className="text-sm text-gray-500 mt-1">
+                        Modified: {new Date(canvas.updated_at).toLocaleDateString()} at{' '}
+                        {new Date(canvas.updated_at).toLocaleTimeString([], { 
+                          hour: '2-digit', 
+                          minute: '2-digit' 
+                        })}
+                      </div>
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+            
+            <div className="px-6 py-4 border-t border-gray-200 flex justify-end">
+              <button
+                onClick={() => setShowOpenDialog(false)}
+                className="px-4 py-2 text-sm font-medium text-gray-700 bg-gray-100 hover:bg-gray-200 rounded-md"
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Center - Canvas Title */}
       <div className="flex-1 text-center">
         <h1 className="text-lg font-semibold text-gray-800">CollabCanvas</h1>
@@ -246,6 +353,119 @@ function TopRibbon({ onSignOut, stageRef }: { onSignOut: () => void; stageRef: R
               {hasUnsavedChanges ? 'Unsaved changes' : 'Saved'}
             </span>
           </div>
+    </div>
+  );
+}
+
+// TabBar Component for Multi-Canvas Management
+function TabBar() {
+  const { openTabs, activeTabId, openCanvasInTab, closeTab, switchToTab, hasUnsavedTab } = useCanvas();
+
+  const handleNewTab = async () => {
+    try {
+      const title = prompt('New canvas title:', 'Untitled Canvas') || 'Untitled Canvas';
+      const canvasState = useCanvas.getState();
+      const newCanvas = await canvasState.createNewCanvas(title.trim());
+      
+      // Open the new canvas in a tab
+      openCanvasInTab(newCanvas);
+      
+      // Load the canvas to populate shapes if needed
+      await canvasState.loadCanvas(newCanvas.id);
+    } catch (error) {
+      console.error('Canvas creation error:', error);
+      alert('Unable to create new canvas. Please check your connection and try again.');
+    }
+  };
+
+  const handleTabClick = async (canvasId: string) => {
+    if (canvasId === activeTabId) return; // Already active
+
+    try {
+      // Switch to the tab
+      switchToTab(canvasId);
+      
+      // Load the canvas shapes
+      const canvasState = useCanvas.getState();
+      await canvasState.loadCanvas(canvasId);
+    } catch (error) {
+      alert('Failed to switch to canvas: ' + (error instanceof Error ? error.message : 'Unknown error'));
+    }
+  };
+
+  const handleCloseTab = async (e: React.MouseEvent, canvasId: string) => {
+    e.stopPropagation(); // Prevent tab switch when clicking close
+    
+    try {
+      const canvasState = useCanvas.getState();
+      await canvasState.closeTab(canvasId);
+    } catch (error) {
+      alert('Failed to close tab: ' + (error instanceof Error ? error.message : 'Unknown error'));
+    }
+  };
+
+  if (openTabs.length === 0) {
+    // No tabs open, show a clean state with just the + button
+    return (
+      <div className="bg-gray-100 border-b border-gray-200 px-4 py-2 flex items-center">
+        <button
+          onClick={handleNewTab}
+          className="flex items-center px-3 py-1 text-sm text-gray-600 hover:text-gray-800 hover:bg-gray-200 rounded transition-colors"
+          title="New Canvas"
+        >
+          <span className="text-lg mr-1">+</span>
+          New Canvas
+        </button>
+      </div>
+    );
+  }
+
+  return (
+    <div className="bg-gray-100 border-b border-gray-200 px-4 py-2 flex items-center overflow-x-auto">
+      {/* Canvas Tabs */}
+      <div className="flex space-x-1 mr-4">
+        {openTabs.map((tab) => {
+          const isActive = tab.id === activeTabId;
+          const isUnsaved = hasUnsavedTab(tab.id);
+          
+          return (
+            <div
+              key={tab.id}
+              className={`
+                flex items-center px-3 py-1 rounded-t text-sm cursor-pointer transition-colors
+                ${isActive 
+                  ? 'bg-white border-b-2 border-blue-500 text-gray-900' 
+                  : 'bg-gray-200 hover:bg-gray-300 text-gray-700'
+                }
+              `}
+              onClick={() => handleTabClick(tab.id)}
+            >
+              <span className="max-w-32 truncate">
+                {tab.title}
+                {isUnsaved && <span className="text-orange-500 ml-1">•</span>}
+              </span>
+              
+              {/* Close button */}
+              <button
+                onClick={(e) => handleCloseTab(e, tab.id)}
+                className="ml-2 w-4 h-4 flex items-center justify-center text-gray-500 hover:text-gray-700 hover:bg-gray-300 rounded-full transition-colors"
+                title="Close tab"
+              >
+                <span className="text-xs">×</span>
+              </button>
+            </div>
+          );
+        })}
+      </div>
+
+      {/* New Tab Button */}
+      <button
+        onClick={handleNewTab}
+        className="flex items-center px-2 py-1 text-sm text-gray-600 hover:text-gray-800 hover:bg-gray-200 rounded transition-colors"
+        title="New Canvas Tab"
+      >
+        <span className="text-lg">+</span>
+      </button>
     </div>
   );
 }
@@ -863,6 +1083,7 @@ export default function Canvas({ onSignOut }: CanvasProps) {
   return (
     <div className="h-screen w-screen flex flex-col">
       <TopRibbon onSignOut={onSignOut} stageRef={canvasStageRef} />
+      <TabBar />
       <div className="flex-1 flex">
         <Toolbar onSignOut={onSignOut} status={status} />
         <div ref={canvasContainerRef} className="flex-1 bg-slate-50 relative overflow-hidden">

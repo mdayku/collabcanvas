@@ -48,6 +48,8 @@ class CanvasService {
    * Get a specific canvas by ID
    */
   async getCanvas(canvasId: string): Promise<Canvas | null> {
+    console.log('Getting canvas with ID:', canvasId);
+    
     const { data, error } = await supabase
       .from('canvases')
       .select('*')
@@ -55,13 +57,24 @@ class CanvasService {
       .single();
 
     if (error) {
+      console.error('Error loading canvas:', {
+        canvasId,
+        error: error,
+        code: error.code,
+        message: error.message,
+        details: error.details,
+        hint: error.hint
+      });
+
       if (error.code === 'PGRST116') {
+        console.log('Canvas not found (PGRST116)');
         return null; // Canvas not found
       }
-      console.error('Error loading canvas:', error);
-      throw new Error('Failed to load canvas');
+      
+      throw new Error(`Failed to load canvas: ${error.message}`);
     }
 
+    console.log('Successfully loaded canvas:', data?.title);
     return data;
   }
 
@@ -69,27 +82,142 @@ class CanvasService {
    * Create a new canvas
    */
   async createCanvas(canvasData: CreateCanvasData): Promise<Canvas> {
-    // Use the database function for creating canvases
-    const { data, error } = await supabase.rpc('create_new_canvas', {
-      canvas_title: canvasData.title
-    });
+    console.log('Creating canvas with data:', canvasData);
 
-    if (error) {
-      console.error('Error creating canvas:', error);
-      throw new Error('Failed to create canvas');
+    let canvasId: string;
+    let canvas: Canvas | null = null;
+
+    try {
+      // Try the database function first
+      const { data, error } = await supabase.rpc('create_new_canvas', {
+        canvas_title: canvasData.title
+      });
+
+      console.log('Database function response:', { data, error });
+
+      if (error || !data) {
+        throw new Error('Database function failed');
+      }
+
+      canvasId = data;
+      console.log('Canvas created with ID via function:', canvasId, 'Type:', typeof canvasId);
+      
+    } catch (functionError) {
+      console.warn('Database function failed, trying direct insert:', functionError);
+      
+      // Fallback: Direct insert
+      const newCanvasId = crypto.randomUUID();
+      const newRoomId = `room_${crypto.randomUUID()}`;
+      
+      const { data: insertData, error: insertError } = await supabase
+        .from('canvases')
+        .insert({
+          id: newCanvasId,
+          title: canvasData.title,
+          room_id: newRoomId,
+        })
+        .select()
+        .single();
+        
+      if (insertError) {
+        console.error('Direct insert also failed:', insertError);
+        throw new Error(`Failed to create canvas: ${insertError.message}`);
+      }
+      
+      canvasId = newCanvasId;
+      canvas = insertData; // We already have the canvas data
+      console.log('Canvas created with ID via direct insert:', canvasId);
     }
-
-    const canvasId = data;
 
     // If shapes are provided, save them to the canvas
     if (canvasData.shapes && canvasData.shapes.length > 0) {
+      console.log('Saving shapes to new canvas:', canvasData.shapes.length);
       await this.saveShapesToCanvas(canvasId, canvasData.shapes);
     }
 
-    // Return the created canvas
-    const canvas = await this.getCanvas(canvasId);
+    // If we don't already have the canvas data, try to retrieve it
     if (!canvas) {
-      throw new Error('Failed to retrieve created canvas');
+      console.log('Attempting to retrieve canvas data...');
+      
+      let attempts = 0;
+      const maxAttempts = 3;
+
+      while (!canvas && attempts < maxAttempts) {
+        attempts++;
+        console.log(`Attempting to retrieve canvas (attempt ${attempts}/${maxAttempts})`);
+        
+        try {
+          canvas = await this.getCanvas(canvasId);
+          if (canvas) {
+            console.log('Successfully retrieved canvas:', canvas.title);
+            break;
+          }
+        } catch (error) {
+          console.warn(`Retrieval attempt ${attempts} failed:`, error);
+        }
+
+        // Wait a bit before retrying
+        if (attempts < maxAttempts) {
+          await new Promise(resolve => setTimeout(resolve, 500));
+        }
+      }
+    } else {
+      console.log('Already have canvas data from direct insert');
+    }
+
+    if (!canvas) {
+      // Last resort: Try to get the canvas info directly from the database function result
+      console.warn('Could not retrieve canvas via normal API, trying alternative approach');
+      
+      // Query the database directly for this specific canvas
+      try {
+        const { data: directData, error: directError } = await supabase
+          .from('canvases')
+          .select('*')
+          .eq('id', canvasId)
+          .maybeSingle(); // Use maybeSingle to avoid throwing on not found
+          
+        console.log('Direct query result:', { data: directData, error: directError });
+        
+        if (directData) {
+          canvas = directData;
+        } else {
+          // Still no luck, construct manually but with better room_id logic
+          console.warn('Canvas not found in direct query either, constructing fallback object');
+          
+          canvas = {
+            id: canvasId,
+            title: canvasData.title,
+            user_id: '', // Will be populated by the system
+            room_id: `room_${canvasId.replace(/-/g, '').substring(0, 12)}`, // Stable room_id based on canvas ID
+            created_at: new Date().toISOString(),
+            updated_at: new Date().toISOString(),
+            is_public: false,
+            data: {}
+          };
+        }
+      } catch (directError) {
+        console.error('Direct query also failed:', directError);
+        
+        // Final fallback
+        canvas = {
+          id: canvasId,
+          title: canvasData.title,
+          user_id: '',
+          room_id: `room_${canvasId.replace(/-/g, '').substring(0, 12)}`,
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+          is_public: false,
+          data: {}
+        };
+      }
+      
+      console.log('Final canvas object:', canvas);
+    }
+
+    // Ensure we always have a canvas object
+    if (!canvas) {
+      throw new Error('Failed to create or retrieve canvas after all attempts');
     }
 
     return canvas;

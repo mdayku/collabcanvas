@@ -20,6 +20,10 @@ export type CanvasState = {
   canvasError: string | null;
   hasUnsavedChanges: boolean;
   
+  // Tab management (for multi-canvas workflow)
+  openTabs: Canvas[];
+  activeTabId: string | null;
+  
   // Room management
   setRoom: (id: string) => void;
   
@@ -63,6 +67,13 @@ export type CanvasState = {
   saveCurrentCanvas: (title?: string) => Promise<void>;
   duplicateCurrentCanvas: (newTitle?: string) => Promise<Canvas>;
   
+  // Tab management functions
+  openCanvasInTab: (canvas: Canvas) => void;
+  closeTab: (canvasId: string) => Promise<boolean>; // Returns true if closed, false if cancelled
+  switchToTab: (canvasId: string) => void;
+  getActiveTab: () => Canvas | null;
+  hasUnsavedTab: (canvasId: string) => boolean;
+  
   // Getters
   getSelectedShapes: () => ShapeBase[];
   getShape: (id: string) => ShapeBase | undefined;
@@ -84,6 +95,10 @@ export const useCanvas = create<CanvasState>()(immer((set, get) => ({
   isCanvasLoading: false,
   canvasError: null,
   hasUnsavedChanges: false,
+  
+  // Tab management state
+  openTabs: [],
+  activeTabId: null,
   
   // Room management
   setRoom: (id) => set((s) => { s.roomId = id; }),
@@ -383,6 +398,110 @@ export const useCanvas = create<CanvasState>()(immer((set, get) => ({
       });
       throw error;
     }
+  },
+  
+  // Tab management functions
+  openCanvasInTab: (canvas) => set((s) => {
+    // Check if tab is already open
+    const existingTabIndex = s.openTabs.findIndex(tab => tab.id === canvas.id);
+    
+    if (existingTabIndex >= 0) {
+      // Tab already open, just switch to it
+      s.activeTabId = canvas.id;
+    } else {
+      // Add new tab
+      s.openTabs.push(canvas);
+      s.activeTabId = canvas.id;
+    }
+    
+    // Update current canvas
+    s.currentCanvas = canvas;
+    s.roomId = canvas.room_id;
+  }),
+  
+  closeTab: async (canvasId) => {
+    const state = get();
+    const tabToClose = state.openTabs.find(tab => tab.id === canvasId);
+    
+    if (!tabToClose) {
+      return true; // Tab not found, consider it closed
+    }
+    
+    // Check for unsaved changes if this is the active tab
+    if (state.activeTabId === canvasId && state.hasUnsavedChanges) {
+      const shouldSave = confirm(`"${tabToClose.title}" has unsaved changes. Save before closing?`);
+      
+      if (shouldSave) {
+        try {
+          await state.saveCurrentCanvas();
+        } catch (error) {
+          const forceClose = confirm('Failed to save. Close anyway?');
+          if (!forceClose) {
+            return false; // User cancelled close
+          }
+        }
+      }
+    }
+    
+    // Remove tab from openTabs
+    set((s) => {
+      const tabIndex = s.openTabs.findIndex(tab => tab.id === canvasId);
+      if (tabIndex >= 0) {
+        s.openTabs.splice(tabIndex, 1);
+      }
+      
+      // If this was the active tab, switch to another tab or clear
+      if (s.activeTabId === canvasId) {
+        if (s.openTabs.length > 0) {
+          // Switch to the previous tab or first available
+          const newActiveTab = s.openTabs[Math.max(0, tabIndex - 1)];
+          s.activeTabId = newActiveTab.id;
+          s.currentCanvas = newActiveTab;
+          s.roomId = newActiveTab.room_id;
+          s.hasUnsavedChanges = false; // Reset for new tab
+        } else {
+          // No tabs left, clear everything
+          s.activeTabId = null;
+          s.currentCanvas = null;
+          s.roomId = "room-1"; // Default room
+          s.shapes = {};
+          s.selectedIds = [];
+          s.hasUnsavedChanges = false;
+        }
+      }
+    });
+    
+    // Load shapes for the new active tab if there is one
+    if (get().activeTabId && get().activeTabId !== canvasId) {
+      try {
+        await get().loadCanvas(get().activeTabId!);
+      } catch (error) {
+        console.error('Failed to load shapes for new active tab:', error);
+      }
+    }
+    
+    return true;
+  },
+  
+  switchToTab: (canvasId) => set((s) => {
+    const targetTab = s.openTabs.find(tab => tab.id === canvasId);
+    if (targetTab) {
+      s.activeTabId = canvasId;
+      s.currentCanvas = targetTab;
+      s.roomId = targetTab.room_id;
+      
+      // Load the canvas shapes (this will be handled by the UI)
+    }
+  }),
+  
+  getActiveTab: () => {
+    const state = get();
+    return state.openTabs.find(tab => tab.id === state.activeTabId) || null;
+  },
+  
+  hasUnsavedTab: (canvasId) => {
+    const state = get();
+    return state.activeTabId === canvasId && state.hasUnsavedChanges;
   },
 })));
 
