@@ -27,6 +27,7 @@ export type ShapeBase = {
   y2?: number; // end point y for lines and arrows
   arrowHead?: 'start' | 'end' | 'both' | 'none'; // arrow head configuration
   dashPattern?: number[]; // dash pattern for lines [dash, gap, dash, gap...]
+  groupId?: string; // group identifier for grouped shapes
   updated_at: number;
   updated_by: string;
 };

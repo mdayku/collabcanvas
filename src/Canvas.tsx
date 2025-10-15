@@ -1010,6 +1010,8 @@ function HelpPopup({ isOpen, onClose }: { isOpen: boolean; onClose: () => void }
                         <div>• <kbd className="px-1 rounded text-xs" style={{ backgroundColor: colors.buttonHover, color: colors.text }}>Ctrl+X</kbd> Cut selected</div>
                         <div>• <kbd className="px-1 rounded text-xs" style={{ backgroundColor: colors.buttonHover, color: colors.text }}>Ctrl+V</kbd> Paste</div>
                         <div>• <kbd className="px-1 rounded text-xs" style={{ backgroundColor: colors.buttonHover, color: colors.text }}>Ctrl+D</kbd> Duplicate selected</div>
+                        <div>• <kbd className="px-1 rounded text-xs" style={{ backgroundColor: colors.buttonHover, color: colors.text }}>Ctrl+G</kbd> Group selected shapes</div>
+                        <div>• <kbd className="px-1 rounded text-xs" style={{ backgroundColor: colors.buttonHover, color: colors.text }}>Ctrl+Shift+G</kbd> Ungroup shapes</div>
                         <div>• <kbd className="px-1 rounded text-xs" style={{ backgroundColor: colors.buttonHover, color: colors.text }}>Delete</kbd> Remove selected</div>
                       </div>
                     </div>
@@ -1459,6 +1461,7 @@ export default function Canvas({ onSignOut }: CanvasProps) {
             imageUrl: r.imageUrl,
             originalWidth: r.originalWidth,
             originalHeight: r.originalHeight,
+            groupId: r.groupId,
             x2: r.x2,
             y2: r.y2,
             arrowHead: r.arrowHead,
@@ -1608,15 +1611,21 @@ export default function Canvas({ onSignOut }: CanvasProps) {
           const newShapes = useCanvas.getState().getSelectedShapes();
           
           // Apply snap-to-grid to duplicated shapes if enabled
+          const { snapToGrid } = useTheme();
           if (snapToGrid) {
+            const applySnap = (value: number) => {
+              const gridSize = 25;
+              return Math.round(value / gridSize) * gridSize;
+            };
+            
             newShapes.forEach(shape => {
               const snappedShape = {
                 ...shape,
-                x: snapToGridCoordinate(shape.x),
-                y: snapToGridCoordinate(shape.y),
+                x: applySnap(shape.x),
+                y: applySnap(shape.y),
                 // Also snap end points for lines/arrows
-                ...(shape.x2 !== undefined && { x2: snapToGridCoordinate(shape.x2) }),
-                ...(shape.y2 !== undefined && { y2: snapToGridCoordinate(shape.y2) }),
+                ...(shape.x2 !== undefined && { x2: applySnap(shape.x2) }),
+                ...(shape.y2 !== undefined && { y2: applySnap(shape.y2) }),
                 updated_at: Date.now(),
                 updated_by: me.id
               };
@@ -1629,6 +1638,70 @@ export default function Canvas({ onSignOut }: CanvasProps) {
           
           // Persist to database
           newShapes.forEach(shape => persist(shape));
+          
+          e.preventDefault();
+        }
+        return;
+      }
+      
+      // Group selected shapes with Ctrl+G
+      if (e.ctrlKey && e.key === 'g' && !e.shiftKey) {
+        const selectedIds = useCanvas.getState().selectedIds;
+        if (selectedIds.length >= 2) {
+          // Save history before grouping
+          useCanvas.getState().pushHistory();
+          
+          // Group the shapes
+          const groupId = useCanvas.getState().groupShapes(selectedIds);
+          
+          if (groupId) {
+            // Broadcast group changes to multiplayer
+            const groupedShapes = useCanvas.getState().getSelectedShapes();
+            groupedShapes.forEach(shape => {
+              broadcastUpsert(shape);
+              persist(shape);
+            });
+            
+            console.log(`Grouped ${selectedIds.length} shapes with group ID: ${groupId}`);
+          }
+          
+          e.preventDefault();
+        }
+        return;
+      }
+      
+      // Ungroup shapes with Ctrl+Shift+G
+      if (e.ctrlKey && e.shiftKey && e.key === 'G') {
+        const selectedIds = useCanvas.getState().selectedIds;
+        if (selectedIds.length > 0) {
+          // Find shapes that are grouped
+          const groupIds = new Set(
+            selectedIds
+              .map(id => useCanvas.getState().shapes[id]?.groupId)
+              .filter(Boolean)
+          );
+          
+          if (groupIds.size > 0) {
+            // Save history before ungrouping
+            useCanvas.getState().pushHistory();
+            
+            // Ungroup all found groups
+            groupIds.forEach(groupId => {
+              if (groupId) { // Type guard to ensure groupId is not undefined
+                const shapesToUngroup = useCanvas.getState().getGroupShapes(groupId);
+                useCanvas.getState().ungroupShapes(groupId);
+                
+                // Broadcast ungroup changes to multiplayer
+                shapesToUngroup.forEach(shape => {
+                  const updatedShape = { ...shape, groupId: undefined, updated_at: Date.now(), updated_by: me.id };
+                  broadcastUpsert(updatedShape);
+                  persist(updatedShape);
+                });
+                
+                console.log(`Ungrouped shapes from group ID: ${groupId}`);
+              }
+            });
+          }
           
           e.preventDefault();
         }
@@ -1733,6 +1806,14 @@ export default function Canvas({ onSignOut }: CanvasProps) {
           
           const newShapeIds: string[] = [];
           
+          // Get snap settings from theme context
+          const { snapToGrid } = useTheme();
+          const applySnap = (value: number) => {
+            if (!snapToGrid) return value;
+            const gridSize = 25;
+            return Math.round(value / gridSize) * gridSize;
+          };
+          
           // Create new shapes with offset positioning
           clipboard.forEach((originalShape: ShapeBase, index: number) => {
             const offsetX = 20 + (index * 5); // Slight cascade effect
@@ -1741,11 +1822,11 @@ export default function Canvas({ onSignOut }: CanvasProps) {
             const newShape = {
               ...originalShape,
               id: Math.random().toString(36).substring(2),
-              x: snapToGridCoordinate(originalShape.x + offsetX),
-              y: snapToGridCoordinate(originalShape.y + offsetY),
+              x: applySnap(originalShape.x + offsetX),
+              y: applySnap(originalShape.y + offsetY),
               // Also offset end points for lines/arrows
-              ...(originalShape.x2 !== undefined && { x2: snapToGridCoordinate(originalShape.x2 + offsetX) }),
-              ...(originalShape.y2 !== undefined && { y2: snapToGridCoordinate(originalShape.y2 + offsetY) }),
+              ...(originalShape.x2 !== undefined && { x2: applySnap(originalShape.x2 + offsetX) }),
+              ...(originalShape.y2 !== undefined && { y2: applySnap(originalShape.y2 + offsetY) }),
               updated_at: Date.now(),
               updated_by: useCanvas.getState().me.id,
             };
@@ -1904,11 +1985,61 @@ export default function Canvas({ onSignOut }: CanvasProps) {
     useCanvas.getState().pushHistory();
     
     const node = e.target;
+    const currentShape = useCanvas.getState().shapes[id];
+    
+    if (!currentShape) return;
+    
     // Apply snap-to-grid if enabled
     const snappedX = snapToGridCoordinate(node.x());
     const snappedY = snapToGridCoordinate(node.y());
-    const next = { ...useCanvas.getState().shapes[id], x: snappedX, y: snappedY, updated_at: Date.now(), updated_by: me.id } as ShapeBase;
-    useCanvas.getState().upsert(next); broadcastUpsert(next); persist(next);
+    
+    // Calculate movement offset
+    const deltaX = snappedX - currentShape.x;
+    const deltaY = snappedY - currentShape.y;
+    
+    // Update the dragged shape
+    const updatedShape = { ...currentShape, x: snappedX, y: snappedY, updated_at: Date.now(), updated_by: me.id } as ShapeBase;
+    useCanvas.getState().upsert(updatedShape);
+    broadcastUpsert(updatedShape);
+    persist(updatedShape);
+    
+    // If shape belongs to a group, move all other shapes in the group
+    if (currentShape.groupId) {
+      const groupShapes = useCanvas.getState().getGroupShapes(currentShape.groupId);
+      
+      groupShapes.forEach(groupShape => {
+        if (groupShape.id !== id) { // Don't move the shape we already moved
+          const newX = snapToGridCoordinate(groupShape.x + deltaX);
+          const newY = snapToGridCoordinate(groupShape.y + deltaY);
+          
+          // Handle lines and arrows - move both start and end points
+          let updatedGroupShape: ShapeBase;
+          if (groupShape.type === 'line' || groupShape.type === 'arrow') {
+            updatedGroupShape = {
+              ...groupShape,
+              x: newX,
+              y: newY,
+              x2: groupShape.x2 ? snapToGridCoordinate(groupShape.x2 + deltaX) : undefined,
+              y2: groupShape.y2 ? snapToGridCoordinate(groupShape.y2 + deltaY) : undefined,
+              updated_at: Date.now(),
+              updated_by: me.id
+            };
+          } else {
+            updatedGroupShape = {
+              ...groupShape,
+              x: newX,
+              y: newY,
+              updated_at: Date.now(),
+              updated_by: me.id
+            };
+          }
+          
+          useCanvas.getState().upsert(updatedGroupShape);
+          broadcastUpsert(updatedGroupShape);
+          persist(updatedGroupShape);
+        }
+      });
+    }
   };
 
   const onTransformEnd = () => {
@@ -1995,25 +2126,50 @@ export default function Canvas({ onSignOut }: CanvasProps) {
     }
     const onClick = (e: any) => {
       e.cancelBubble = true; // Prevent event from bubbling to stage
+      
+      // Get all shapes that should be selected (individual shape or entire group)
+      const getShapesToSelect = (shapeId: string) => {
+        const shape = useCanvas.getState().shapes[shapeId];
+        if (shape?.groupId) {
+          // If shape is grouped, return all shapes in the group
+          return useCanvas.getState().getGroupShapes(shape.groupId).map(s => s.id);
+        } else {
+          // If shape is not grouped, return just this shape
+          return [shapeId];
+        }
+      };
+      
+      const shapesToSelect = getShapesToSelect(s.id);
+      
       if (e.evt.shiftKey) {
         const currentSelection = useCanvas.getState().selectedIds;
-        if (currentSelection.includes(s.id)) {
-          // Remove from selection if already selected
-          const newSelection = currentSelection.filter(id => id !== s.id);
+        
+        // Check if any of the shapes to select are already selected
+        const alreadySelected = shapesToSelect.some(id => currentSelection.includes(id));
+        
+        if (alreadySelected) {
+          // Remove all shapes in the group from selection
+          const newSelection = currentSelection.filter(id => !shapesToSelect.includes(id));
           useCanvas.getState().select(newSelection);
         } else {
-          // Add to selection
-          const newSelection = [...currentSelection, s.id];
+          // Add all shapes in the group to selection
+          const newSelection = [...currentSelection, ...shapesToSelect];
           useCanvas.getState().select(newSelection);
         }
       } else {
-        // Single selection
-        if (selectedIds.includes(s.id)) {
-          if (selectedIds.length === 1) {
-            useCanvas.getState().select([]);
-          }
+        // Single selection - select the shape or entire group
+        const currentSelection = useCanvas.getState().selectedIds;
+        
+        // Check if we're clicking on already selected group/shape
+        const isCurrentlySelected = shapesToSelect.every(id => currentSelection.includes(id)) && 
+                                   currentSelection.length === shapesToSelect.length;
+        
+        if (isCurrentlySelected && shapesToSelect.length === 1) {
+          // Deselect if clicking on sole selected shape
+          useCanvas.getState().select([]);
         } else {
-          useCanvas.getState().select([s.id]);
+          // Select the shape or entire group
+          useCanvas.getState().select(shapesToSelect);
         }
       }
     };
@@ -2386,7 +2542,7 @@ interface ToolbarProps {
 }
 
 function CategorizedToolbar() {
-  const { colors } = useTheme();
+  const { colors, snapToGrid } = useTheme();
   const [expandedCategories, setExpandedCategories] = useState<Set<string>>(
     new Set(['lines-arrows', 'shapes', 'emojis']) // Start with lines-arrows, shapes and emojis expanded
   );
@@ -2401,23 +2557,23 @@ function CategorizedToolbar() {
     setExpandedCategories(newExpanded);
   };
 
-  const addRect = () => addShape("rect", colors, snapToGrid, snapToGridCoordinate);
-  const addCircle = () => addShape("circle", colors, snapToGrid, snapToGridCoordinate);
-  const addText = () => addShape("text", colors, snapToGrid, snapToGridCoordinate);
-  const addTriangle = () => addShape("triangle", colors, snapToGrid, snapToGridCoordinate);
-  const addStar = () => addShape("star", colors, snapToGrid, snapToGridCoordinate);
-  const addHeart = () => addShape("heart", colors, snapToGrid, snapToGridCoordinate);
-  const addPentagon = () => addShape("pentagon", colors, snapToGrid, snapToGridCoordinate);
-  const addHexagon = () => addShape("hexagon", colors, snapToGrid, snapToGridCoordinate);
-  const addOctagon = () => addShape("octagon", colors, snapToGrid, snapToGridCoordinate);
-  const addOval = () => addShape("oval", colors, snapToGrid, snapToGridCoordinate);
-  const addTrapezoid = () => addShape("trapezoid", colors, snapToGrid, snapToGridCoordinate);
-  const addRhombus = () => addShape("rhombus", colors, snapToGrid, snapToGridCoordinate);
-  const addParallelogram = () => addShape("parallelogram", colors, snapToGrid, snapToGridCoordinate);
+  const addRect = () => addShape("rect", colors, snapToGrid);
+  const addCircle = () => addShape("circle", colors, snapToGrid);
+  const addText = () => addShape("text", colors, snapToGrid);
+  const addTriangle = () => addShape("triangle", colors, snapToGrid);
+  const addStar = () => addShape("star", colors, snapToGrid);
+  const addHeart = () => addShape("heart", colors, snapToGrid);
+  const addPentagon = () => addShape("pentagon", colors, snapToGrid);
+  const addHexagon = () => addShape("hexagon", colors, snapToGrid);
+  const addOctagon = () => addShape("octagon", colors, snapToGrid);
+  const addOval = () => addShape("oval", colors, snapToGrid);
+  const addTrapezoid = () => addShape("trapezoid", colors, snapToGrid);
+  const addRhombus = () => addShape("rhombus", colors, snapToGrid);
+  const addParallelogram = () => addShape("parallelogram", colors, snapToGrid);
   
   // Line and arrow creation functions
-  const addLine = () => addShape("line", colors, snapToGrid, snapToGridCoordinate);
-  const addArrow = () => addShape("arrow", colors, snapToGrid, snapToGridCoordinate);
+  const addLine = () => addShape("line", colors, snapToGrid);
+  const addArrow = () => addShape("arrow", colors, snapToGrid);
   
   const addEmoji = (emoji: string) => {
     // Save history before creating
@@ -2436,11 +2592,18 @@ function CategorizedToolbar() {
     const size = 48; // Good default size for emoji images
     const position = findBlankArea(shapes, size, size);
     
+    // Helper function to apply snapping if enabled
+    const applySnap = (value: number) => {
+      if (!snapToGrid) return value;
+      const gridSize = 25;
+      return Math.round(value / gridSize) * gridSize;
+    };
+
     const emojiShape: ShapeBase = { 
       id: crypto.randomUUID(), 
       type: "image", 
-      x: snapToGridCoordinate(position.x), 
-      y: snapToGridCoordinate(position.y), 
+      x: applySnap(position.x), 
+      y: applySnap(position.y), 
       w: size, 
       h: size, 
       imageUrl: twemojiUrl,
@@ -2657,6 +2820,13 @@ function CategorizedToolbar() {
           onMouseLeave={(e) => e.currentTarget.style.backgroundColor = colors.buttonBg}
           onClick={() => {
             const { me } = useCanvas.getState();
+            // Helper function to apply snapping if enabled
+            const applySnap = (value: number) => {
+              if (!snapToGrid) return value;
+              const gridSize = 25;
+              return Math.round(value / gridSize) * gridSize;
+            };
+            
             const batch: ShapeBase[] = [];
             for (let i = 0; i < 500; i++) {
               const baseX = 50 + (i % 25) * 90;
@@ -2664,8 +2834,8 @@ function CategorizedToolbar() {
               batch.push({ 
                 id: crypto.randomUUID(), 
                 type: "rect", 
-                x: snapToGridCoordinate(baseX), 
-                y: snapToGridCoordinate(baseY), 
+                x: applySnap(baseX), 
+                y: applySnap(baseY), 
                 w: 80, 
                 h: 40, 
                 color: "#e5e7eb", 
@@ -2812,14 +2982,18 @@ function findBlankArea(shapes: Record<string, ShapeBase>, width: number, height:
   };
 }
 
-function addShape(type: ShapeType, colors: any, snapToGrid: boolean = false, snapFn?: (value: number) => number) {
+function addShape(type: ShapeType, colors: any, snapToGrid: boolean = false) {
   // Save history before creating
   useCanvas.getState().pushHistory();
   
   const { me, shapes } = useCanvas.getState();
   
   // Helper function to apply snapping if enabled
-  const applySnap = (value: number) => snapToGrid && snapFn ? snapFn(value) : value;
+  const applySnap = (value: number) => {
+    if (!snapToGrid) return value;
+    const gridSize = 25;
+    return Math.round(value / gridSize) * gridSize;
+  };
   
   let s: ShapeBase;
   if (type === "text") {
@@ -4414,6 +4588,85 @@ function ContextMenu({ x, y, shapeIds, onClose }: {
             >
               📄 Duplicate
             </button>
+            
+            {/* Group - show when multiple shapes selected */}
+            {isMultiSelection && (
+              <button
+                onClick={() => {
+                  // Save history before grouping
+                  useCanvas.getState().pushHistory();
+                  
+                  // Group the shapes
+                  const groupId = useCanvas.getState().groupShapes(shapeIds);
+                  
+                  if (groupId) {
+                    // Broadcast group changes to multiplayer
+                    const groupedShapes = useCanvas.getState().getSelectedShapes();
+                    groupedShapes.forEach(shape => {
+                      broadcastUpsert(shape);
+                      persist(shape);
+                    });
+                    
+                    console.log(`Grouped ${shapeIds.length} shapes`);
+                  }
+                  
+                  onClose();
+                }}
+                className="w-full text-left text-sm px-2 py-1 rounded"
+                style={{ color: colors.text }}
+                onMouseEnter={(e) => e.currentTarget.style.backgroundColor = colors.buttonHover}
+                onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
+              >
+                🔗 Group Shapes
+              </button>
+            )}
+            
+            {/* Ungroup - show when selected shapes contain groups */}
+            {(() => {
+              const hasGroupedShapes = shapes.some(shape => shape?.groupId);
+              return hasGroupedShapes && (
+                <button
+                  onClick={() => {
+                    // Find all unique group IDs in selection
+                    const groupIds = new Set(
+                      shapes
+                        .map(shape => shape?.groupId)
+                        .filter(Boolean)
+                    );
+                    
+                    if (groupIds.size > 0) {
+                      // Save history before ungrouping
+                      useCanvas.getState().pushHistory();
+                      
+                      // Ungroup all found groups
+                      groupIds.forEach(groupId => {
+                        if (groupId) { // Type guard to ensure groupId is not undefined
+                          const shapesToUngroup = useCanvas.getState().getGroupShapes(groupId);
+                          useCanvas.getState().ungroupShapes(groupId);
+                          
+                          // Broadcast ungroup changes to multiplayer
+                          shapesToUngroup.forEach(shape => {
+                            const updatedShape = { ...shape, groupId: undefined, updated_at: Date.now(), updated_by: useCanvas.getState().me.id };
+                            broadcastUpsert(updatedShape);
+                            persist(updatedShape);
+                          });
+                          
+                          console.log(`Ungrouped shapes from group`);
+                        }
+                      });
+                    }
+                    
+                    onClose();
+                  }}
+                  className="w-full text-left text-sm px-2 py-1 rounded"
+                  style={{ color: colors.text }}
+                  onMouseEnter={(e) => e.currentTarget.style.backgroundColor = colors.buttonHover}
+                  onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
+                >
+                  🔓 Ungroup Shapes
+                </button>
+              );
+            })()}
             
             {/* Delete */}
             <button

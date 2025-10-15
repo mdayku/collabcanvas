@@ -88,6 +88,12 @@ export type CanvasState = {
   updateShape: (id: string, updates: UpdateShapeData) => void;
   duplicateShapes: (ids: string[]) => void;
   
+  // Group management
+  groupShapes: (ids: string[]) => string | null; // Returns groupId or null
+  ungroupShapes: (groupId: string) => void;
+  getGroupShapes: (groupId: string) => ShapeBase[];
+  isGrouped: (id: string) => boolean;
+  
   // Canvas management functions
   setCurrentCanvas: (canvas: Canvas | null) => void;
   setCanvasList: (canvases: Canvas[]) => void;
@@ -318,6 +324,66 @@ export const useCanvas = create<CanvasState>()(immer((set, get) => ({
     // Select the duplicated shapes
     s.selectedIds = newShapes.map(shape => shape.id);
   }),
+  
+  // Group management
+  groupShapes: (ids) => {
+    if (ids.length < 2) return null; // Need at least 2 shapes to group
+    
+    const groupId = crypto.randomUUID();
+    const now = Date.now();
+    const { me } = get();
+    
+    set((s) => {
+      ids.forEach(id => {
+        if (s.shapes[id]) {
+          s.shapes[id] = {
+            ...s.shapes[id],
+            groupId,
+            updated_at: now,
+            updated_by: me.id
+          };
+        }
+      });
+      
+      // Mark canvas as having changes
+      if (s.currentCanvas) {
+        s.hasUnsavedChanges = true;
+      }
+    });
+    
+    return groupId;
+  },
+  
+  ungroupShapes: (groupId) => set((s) => {
+    const now = Date.now();
+    const { me } = get();
+    
+    Object.keys(s.shapes).forEach(id => {
+      if (s.shapes[id].groupId === groupId) {
+        s.shapes[id] = {
+          ...s.shapes[id],
+          groupId: undefined,
+          updated_at: now,
+          updated_by: me.id
+        };
+      }
+    });
+    
+    // Mark canvas as having changes
+    if (s.currentCanvas) {
+      s.hasUnsavedChanges = true;
+    }
+  }),
+  
+  getGroupShapes: (groupId) => {
+    const { shapes } = get();
+    return Object.values(shapes).filter(shape => shape.groupId === groupId);
+  },
+  
+  isGrouped: (id) => {
+    const { shapes } = get();
+    return !!shapes[id]?.groupId;
+  },
   
   // Getters
   getSelectedShapes: () => {
