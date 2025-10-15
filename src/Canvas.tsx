@@ -50,7 +50,7 @@ function TopRibbon({ onSignOut, stageRef, setShowHelpPopup }: {
   const [availableCanvases, setAvailableCanvases] = useState<any[]>([]);
   const [isLoadingCanvases, setIsLoadingCanvases] = useState(false);
   const { currentCanvas, shapes } = useCanvas();
-  const { theme, colors, setTheme, showFPS, setShowFPS, showGrid, setShowGrid, halloweenMode, setHalloweenMode } = useTheme();
+  const { theme, colors, setTheme, showFPS, setShowFPS, showGrid, setShowGrid, snapToGrid, setSnapToGrid, halloweenMode, setHalloweenMode } = useTheme();
   const fps = useFps();
 
   const exportToPNG = () => {
