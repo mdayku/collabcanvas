@@ -1232,7 +1232,7 @@ export default function Canvas({ onSignOut }: CanvasProps) {
     return () => window.removeEventListener("mousemove", handler);
   }, []);
 
-  // Keyboard shortcuts (Delete/Backspace to delete, Ctrl+Z to undo)
+  // Comprehensive Keyboard Shortcuts System
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       // Don't handle shortcuts while editing text
@@ -1248,12 +1248,21 @@ export default function Canvas({ onSignOut }: CanvasProps) {
         return;
       }
       
+      // === HISTORY & EDITING ===
+      
       // Undo with Ctrl+Z
-      if (e.ctrlKey && e.key === 'z') {
+      if (e.ctrlKey && e.key === 'z' && !e.shiftKey) {
         useCanvas.getState().undo();
         e.preventDefault();
         return;
       }
+      
+      // TODO: Redo with Ctrl+Y or Ctrl+Shift+Z (redo method needs to be implemented in store)
+      // if ((e.ctrlKey && e.key === 'y') || (e.ctrlKey && e.shiftKey && e.key === 'Z')) {
+      //   useCanvas.getState().redo();
+      //   e.preventDefault();
+      //   return;
+      // }
       
       // Duplicate selected shapes with Ctrl+D
       if (e.ctrlKey && e.key === 'd') {
@@ -1297,6 +1306,135 @@ export default function Canvas({ onSignOut }: CanvasProps) {
           
           e.preventDefault(); // Prevent browser back navigation
         }
+        return;
+      }
+      
+      // === SELECTION ===
+      
+      // Select All with Ctrl+A
+      if (e.ctrlKey && e.key === 'a') {
+        const allShapeIds = Object.keys(useCanvas.getState().shapes);
+        useCanvas.getState().select(allShapeIds);
+        e.preventDefault();
+        return;
+      }
+      
+      // Deselect All with Escape
+      if (e.key === 'Escape') {
+        useCanvas.getState().select([]);
+        e.preventDefault();
+        return;
+      }
+      
+      // === COPY & PASTE ===
+      
+      // Copy with Ctrl+C
+      if (e.ctrlKey && e.key === 'c') {
+        const selectedIds = useCanvas.getState().selectedIds;
+        if (selectedIds.length > 0) {
+          const selectedShapes = useCanvas.getState().getSelectedShapes();
+          // Store in a global variable for paste functionality
+          (window as any).collabCanvasClipboard = selectedShapes;
+          
+          // Optional: Show feedback to user
+          console.log(`Copied ${selectedShapes.length} shape${selectedShapes.length > 1 ? 's' : ''} to clipboard`);
+          
+          e.preventDefault();
+        }
+        return;
+      }
+      
+      // Paste with Ctrl+V
+      if (e.ctrlKey && e.key === 'v') {
+        const clipboard = (window as any).collabCanvasClipboard;
+        if (clipboard && Array.isArray(clipboard)) {
+          // Save history before pasting
+          useCanvas.getState().pushHistory();
+          
+          // Clear current selection
+          useCanvas.getState().select([]);
+          
+          const newShapeIds: string[] = [];
+          
+          // Create new shapes with offset positioning
+          clipboard.forEach((originalShape: ShapeBase, index: number) => {
+            const offsetX = 20 + (index * 5); // Slight cascade effect
+            const offsetY = 20 + (index * 5);
+            
+            const newShape = {
+              ...originalShape,
+              id: Math.random().toString(36).substring(2),
+              x: originalShape.x + offsetX,
+              y: originalShape.y + offsetY,
+              // Also offset end points for lines/arrows
+              ...(originalShape.x2 !== undefined && { x2: originalShape.x2 + offsetX }),
+              ...(originalShape.y2 !== undefined && { y2: originalShape.y2 + offsetY }),
+              updated_at: Date.now(),
+              updated_by: useCanvas.getState().me.id,
+            };
+            
+            useCanvas.getState().upsert(newShape);
+            newShapeIds.push(newShape.id);
+            
+            // Broadcast and persist
+            broadcastUpsert(newShape);
+            persist(newShape);
+          });
+          
+          // Select the newly pasted shapes
+          useCanvas.getState().select(newShapeIds);
+          
+          console.log(`Pasted ${newShapeIds.length} shape${newShapeIds.length > 1 ? 's' : ''}`);
+          e.preventDefault();
+        }
+        return;
+      }
+      
+      // === MOVEMENT ===
+      
+      // Arrow key movement
+      if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(e.key)) {
+        const selectedIds = useCanvas.getState().selectedIds;
+        if (selectedIds.length > 0) {
+          // Save history before moving
+          useCanvas.getState().pushHistory();
+          
+          // Determine movement distance (Shift = large, normal = small)
+          const moveDistance = e.shiftKey ? 25 : 5;
+          
+          // Calculate movement delta
+          let dx = 0, dy = 0;
+          switch (e.key) {
+            case 'ArrowUp': dy = -moveDistance; break;
+            case 'ArrowDown': dy = moveDistance; break;
+            case 'ArrowLeft': dx = -moveDistance; break;
+            case 'ArrowRight': dx = moveDistance; break;
+          }
+          
+          // Move each selected shape
+          selectedIds.forEach(id => {
+            const shape = useCanvas.getState().shapes[id];
+            if (shape) {
+              const updatedShape = {
+                ...shape,
+                x: shape.x + dx,
+                y: shape.y + dy,
+                // Also move end points for lines/arrows
+                ...(shape.x2 !== undefined && { x2: shape.x2 + dx }),
+                ...(shape.y2 !== undefined && { y2: shape.y2 + dy }),
+                updated_at: Date.now(),
+                updated_by: useCanvas.getState().me.id,
+              };
+              
+              useCanvas.getState().upsert(updatedShape);
+              broadcastUpsert(updatedShape);
+              persist(updatedShape);
+            }
+          });
+          
+          e.preventDefault();
+        }
+        return;
       }
     };
 
@@ -3917,12 +4055,25 @@ function HelpMenu() {
               <div className="border-t pt-3">
                 <div className="font-medium text-slate-600 mb-2">Keyboard Shortcuts</div>
                 <div className="text-xs text-slate-500 space-y-1">
-      <div>• <kbd className="px-1 bg-slate-200 rounded text-xs">Ctrl+Z</kbd> to undo</div>
-      <div>• <kbd className="px-1 bg-slate-200 rounded text-xs">Ctrl+D</kbd> to duplicate</div>
-      <div>• <kbd className="px-1 bg-slate-200 rounded text-xs">Shift+Click</kbd> to multi-select</div>
-      <div>• <kbd className="px-1 bg-slate-200 rounded text-xs">Double-click</kbd> text to edit</div>
-      <div>• <kbd className="px-1 bg-slate-200 rounded text-xs">Delete</kbd> to remove selected</div>
-      <div>• <kbd className="px-1 bg-slate-200 rounded text-xs">Mouse wheel</kbd> to zoom</div>
+                  <div className="font-medium text-slate-600 mb-1">Selection:</div>
+                  <div>• <kbd className="px-1 bg-slate-200 rounded text-xs">Ctrl+A</kbd> select all</div>
+                  <div>• <kbd className="px-1 bg-slate-200 rounded text-xs">Escape</kbd> deselect all</div>
+                  <div>• <kbd className="px-1 bg-slate-200 rounded text-xs">Shift+Click</kbd> multi-select</div>
+                  
+                  <div className="font-medium text-slate-600 mb-1 mt-2">Editing:</div>
+                  <div>• <kbd className="px-1 bg-slate-200 rounded text-xs">Ctrl+C</kbd> copy selected</div>
+                  <div>• <kbd className="px-1 bg-slate-200 rounded text-xs">Ctrl+V</kbd> paste</div>
+                  <div>• <kbd className="px-1 bg-slate-200 rounded text-xs">Ctrl+D</kbd> duplicate</div>
+                  <div>• <kbd className="px-1 bg-slate-200 rounded text-xs">Delete</kbd> remove selected</div>
+                  <div>• <kbd className="px-1 bg-slate-200 rounded text-xs">Ctrl+Z</kbd> undo</div>
+                  
+                  <div className="font-medium text-slate-600 mb-1 mt-2">Movement:</div>
+                  <div>• <kbd className="px-1 bg-slate-200 rounded text-xs">Arrow Keys</kbd> move 5px</div>
+                  <div>• <kbd className="px-1 bg-slate-200 rounded text-xs">Shift+Arrows</kbd> move 25px</div>
+                  
+                  <div className="font-medium text-slate-600 mb-1 mt-2">Other:</div>
+                  <div>• <kbd className="px-1 bg-slate-200 rounded text-xs">Double-click</kbd> edit text</div>
+                  <div>• <kbd className="px-1 bg-slate-200 rounded text-xs">Mouse wheel</kbd> zoom</div>
                 </div>
               </div>
               
