@@ -25,6 +25,18 @@ const mockStoreState = {
   cursors: {},
   onlineUsers: [],
   isAuthenticated: false,
+  
+  // Canvas management state (required for TabBar component)
+  currentCanvas: null,
+  canvasList: [],
+  isCanvasLoading: false,
+  canvasError: null,
+  hasUnsavedChanges: false,
+  
+  // Tab management state (required for TabBar component)
+  openTabs: [],
+  activeTabId: null,
+  
   history: [],
   select: vi.fn(),
   pushHistory: vi.fn(),
@@ -34,6 +46,46 @@ const mockStoreState = {
   setUser: vi.fn(),
   clear: vi.fn(),
   undo: vi.fn(),
+  remove: vi.fn(),
+  toggleSelect: vi.fn(),
+  selectAll: vi.fn(),
+  clearSelection: vi.fn(),
+  createShape: vi.fn(),
+  updateShape: vi.fn(),
+  duplicateShapes: vi.fn(),
+  updateCursor: vi.fn(),
+  removeCursor: vi.fn(),
+  setOnlineUsers: vi.fn(),
+  
+  // Canvas management functions (required for TabBar and TopRibbon)
+  setCurrentCanvas: vi.fn(),
+  setCanvasList: vi.fn(),
+  setCanvasLoading: vi.fn(),
+  setCanvasError: vi.fn(),
+  setUnsavedChanges: vi.fn(),
+  loadCanvas: vi.fn(),
+  createNewCanvas: vi.fn(),
+  saveCurrentCanvas: vi.fn(),
+  duplicateCurrentCanvas: vi.fn(),
+  
+  // Tab management functions (required for TabBar)
+  openCanvasInTab: vi.fn(),
+  closeTab: vi.fn(),
+  switchToTab: vi.fn(),
+  getActiveTab: vi.fn(),
+  hasUnsavedTab: vi.fn(() => false),
+  
+  // Auto-save and recovery functions (required for SaveStatusIndicator)
+  setSaveStatus: vi.fn(),
+  updateAutoSaveSettings: vi.fn(),
+  checkForRecovery: vi.fn(),
+  restoreFromRecovery: vi.fn(),
+  clearRecoveryData: vi.fn(),
+  triggerManualSave: vi.fn(),
+  
+  // Getters (required by components)
+  getSelectedShapes: vi.fn(() => []),
+  getShape: vi.fn(),
 };
 
 vi.mock('../state/store', () => ({

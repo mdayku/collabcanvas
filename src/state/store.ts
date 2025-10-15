@@ -2,6 +2,7 @@ import { create } from "zustand";
 import { immer } from "zustand/middleware/immer";
 import type { ShapeBase, CreateShapeData, UpdateShapeData, ShapeType, Cursor } from "../types";
 import type { Canvas } from "../services/canvasService";
+import type { AutoSaveSettings } from "../services/autoSaveService";
 
 export type CanvasState = {
   shapes: Record<string, ShapeBase>;
@@ -23,6 +24,12 @@ export type CanvasState = {
   // Tab management (for multi-canvas workflow)
   openTabs: Canvas[];
   activeTabId: string | null;
+  
+  // Auto-save and recovery state
+  saveStatus: 'idle' | 'saving' | 'saved' | 'error';
+  saveMessage: string | null;
+  autoSaveSettings: AutoSaveSettings;
+  hasRecoveryData: boolean;
   
   // Room management
   setRoom: (id: string) => void;
@@ -74,6 +81,14 @@ export type CanvasState = {
   getActiveTab: () => Canvas | null;
   hasUnsavedTab: (canvasId: string) => boolean;
   
+  // Auto-save and recovery functions
+  setSaveStatus: (status: 'idle' | 'saving' | 'saved' | 'error', message?: string) => void;
+  updateAutoSaveSettings: (settings: Partial<AutoSaveSettings>) => void;
+  checkForRecovery: () => Promise<void>;
+  restoreFromRecovery: (recoveryData: any) => Promise<void>;
+  clearRecoveryData: () => void;
+  triggerManualSave: () => Promise<void>;
+  
   // Getters
   getSelectedShapes: () => ShapeBase[];
   getShape: (id: string) => ShapeBase | undefined;
@@ -99,6 +114,16 @@ export const useCanvas = create<CanvasState>()(immer((set, get) => ({
   // Tab management state
   openTabs: [],
   activeTabId: null,
+  
+  // Auto-save and recovery state
+  saveStatus: 'idle',
+  saveMessage: null,
+  autoSaveSettings: {
+    enabled: true,
+    intervalMs: 30000, // 30 seconds
+    maxBackups: 5
+  },
+  hasRecoveryData: false,
   
   // Room management
   setRoom: (id) => set((s) => { s.roomId = id; }),
@@ -141,15 +166,31 @@ export const useCanvas = create<CanvasState>()(immer((set, get) => ({
   upsert: (s) => set((state) => {
     const list = Array.isArray(s) ? s : [s];
     for (const item of list) state.shapes[item.id] = item;
+    // Mark as unsaved when shapes are modified
+    if (state.currentCanvas) {
+      state.hasUnsavedChanges = true;
+    }
   }),
-  
+
   remove: (ids) => set((s) => {
     ids.forEach((id) => delete s.shapes[id]);
     // Remove from selection if deleted
     s.selectedIds = s.selectedIds.filter(selectedId => !ids.includes(selectedId));
+    // Mark as unsaved when shapes are deleted
+    if (s.currentCanvas && ids.length > 0) {
+      s.hasUnsavedChanges = true;
+    }
   }),
-  
-  clear: () => set((s) => { s.shapes = {}; s.selectedIds = []; }),
+
+  clear: () => set((s) => { 
+    const hadShapes = Object.keys(s.shapes).length > 0;
+    s.shapes = {}; 
+    s.selectedIds = [];
+    // Mark as unsaved when canvas is cleared
+    if (s.currentCanvas && hadShapes) {
+      s.hasUnsavedChanges = true;
+    }
+  }),
   
   // Selection management
   select: (ids) => set((s) => { s.selectedIds = ids; }),
@@ -194,6 +235,10 @@ export const useCanvas = create<CanvasState>()(immer((set, get) => ({
         updated_at: Date.now(),
         updated_by: s.me.id,
       });
+      // Mark as unsaved when shape is updated
+      if (s.currentCanvas) {
+        s.hasUnsavedChanges = true;
+      }
     }
   }),
   
@@ -502,6 +547,109 @@ export const useCanvas = create<CanvasState>()(immer((set, get) => ({
   hasUnsavedTab: (canvasId) => {
     const state = get();
     return state.activeTabId === canvasId && state.hasUnsavedChanges;
+  },
+
+  // Auto-save and recovery functions
+  setSaveStatus: (status, message) => set((s) => {
+    s.saveStatus = status;
+    s.saveMessage = message || null;
+  }),
+
+  updateAutoSaveSettings: async (settings) => {
+    set((s) => {
+      s.autoSaveSettings = { ...s.autoSaveSettings, ...settings };
+    });
+    
+    // Update the auto-save service
+    const { autoSaveService } = await import('../services/autoSaveService');
+    autoSaveService.updateSettings(settings);
+  },
+
+  checkForRecovery: async () => {
+    try {
+      const { autoSaveService } = await import('../services/autoSaveService');
+      const recoveryData = autoSaveService.checkForRecovery();
+      
+      set((s) => {
+        s.hasRecoveryData = !!recoveryData;
+      });
+      
+      if (recoveryData) {
+        // Show recovery prompt
+        const shouldRecover = confirm(
+          `We found unsaved changes from "${recoveryData.canvasTitle}". Would you like to recover them?`
+        );
+        
+        if (shouldRecover) {
+          await get().restoreFromRecovery(recoveryData);
+        } else {
+          autoSaveService.clearRecoveryData();
+          set((s) => { s.hasRecoveryData = false; });
+        }
+      }
+    } catch (error) {
+      console.error('Failed to check for recovery:', error);
+    }
+  },
+
+  restoreFromRecovery: async (recoveryData) => {
+    try {
+      const { autoSaveService } = await import('../services/autoSaveService');
+      await autoSaveService.restoreFromBackup(recoveryData);
+      
+      set((s) => { 
+        s.hasRecoveryData = false; 
+        s.saveStatus = 'idle';
+      });
+      
+      console.log('✅ Recovery completed successfully');
+    } catch (error) {
+      console.error('Failed to restore from recovery:', error);
+      set((s) => {
+        s.canvasError = 'Failed to restore from backup';
+      });
+    }
+  },
+
+  clearRecoveryData: async () => {
+    try {
+      const { autoSaveService } = await import('../services/autoSaveService');
+      autoSaveService.clearRecoveryData();
+      
+      set((s) => { s.hasRecoveryData = false; });
+    } catch (error) {
+      console.error('Failed to clear recovery data:', error);
+    }
+  },
+
+  triggerManualSave: async () => {
+    try {
+      set((s) => { s.saveStatus = 'saving'; s.saveMessage = 'Saving...'; });
+      
+      await get().saveCurrentCanvas();
+      
+      set((s) => { 
+        s.saveStatus = 'saved'; 
+        s.saveMessage = 'Saved successfully'; 
+      });
+      
+      // Clear the "saved" status after a few seconds
+      setTimeout(() => {
+        set((s) => { 
+          if (s.saveStatus === 'saved') {
+            s.saveStatus = 'idle'; 
+            s.saveMessage = null; 
+          }
+        });
+      }, 3000);
+      
+    } catch (error) {
+      console.error('Manual save failed:', error);
+      set((s) => {
+        s.saveStatus = 'error';
+        s.saveMessage = error instanceof Error ? error.message : 'Save failed';
+      });
+    }
   },
 })));
 

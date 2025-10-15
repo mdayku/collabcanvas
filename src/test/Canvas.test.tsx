@@ -24,6 +24,17 @@ const mockStoreState = {
   me: { id: 'test-user', name: 'Test User', color: '#3b82f6' },
   cursors: {},
   onlineUsers: [],
+  
+  // Canvas management state (required for TabBar component)
+  currentCanvas: null,
+  canvasList: [],
+  isCanvasLoading: false,
+  canvasError: null,
+  hasUnsavedChanges: false,
+  
+  // Tab management state (required for TabBar component)
+  openTabs: [],
+  activeTabId: null,
   isAuthenticated: false,
   history: [],
   select: vi.fn(),
@@ -32,6 +43,48 @@ const mockStoreState = {
   setRoom: vi.fn(),
   setAuthenticated: vi.fn(),
   setUser: vi.fn(),
+  remove: vi.fn(),
+  clear: vi.fn(),
+  toggleSelect: vi.fn(),
+  selectAll: vi.fn(),
+  clearSelection: vi.fn(),
+  createShape: vi.fn(),
+  updateShape: vi.fn(),
+  duplicateShapes: vi.fn(),
+  updateCursor: vi.fn(),
+  removeCursor: vi.fn(),
+  setOnlineUsers: vi.fn(),
+  undo: vi.fn(),
+  
+  // Canvas management functions (required for TabBar and TopRibbon)
+  setCurrentCanvas: vi.fn(),
+  setCanvasList: vi.fn(),
+  setCanvasLoading: vi.fn(),
+  setCanvasError: vi.fn(),
+  setUnsavedChanges: vi.fn(),
+  loadCanvas: vi.fn(),
+  createNewCanvas: vi.fn(),
+  saveCurrentCanvas: vi.fn(),
+  duplicateCurrentCanvas: vi.fn(),
+  
+  // Tab management functions (required for TabBar)
+  openCanvasInTab: vi.fn(),
+  closeTab: vi.fn(),
+  switchToTab: vi.fn(),
+  getActiveTab: vi.fn(),
+  hasUnsavedTab: vi.fn(() => false),
+  
+  // Auto-save and recovery functions (required for SaveStatusIndicator)
+  setSaveStatus: vi.fn(),
+  updateAutoSaveSettings: vi.fn(),
+  checkForRecovery: vi.fn(),
+  restoreFromRecovery: vi.fn(),
+  clearRecoveryData: vi.fn(),
+  triggerManualSave: vi.fn(),
+  
+  // Getters (required by components)
+  getSelectedShapes: vi.fn(() => []),
+  getShape: vi.fn(),
 };
 
 // Mock the store
@@ -56,8 +109,8 @@ describe('Canvas Component', () => {
   it('renders the canvas interface', () => {
     render(<Canvas onSignOut={mockOnSignOut} />);
     
-    // Check for main elements
-    expect(screen.getByText('CollabCanvas')).toBeInTheDocument();
+    // Check for main elements (using getAllByText since there are multiple instances)
+    expect(screen.getAllByText('CollabCanvas')).toHaveLength(2); // Top ribbon + sidebar
     expect(screen.getByText('Sign out')).toBeInTheDocument();
     expect(screen.getByTestId('konva-stage')).toBeInTheDocument();
   });

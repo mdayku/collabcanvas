@@ -6,6 +6,7 @@ import { supabase } from "./lib/supabaseClient";
 import { interpretWithResponse, type AIResponse } from "./ai/agent";
 import { isOpenAIConfigured } from "./services/openaiService";
 import { isGroqConfigured } from "./services/groqService";
+import { SaveStatusIndicator } from "./components/SaveStatusIndicator";
 
 // Web Speech API type declarations
 declare global {
@@ -94,10 +95,11 @@ function TopRibbon({ onSignOut, stageRef }: { onSignOut: () => void; stageRef: R
     }
     
     try {
-      await canvasState.saveCurrentCanvas();
-      alert('Canvas saved successfully!');
+      await canvasState.triggerManualSave();
+      // Status indicator will handle UI feedback
     } catch (error) {
-      alert('Failed to save canvas: ' + (error instanceof Error ? error.message : 'Unknown error'));
+      // Error status will be shown in the status indicator
+      console.error('Save failed:', error);
     }
     setShowFileMenu(false);
   };
@@ -342,16 +344,14 @@ function TopRibbon({ onSignOut, stageRef }: { onSignOut: () => void; stageRef: R
         <h1 className="text-lg font-semibold text-gray-800">CollabCanvas</h1>
       </div>
 
-          {/* Right side - Canvas Info */}
-          <div className="flex items-center space-x-4 text-sm text-gray-600">
-            <span className="font-medium">
-              {currentCanvas?.title || 'Untitled Canvas'}
-              {hasUnsavedChanges && <span className="text-orange-500 ml-1">•</span>}
-            </span>
-            <span className="text-gray-400">•</span>
-            <span className={hasUnsavedChanges ? "text-orange-500" : "text-green-600"}>
-              {hasUnsavedChanges ? 'Unsaved changes' : 'Saved'}
-            </span>
+          {/* Right side - Canvas Info & Save Status */}
+          <div className="flex items-center space-x-4">
+            <div className="text-sm text-gray-600">
+              <span className="font-medium">
+                {currentCanvas?.title || 'Untitled Canvas'}
+              </span>
+            </div>
+            <SaveStatusIndicator />
           </div>
     </div>
   );
