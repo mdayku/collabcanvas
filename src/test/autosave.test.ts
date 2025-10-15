@@ -259,10 +259,8 @@ describe('Zustand Store Auto-Save Integration', () => {
   });
 
   it('should mark canvas as unsaved when shapes are modified', () => {
-    const state = useCanvas.getState();
-    
     // Set up a current canvas
-    state.setCurrentCanvas({
+    useCanvas.getState().setCurrentCanvas({
       id: 'canvas123',
       title: 'Test Canvas',
       user_id: 'user123',
@@ -274,7 +272,7 @@ describe('Zustand Store Auto-Save Integration', () => {
     });
     
     // Initially no unsaved changes
-    expect(state.hasUnsavedChanges).toBe(false);
+    expect(useCanvas.getState().hasUnsavedChanges).toBe(false);
     
     // Add a shape - should mark as unsaved
     const testShape = {
@@ -289,16 +287,14 @@ describe('Zustand Store Auto-Save Integration', () => {
       color: '#ff0000'
     };
     
-    state.upsert(testShape);
+    useCanvas.getState().upsert(testShape);
     
-    expect(state.hasUnsavedChanges).toBe(true);
+    expect(useCanvas.getState().hasUnsavedChanges).toBe(true);
   });
 
   it('should reset unsaved changes after save', async () => {
-    const state = useCanvas.getState();
-    
     // Set up canvas with unsaved changes
-    state.setCurrentCanvas({
+    useCanvas.getState().setCurrentCanvas({
       id: 'canvas123',
       title: 'Test Canvas',
       user_id: 'user123', 
@@ -309,25 +305,23 @@ describe('Zustand Store Auto-Save Integration', () => {
       data: {}
     });
     
-    state.setUnsavedChanges(true);
-    expect(state.hasUnsavedChanges).toBe(true);
+    useCanvas.getState().setUnsavedChanges(true);
+    expect(useCanvas.getState().hasUnsavedChanges).toBe(true);
     
     // Simulate save completion
-    state.setUnsavedChanges(false);
-    expect(state.hasUnsavedChanges).toBe(false);
+    useCanvas.getState().setUnsavedChanges(false);
+    expect(useCanvas.getState().hasUnsavedChanges).toBe(false);
   });
 
   it('should track save status correctly', () => {
-    const state = useCanvas.getState();
+    expect(useCanvas.getState().saveStatus).toBe('idle');
     
-    expect(state.saveStatus).toBe('idle');
+    useCanvas.getState().setSaveStatus('saving', 'Auto-saving...');
+    expect(useCanvas.getState().saveStatus).toBe('saving');
+    expect(useCanvas.getState().saveMessage).toBe('Auto-saving...');
     
-    state.setSaveStatus('saving', 'Auto-saving...');
-    expect(state.saveStatus).toBe('saving');
-    expect(state.saveMessage).toBe('Auto-saving...');
-    
-    state.setSaveStatus('saved', 'Saved successfully');
-    expect(state.saveStatus).toBe('saved');
-    expect(state.saveMessage).toBe('Saved successfully');
+    useCanvas.getState().setSaveStatus('saved', 'Saved successfully');
+    expect(useCanvas.getState().saveStatus).toBe('saved');
+    expect(useCanvas.getState().saveMessage).toBe('Saved successfully');
   });
 });

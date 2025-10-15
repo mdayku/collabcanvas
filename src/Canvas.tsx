@@ -67,6 +67,7 @@ function TopRibbon({ onSignOut, stageRef }: { onSignOut: () => void; stageRef: R
   const [isLoadingCanvases, setIsLoadingCanvases] = useState(false);
   const { currentCanvas, shapes } = useCanvas();
   const { theme, colors, setTheme, showFPS, setShowFPS, showGrid, setShowGrid, halloweenMode, setHalloweenMode } = useTheme();
+  const fps = useFps();
 
   const exportToPNG = () => {
     if (stageRef.current) {
@@ -651,7 +652,7 @@ function TopRibbon({ onSignOut, stageRef }: { onSignOut: () => void; stageRef: R
                     }}
                   >
                     <span className="mr-2">📊</span>
-                    Show FPS Counter
+                    {showFPS ? 'Hide FPS Counter' : 'Show FPS Counter'}
                     {showFPS && <span className="ml-auto text-xs">✓</span>}
                   </button>
                   <button
@@ -803,8 +804,21 @@ function TopRibbon({ onSignOut, stageRef }: { onSignOut: () => void; stageRef: R
         <h1 className="text-lg font-semibold" style={{ color: colors.text }}>CollabCanvas</h1>
       </div>
 
-          {/* Right side - Canvas Info & Save Status */}
+          {/* Right side - FPS Counter, Canvas Info & Save Status */}
           <div className="flex items-center space-x-4">
+            {/* FPS Counter */}
+            {showFPS && (
+              <div 
+                className="px-2 py-1 rounded text-xs font-mono"
+                style={{ 
+                  backgroundColor: colors.bgSecondary, 
+                  color: colors.textMuted,
+                  border: `1px solid ${colors.border}`
+                }}
+              >
+                FPS: {fps}
+              </div>
+            )}
             <div className="text-sm" style={{ color: colors.textSecondary }}>
               <span className="font-medium">
                 {currentCanvas?.title || 'Untitled Canvas'}
@@ -1712,7 +1726,6 @@ export default function Canvas({ onSignOut }: CanvasProps) {
       {/* Layout fix v2: Force cache refresh for production deployment */}
       <TopRibbon onSignOut={onSignOut} stageRef={canvasStageRef} />
       <TabBar />
-      <FPSOverlay />
       <div className="flex-1 flex min-h-0">
         <Toolbar onSignOut={onSignOut} status={status} />
         <div 

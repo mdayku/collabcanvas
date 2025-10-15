@@ -122,7 +122,7 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
   
   const [showFPS, setShowFPS] = useState(() => {
     const saved = localStorage.getItem('collabcanvas-show-fps');
-    return saved === 'true';
+    return saved !== null ? saved === 'true' : true; // Default to true if no saved preference
   });
   
   const [showGrid, setShowGrid] = useState(() => {
