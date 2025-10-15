@@ -34,6 +34,7 @@ export type CanvasState = {
   me: { id: string; name: string; color: string };
   isAuthenticated: boolean;
   history: Record<string, ShapeBase>[];
+  redoHistory: Record<string, ShapeBase>[];
   cursors: Record<string, Cursor>;
   onlineUsers: string[];
   
@@ -64,6 +65,7 @@ export type CanvasState = {
   // Undo functionality
   pushHistory: () => void;
   undo: () => void;
+  redo: () => void;
   
   // Multiplayer
   updateCursor: (cursor: Cursor) => void;
@@ -125,6 +127,7 @@ export const useCanvas = create<CanvasState>()(immer((set, get) => ({
   me: { id: crypto.randomUUID(), name: "", color: randomColor() },
   isAuthenticated: false,
   history: [],
+  redoHistory: [],
   cursors: {},
   onlineUsers: [],
   
@@ -167,21 +170,47 @@ export const useCanvas = create<CanvasState>()(immer((set, get) => ({
     s.onlineUsers = users; 
   }),
   
-  // Undo functionality
+  // Undo/Redo functionality
   pushHistory: () => set((s) => {
     // Keep only last 50 states for performance
     if (s.history.length >= 50) {
       s.history = s.history.slice(-49);
     }
     s.history.push({ ...s.shapes });
+    // Clear redo history when new action is performed
+    s.redoHistory = [];
   }),
   
   undo: () => set((s) => {
     if (s.history.length > 0) {
       const previousState = s.history.pop();
       if (previousState) {
+        // Save current state to redo history before changing
+        s.redoHistory.push({ ...s.shapes });
+        // Keep redo history manageable
+        if (s.redoHistory.length > 50) {
+          s.redoHistory = s.redoHistory.slice(-49);
+        }
+        // Restore previous state
         s.shapes = previousState;
         s.selectedIds = []; // Clear selection after undo
+      }
+    }
+  }),
+  
+  redo: () => set((s) => {
+    if (s.redoHistory.length > 0) {
+      const futureState = s.redoHistory.pop();
+      if (futureState) {
+        // Save current state to history before changing
+        s.history.push({ ...s.shapes });
+        // Keep history manageable
+        if (s.history.length > 50) {
+          s.history = s.history.slice(-49);
+        }
+        // Restore future state
+        s.shapes = futureState;
+        s.selectedIds = []; // Clear selection after redo
       }
     }
   }),
@@ -383,6 +412,7 @@ export const useCanvas = create<CanvasState>()(immer((set, get) => ({
         s.hasUnsavedChanges = false;
         s.isCanvasLoading = false;
         s.history = []; // Clear history for new canvas
+        s.redoHistory = []; // Clear redo history for new canvas
       });
       
       return canvas;

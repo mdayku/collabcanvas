@@ -1257,12 +1257,12 @@ export default function Canvas({ onSignOut }: CanvasProps) {
         return;
       }
       
-      // TODO: Redo with Ctrl+Y or Ctrl+Shift+Z (redo method needs to be implemented in store)
-      // if ((e.ctrlKey && e.key === 'y') || (e.ctrlKey && e.shiftKey && e.key === 'Z')) {
-      //   useCanvas.getState().redo();
-      //   e.preventDefault();
-      //   return;
-      // }
+      // Redo with Ctrl+R
+      if (e.ctrlKey && e.key === 'r') {
+        useCanvas.getState().redo();
+        e.preventDefault();
+        return;
+      }
       
       // Duplicate selected shapes with Ctrl+D
       if (e.ctrlKey && e.key === 'd') {
@@ -1338,6 +1338,36 @@ export default function Canvas({ onSignOut }: CanvasProps) {
           
           // Optional: Show feedback to user
           console.log(`Copied ${selectedShapes.length} shape${selectedShapes.length > 1 ? 's' : ''} to clipboard`);
+          
+          e.preventDefault();
+        }
+        return;
+      }
+      
+      // Cut with Ctrl+X
+      if (e.ctrlKey && e.key === 'x') {
+        const selectedIds = useCanvas.getState().selectedIds;
+        if (selectedIds.length > 0) {
+          const selectedShapes = useCanvas.getState().getSelectedShapes();
+          
+          // First copy to clipboard
+          (window as any).collabCanvasClipboard = selectedShapes;
+          
+          // Then delete the shapes
+          // Save history before deleting
+          useCanvas.getState().pushHistory();
+          
+          // Remove from store
+          useCanvas.getState().remove(selectedIds);
+          
+          // Broadcast removal to other users
+          broadcastRemove(selectedIds);
+          
+          // Remove from database
+          deleteFromDB(selectedIds);
+          
+          // Show feedback to user
+          console.log(`Cut ${selectedShapes.length} shape${selectedShapes.length > 1 ? 's' : ''} to clipboard`);
           
           e.preventDefault();
         }
@@ -4023,12 +4053,12 @@ function HelpMenu() {
         <>
           {/* Backdrop */}
           <div 
-            className="fixed inset-0 z-[90]" 
+            className="fixed inset-0 z-[9998]" 
             onClick={() => setIsOpen(false)}
           ></div>
           
           {/* Help Menu */}
-          <div className="absolute left-0 top-full mt-1 w-80 bg-white border rounded-lg shadow-lg p-4 z-[100] max-h-96 overflow-y-auto">
+          <div className="absolute left-0 top-full mt-1 w-80 bg-white border rounded-lg shadow-lg p-4 z-[9999] max-h-96 overflow-y-auto">
             <div className="space-y-4">
               {/* AI Command Examples */}
               <div>
@@ -4062,10 +4092,12 @@ function HelpMenu() {
                   
                   <div className="font-medium text-slate-600 mb-1 mt-2">Editing:</div>
                   <div>• <kbd className="px-1 bg-slate-200 rounded text-xs">Ctrl+C</kbd> copy selected</div>
+                  <div>• <kbd className="px-1 bg-slate-200 rounded text-xs">Ctrl+X</kbd> cut selected</div>
                   <div>• <kbd className="px-1 bg-slate-200 rounded text-xs">Ctrl+V</kbd> paste</div>
                   <div>• <kbd className="px-1 bg-slate-200 rounded text-xs">Ctrl+D</kbd> duplicate</div>
                   <div>• <kbd className="px-1 bg-slate-200 rounded text-xs">Delete</kbd> remove selected</div>
                   <div>• <kbd className="px-1 bg-slate-200 rounded text-xs">Ctrl+Z</kbd> undo</div>
+                  <div>• <kbd className="px-1 bg-slate-200 rounded text-xs">Ctrl+R</kbd> redo</div>
                   
                   <div className="font-medium text-slate-600 mb-1 mt-2">Movement:</div>
                   <div>• <kbd className="px-1 bg-slate-200 rounded text-xs">Arrow Keys</kbd> move 5px</div>
