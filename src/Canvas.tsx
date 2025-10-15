@@ -1,14 +1,16 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
-import { Stage, Layer, Rect, Circle, Text as KText, Transformer, Group, Line, RegularPolygon, Image as KonvaImage } from "react-konva";
+import { Stage, Layer, Rect, Circle, Text as KText, Transformer, Group, Line, RegularPolygon, Star, Image as KonvaImage } from "react-konva";
 import Konva from 'konva';
 import { useCanvas } from "./state/store";
 import type { ShapeBase, ShapeType } from "./types";
 import { supabase } from "./lib/supabaseClient";
-import { interpretWithResponse, type AIResponse } from "./ai/agent";
+import { interpretWithResponse } from "./ai/agent";
 import { isOpenAIConfigured } from "./services/openaiService";
 import { isGroqConfigured } from "./services/groqService";
 import { SaveStatusIndicator } from "./components/SaveStatusIndicator";
 import { useTheme } from "./contexts/ThemeContext";
+import { CanvasSelector } from "./components/CanvasSelector";
+import { AuthStatus } from "./components/AuthStatus";
 
 // Web Speech API type declarations
 declare global {
@@ -122,7 +124,7 @@ function TopRibbon({ onSignOut, stageRef, setShowHelpPopup, centerOnNewShape, se
     
     let proceed = true;
     if (hasShapes) {
-      proceed = confirm('Create a new canvas? Current shapes will be saved to the new canvas.');
+      proceed = confirm('Create a new empty canvas? Your current canvas will be saved automatically.');
     }
     
     if (proceed) {
@@ -309,7 +311,7 @@ function TopRibbon({ onSignOut, stageRef, setShowHelpPopup, centerOnNewShape, se
       
       useCanvas.getState().upsert(imageShape);
       broadcastUpsert(imageShape);
-      persist(imageShape);
+      // Persistence handled by auto-save system
       
       // Auto-select the new image
       useCanvas.getState().select([imageShape.id]);
@@ -398,6 +400,20 @@ function TopRibbon({ onSignOut, stageRef, setShowHelpPopup, centerOnNewShape, se
                 >
                   <span className="mr-2">📂</span>
                   {isLoadingCanvases ? 'Loading...' : 'Open Canvas'}
+                </button>
+                
+                <button
+                  onClick={() => {
+                    useCanvas.getState().showCanvasSelectorDialog();
+                    setShowFileMenu(false);
+                  }}
+                  className="w-full text-left px-4 py-2 text-sm flex items-center transition-colors"
+                  style={{ color: colors.text }}
+                  onMouseEnter={(e) => e.currentTarget.style.backgroundColor = colors.buttonHover}
+                  onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
+                >
+                  <span className="mr-2">🎨</span>
+                  Select Canvas...
                 </button>
                 
                 <hr className="my-1" style={{ borderColor: colors.border }} />
@@ -876,6 +892,27 @@ function TopRibbon({ onSignOut, stageRef, setShowHelpPopup, centerOnNewShape, se
               </span>
             </div>
             <SaveStatusIndicator />
+            
+            {/* Sign Out Button */}
+            <button
+              onClick={onSignOut}
+              className="ml-3 px-3 py-1 text-sm rounded transition-colors flex items-center"
+              style={{
+                backgroundColor: colors.buttonBg,
+                color: colors.text,
+                border: `1px solid ${colors.border}`
+              }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.backgroundColor = colors.buttonHover;
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.backgroundColor = colors.buttonBg;
+              }}
+              title="Sign out"
+            >
+              <span className="mr-1">👤</span>
+              Sign Out
+            </button>
           </div>
     </div>
   );
@@ -1181,19 +1218,35 @@ function GridOverlay({ canvasSize }: { canvasSize: { width: number; height: numb
 function TabBar() {
   const { openTabs, activeTabId, openCanvasInTab, switchToTab, hasUnsavedTab } = useCanvas();
   const { colors } = useTheme();
+  
+  // Get current canvas to check if it should be in tabs
+  const currentCanvas = useCanvas.getState().currentCanvas;
+  
+  // Auto-fix: If we have a current canvas but no tabs, add it to tabs
+  React.useEffect(() => {
+    if (currentCanvas && openTabs.length === 0) {
+      // Auto-fixing: Adding current canvas to tabs
+      openCanvasInTab(currentCanvas);
+    }
+  }, [currentCanvas, openTabs.length, openCanvasInTab]);
 
   const handleNewTab = async () => {
-    
     try {
       const title = prompt('New canvas title:', 'Untitled Canvas') || 'Untitled Canvas';
+      console.log('🆕 Creating new tab with title:', title);
+      
       const canvasState = useCanvas.getState();
+      console.log('📋 Current tabs before creation:', openTabs.map(t => ({ id: t.id, title: t.title })));
+      
       const newCanvas = await canvasState.createNewCanvas(title.trim());
       
       // Open the new canvas in a tab
+      console.log('📂 Opening new canvas in tab:', { id: newCanvas.id, title: newCanvas.title });
       openCanvasInTab(newCanvas);
       
-      // Load the canvas to populate shapes if needed
-      await canvasState.loadCanvas(newCanvas.id);
+      console.log('📋 Tabs after creation:', useCanvas.getState().openTabs.map(t => ({ id: t.id, title: t.title })));
+      
+      // No need to loadCanvas since createNewCanvas already sets up the canvas state
     } catch (error) {
       console.error('Canvas creation error:', error);
       
@@ -1210,14 +1263,59 @@ function TabBar() {
   const handleTabClick = async (canvasId: string) => {
     if (canvasId === activeTabId) return; // Already active
 
+    console.log('🔄 Switching to tab:', { canvasId, currentActiveTab: activeTabId });
+    
     try {
-      // Switch to the tab
-      switchToTab(canvasId);
-      
-      // Load the canvas shapes
       const canvasState = useCanvas.getState();
+      
+      // Save current canvas state before switching
+      if (canvasState.currentCanvas && canvasState.hasUnsavedChanges) {
+        console.log('💾 Saving current canvas before tab switch');
+        await canvasState.triggerManualSave();
+      }
+      
+      // Check if the canvas still exists before switching
+      const { canvasService } = await import('./services/canvasService');
+      console.log('🔍 Checking if canvas exists:', canvasId);
+      const targetCanvas = await canvasService.getCanvas(canvasId);
+      console.log('🎯 Canvas lookup result:', { found: !!targetCanvas, canvasId });
+      
+      if (!targetCanvas) {
+        // Canvas not found - ask user what to do instead of auto-removing
+        const shouldRemoveTab = confirm(
+          `Canvas not found. This might be a temporary connection issue.\n\n` +
+          `Would you like to remove this tab? If you choose 'Cancel', we'll keep the tab and you can try again later.`
+        );
+        
+        if (shouldRemoveTab) {
+          // User chose to remove the tab
+          const updatedTabs = openTabs.filter(tab => tab.id !== canvasId);
+          useCanvas.setState({ openTabs: updatedTabs });
+          
+          if (updatedTabs.length > 0) {
+            // Switch to the first remaining tab
+            const firstTab = updatedTabs[0];
+            switchToTab(firstTab.id);
+            await canvasState.loadCanvas(firstTab.id);
+          } else {
+            // No tabs left, create a new canvas
+            const newCanvas = await canvasState.createNewCanvas('New Canvas');
+            canvasState.openCanvasInTab(newCanvas);
+          }
+        }
+        // If user chose Cancel, we do nothing and keep the tab
+        return;
+      }
+      
+      // Load the canvas shapes first (before switching tab state)
+      console.log('📂 Loading canvas shapes before tab switch');
       await canvasState.loadCanvas(canvasId);
+      
+      // Switch to the tab only after successful load
+      console.log('🔄 Updating tab state after successful canvas load');
+      switchToTab(canvasId);
     } catch (error) {
+      console.error('Tab switch error:', error);
       alert('Failed to switch to canvas: ' + (error instanceof Error ? error.message : 'Unknown error'));
     }
   };
@@ -1358,9 +1456,9 @@ function TabBar() {
 // Single channel instance to prevent missed broadcasts
 let roomChannel: ReturnType<typeof supabase.channel> | null = null;
 
-// Debounced persistence system
-const pending = new Map<string, any>();
-let flushTimer: number | null = null;
+// DISABLED: Old debounced persistence system
+// const pending = new Map<string, any>();
+// let flushTimer: number | null = null;
 
 interface CanvasProps {
   onSignOut: () => void;
@@ -1374,7 +1472,7 @@ interface ContextMenuData {
 }
 
 export default function Canvas({ onSignOut }: CanvasProps) {
-  const { shapes, selectedIds, me, cursors } = useCanvas();
+  const { shapes, selectedIds, me, cursors, showCanvasSelector, hideCanvasSelectorDialog } = useCanvas();
   const { colors, showGrid, snapToGrid } = useTheme();
   const [contextMenu, setContextMenu] = useState<ContextMenuData | null>(null);
   const [_scale, setScale] = useState(1);
@@ -1397,11 +1495,23 @@ export default function Canvas({ onSignOut }: CanvasProps) {
 
   // Initialize with last active canvas on app start
   useEffect(() => {
+    let isInitializing = false;
+    
     const initCanvas = async () => {
+      if (isInitializing) {
+        console.log('🚫 Canvas initialization already running, skipping duplicate call');
+        return;
+      }
+      
+      isInitializing = true;
+      console.log('🎬 Starting canvas initialization from useEffect');
+      
       try {
         await useCanvas.getState().initializeCanvas();
       } catch (error) {
         console.error('Failed to initialize canvas on startup:', error);
+      } finally {
+        isInitializing = false;
       }
     };
     
@@ -1417,9 +1527,11 @@ export default function Canvas({ onSignOut }: CanvasProps) {
     roomChannel = channel;
 
     channel.on("broadcast", { event: "shape:upsert" }, ({ payload }) => {
+      console.log('📡 Received shape:upsert broadcast:', payload);
       useCanvas.getState().upsert(payload as ShapeBase | ShapeBase[]);
     });
     channel.on("broadcast", { event: "shape:remove" }, ({ payload }) => {
+      console.log('📡 Received shape:remove broadcast:', payload);
       useCanvas.getState().remove(payload as string[]);
     });
 
@@ -1458,46 +1570,30 @@ export default function Canvas({ onSignOut }: CanvasProps) {
     channel.subscribe(async (status) => {
       if (status === "SUBSCRIBED") {
         setStatus('online');
-        const { me } = useCanvas.getState();
-        channel.track({ id: me.id, name: me.name || "Guest", x: 0, y: 0, color: me.color, last: Date.now() });
-        // Load persisted shapes
-        const { data, error } = await supabase.from("shapes").select("*").eq("room_id", useCanvas.getState().roomId);
-        if (error) {
-          console.error("Failed to load shapes from database:", error);
-        } else if (data) {
-          const mapped = data.map((r: any) => ({
-            id: r.id,
-            type: r.type,
-            x: r.x,
-            y: r.y,
-            w: r.w,
-            h: r.h,
-            rotation: r.rotation || 0,
-            color: r.color,
-            stroke: r.stroke,
-            strokeWidth: r.strokeWidth,
-            zIndex: r.zIndex || 0,
-            text: r.text,
-            fontSize: r.fontSize,
-            fontFamily: r.fontFamily,
-            textAlign: r.textAlign,
-            fontStyle: r.fontStyle,
-            fontWeight: r.fontWeight,
-            textDecoration: r.textDecoration,
-            imageUrl: r.imageUrl,
-            originalWidth: r.originalWidth,
-            originalHeight: r.originalHeight,
-            groupId: r.groupId,
-            x2: r.x2,
-            y2: r.y2,
-            arrowHead: r.arrowHead,
-            dashPattern: r.dashPattern,
-            updated_at: r.updated_at,
-            updated_by: r.updated_by
-          }));
-          console.log(`Loaded ${mapped.length} shapes from database for room: ${useCanvas.getState().roomId}`);
-          useCanvas.getState().upsert(mapped as any);
-        }
+        
+        // Wait for channel to fully stabilize before tracking presence
+        setTimeout(async () => {
+          try {
+            const { me } = useCanvas.getState();
+            await channel.track({ 
+              id: me.id, 
+              name: me.name || "Guest", 
+              x: 0, 
+              y: 0, 
+              color: me.color, 
+              last: Date.now() 
+            });
+          } catch (error) {
+            console.warn('Presence tracking failed:', error);
+          }
+        }, 500);
+        
+      } else if (status === "CHANNEL_ERROR") {
+        setStatus('offline');
+      } else if (status === "TIMED_OUT") {
+        setStatus('reconnecting');
+      } else if (status === "CLOSED") {
+        setStatus('reconnecting');
       }
     });
 
@@ -1662,8 +1758,7 @@ export default function Canvas({ onSignOut }: CanvasProps) {
           // Broadcast new shapes to other users
           broadcastUpsert(newShapes);
           
-          // Persist to database
-          newShapes.forEach(shape => persist(shape));
+          // Persistence handled by auto-save system
           
           e.preventDefault();
         }
@@ -1685,7 +1780,7 @@ export default function Canvas({ onSignOut }: CanvasProps) {
             const groupedShapes = useCanvas.getState().getSelectedShapes();
             groupedShapes.forEach(shape => {
               broadcastUpsert(shape);
-              persist(shape);
+              // Auto-save handles persistence
             });
             
             console.log(`Grouped ${selectedIds.length} shapes with group ID: ${groupId}`);
@@ -1721,7 +1816,7 @@ export default function Canvas({ onSignOut }: CanvasProps) {
                 shapesToUngroup.forEach(shape => {
                   const updatedShape = { ...shape, groupId: undefined, updated_at: Date.now(), updated_by: me.id };
                   broadcastUpsert(updatedShape);
-                  persist(updatedShape);
+                  // Auto-save handles persistence
                 });
                 
                 console.log(`Ungrouped shapes from group ID: ${groupId}`);
@@ -1862,7 +1957,7 @@ export default function Canvas({ onSignOut }: CanvasProps) {
             
             // Broadcast and persist
             broadcastUpsert(newShape);
-            persist(newShape);
+            // Auto-save handles persistence
           });
           
           // Select the newly pasted shapes
@@ -1912,7 +2007,7 @@ export default function Canvas({ onSignOut }: CanvasProps) {
               
               useCanvas.getState().upsert(updatedShape);
               broadcastUpsert(updatedShape);
-              persist(updatedShape);
+              // Auto-save handles persistence
             }
           });
           
@@ -1952,7 +2047,7 @@ export default function Canvas({ onSignOut }: CanvasProps) {
         
         useCanvas.getState().upsert(updatedShape);
         broadcastUpsert(updatedShape);
-        persist(updatedShape);
+        // Auto-save handles persistence
       }
     }
     setEditingText(null);
@@ -2027,7 +2122,7 @@ export default function Canvas({ onSignOut }: CanvasProps) {
     const updatedShape = { ...currentShape, x: snappedX, y: snappedY, updated_at: Date.now(), updated_by: me.id } as ShapeBase;
     useCanvas.getState().upsert(updatedShape);
     broadcastUpsert(updatedShape);
-    persist(updatedShape);
+    // Auto-save handles persistence
     
     // If shape belongs to a group, move all other shapes in the group
     if (currentShape.groupId) {
@@ -2062,7 +2157,7 @@ export default function Canvas({ onSignOut }: CanvasProps) {
           
           useCanvas.getState().upsert(updatedGroupShape);
           broadcastUpsert(updatedGroupShape);
-          persist(updatedGroupShape);
+          // Auto-save handles persistence
         }
       });
     }
@@ -2091,7 +2186,7 @@ export default function Canvas({ onSignOut }: CanvasProps) {
       updated_by: me.id
     };
     node.scaleX(1); node.scaleY(1);
-    useCanvas.getState().upsert(next); broadcastUpsert(next); persist(next);
+    useCanvas.getState().upsert(next); broadcastUpsert(next); // Auto-save handles persistence
   };
 
   React.useEffect(() => {
@@ -2444,11 +2539,72 @@ export default function Canvas({ onSignOut }: CanvasProps) {
 
   const canvasStageRef = useRef<any>(null);
 
+  // Canvas selector handlers
+  const handleCanvasSelect = async (canvas: any) => {
+    try {
+      console.log('🎯 User selected canvas:', canvas.title);
+      hideCanvasSelectorDialog();
+      
+      const canvasState = useCanvas.getState();
+      await canvasState.loadCanvas(canvas.id);
+      canvasState.openCanvasInTab(canvas);
+    } catch (error) {
+      console.error('Failed to load selected canvas:', error);
+      alert('Failed to load canvas: ' + (error instanceof Error ? error.message : 'Unknown error'));
+    }
+  };
+
+  const handleCreateNewCanvas = async (title: string) => {
+    try {
+      console.log('🆕 User creating new canvas:', title);
+      hideCanvasSelectorDialog();
+      
+      const canvasState = useCanvas.getState();
+      const newCanvas = await canvasState.createNewCanvas(title);
+      canvasState.openCanvasInTab(newCanvas);
+    } catch (error) {
+      console.error('Failed to create new canvas:', error);
+      alert('Failed to create canvas: ' + (error instanceof Error ? error.message : 'Unknown error'));
+    }
+  };
+
+  const handleSkipCanvasSelection = async () => {
+    try {
+      console.log('⏭️ User skipped canvas selection, creating default canvas');
+      hideCanvasSelectorDialog();
+      
+      const canvasState = useCanvas.getState();
+      // Use current date to make it more meaningful than generic "My First Canvas"
+      const today = new Date().toLocaleDateString('en-US', { 
+        month: 'short', 
+        day: 'numeric', 
+        year: 'numeric' 
+      });
+      const newCanvas = await canvasState.createNewCanvas(`Workspace ${today}`);
+      canvasState.openCanvasInTab(newCanvas);
+    } catch (error) {
+      console.error('Failed to create default canvas:', error);
+      alert('Failed to create canvas: ' + (error instanceof Error ? error.message : 'Unknown error'));
+    }
+  };
+
   return (
     <div 
       className="h-screen w-screen flex flex-col overflow-hidden"
       style={{ backgroundColor: colors.bgSecondary }}
     >
+      {/* Canvas Selector Modal */}
+      {showCanvasSelector && (
+        <CanvasSelector
+          onCanvasSelect={handleCanvasSelect}
+          onCreateNew={handleCreateNewCanvas}
+          onSkip={handleSkipCanvasSelection}
+        />
+      )}
+      
+      {/* Authentication Status Notification */}
+      <AuthStatus />
+      
       {/* Layout fix v2: Force cache refresh for production deployment */}
       <TopRibbon 
         onSignOut={onSignOut} 
@@ -2650,7 +2806,7 @@ function CategorizedToolbar({ centerOnNewShape, stageRef }: {
     
     useCanvas.getState().upsert(emojiShape); 
     broadcastUpsert(emojiShape); 
-    persist(emojiShape);
+    // Auto-save handles persistence
     
     // Auto-select the new emoji
     useCanvas.getState().select([emojiShape.id]);
@@ -2701,7 +2857,7 @@ function CategorizedToolbar({ centerOnNewShape, stageRef }: {
     
     useCanvas.getState().upsert(iconShape); 
     broadcastUpsert(iconShape); 
-    persist(iconShape);
+    // Auto-save handles persistence
     
     // Auto-select the new icon
     useCanvas.getState().select([iconShape.id]);
@@ -2747,17 +2903,17 @@ function CategorizedToolbar({ centerOnNewShape, stageRef }: {
       emoji: '😊',
       tools: [
         { name: '😊', action: () => addEmoji('😊'), available: true, tooltip: 'Smiley Face' },
-        { name: '❤️', action: () => addEmoji('❤️'), available: true, tooltip: 'Heart' },
         { name: '👍', action: () => addEmoji('👍'), available: true, tooltip: 'Thumbs Up' },
         { name: '🔥', action: () => addEmoji('🔥'), available: true, tooltip: 'Fire' },
         { name: '💡', action: () => addEmoji('💡'), available: true, tooltip: 'Light Bulb' },
-        { name: '⚡', action: () => addEmoji('⚡'), available: true, tooltip: 'Lightning' },
-        { name: '🎯', action: () => addEmoji('🎯'), available: true, tooltip: 'Target' },
         { name: '🚀', action: () => addEmoji('🚀'), available: true, tooltip: 'Rocket' },
-        { name: '⭐', action: () => addEmoji('⭐'), available: true, tooltip: 'Star' },
         { name: '🎉', action: () => addEmoji('🎉'), available: true, tooltip: 'Party' },
         { name: '💻', action: () => addEmoji('💻'), available: true, tooltip: 'Computer' },
-        { name: '📱', action: () => addEmoji('📱'), available: true, tooltip: 'Phone' },
+        { name: '🎵', action: () => addEmoji('🎵'), available: true, tooltip: 'Music Note' },
+        { name: '🌟', action: () => addEmoji('🌟'), available: true, tooltip: 'Glowing Star' },
+        { name: '🎨', action: () => addEmoji('🎨'), available: true, tooltip: 'Artist Palette' },
+        { name: '📚', action: () => addEmoji('📚'), available: true, tooltip: 'Books' },
+        { name: '🏆', action: () => addEmoji('🏆'), available: true, tooltip: 'Trophy' },
       ]
     },
     {
@@ -2774,7 +2930,7 @@ function CategorizedToolbar({ centerOnNewShape, stageRef }: {
         { name: '💾', action: () => addIcon('💾'), available: true, tooltip: 'Save' },
         { name: '📁', action: () => addIcon('📁'), available: true, tooltip: 'Folder' },
         { name: '🔗', action: () => addIcon('🔗'), available: true, tooltip: 'Link' },
-        { name: '⚡', action: () => addIcon('⚡'), available: true, tooltip: 'Power' },
+        { name: '⚠️', action: () => addIcon('⚠️'), available: true, tooltip: 'Warning' },
       ]
     },
     {
@@ -2788,7 +2944,7 @@ function CategorizedToolbar({ centerOnNewShape, stageRef }: {
     {
       id: 'assets',
       name: 'Assets',
-      emoji: '🎯',
+      emoji: '📦',
       tools: [
         { name: '📝', action: addText, available: true, tooltip: 'Text Box' },
         // More coming soon
@@ -2897,7 +3053,7 @@ function CategorizedToolbar({ centerOnNewShape, stageRef }: {
             }
             useCanvas.getState().upsert(batch); 
             broadcastUpsert(batch); 
-            persist(batch);
+            // Auto-save handles persistence
           }}
           title="Create 500 shapes for stress testing"
         >
@@ -3159,7 +3315,9 @@ function addShape(type: ShapeType, colors: any, snapToGrid: boolean = false, cen
   
   useCanvas.getState().upsert(s); 
   broadcastUpsert(s); 
-  persist(s);
+  // Auto-save handles persistence
+  
+  // Shape created successfully
   
   // Auto-select the new shape
   useCanvas.getState().select([s.id]);
@@ -3681,7 +3839,7 @@ function ContextMenu({ x, y, shapeIds, onClose }: {
           const updatedShape = { ...shape, x: targetValue, updated_at: Date.now(), updated_by: useCanvas.getState().me.id };
           useCanvas.getState().upsert(updatedShape);
           broadcastUpsert(updatedShape);
-          persist(updatedShape);
+          // Auto-save handles persistence
         });
         break;
         
@@ -3691,7 +3849,7 @@ function ContextMenu({ x, y, shapeIds, onClose }: {
           const updatedShape = { ...shape, x: targetValue - (shape.w || 0), updated_at: Date.now(), updated_by: useCanvas.getState().me.id };
           useCanvas.getState().upsert(updatedShape);
           broadcastUpsert(updatedShape);
-          persist(updatedShape);
+          // Auto-save handles persistence
         });
         break;
         
@@ -3703,7 +3861,7 @@ function ContextMenu({ x, y, shapeIds, onClose }: {
           const updatedShape = { ...shape, x: targetValue - (shape.w || 0) / 2, updated_at: Date.now(), updated_by: useCanvas.getState().me.id };
           useCanvas.getState().upsert(updatedShape);
           broadcastUpsert(updatedShape);
-          persist(updatedShape);
+          // Auto-save handles persistence
         });
         break;
         
@@ -3713,7 +3871,7 @@ function ContextMenu({ x, y, shapeIds, onClose }: {
           const updatedShape = { ...shape, y: targetValue, updated_at: Date.now(), updated_by: useCanvas.getState().me.id };
           useCanvas.getState().upsert(updatedShape);
           broadcastUpsert(updatedShape);
-          persist(updatedShape);
+          // Auto-save handles persistence
         });
         break;
         
@@ -3725,7 +3883,7 @@ function ContextMenu({ x, y, shapeIds, onClose }: {
           const updatedShape = { ...shape, y: targetValue - (shape.h || 0) / 2, updated_at: Date.now(), updated_by: useCanvas.getState().me.id };
           useCanvas.getState().upsert(updatedShape);
           broadcastUpsert(updatedShape);
-          persist(updatedShape);
+          // Auto-save handles persistence
         });
         break;
         
@@ -3735,7 +3893,7 @@ function ContextMenu({ x, y, shapeIds, onClose }: {
           const updatedShape = { ...shape, y: targetValue - (shape.h || 0), updated_at: Date.now(), updated_by: useCanvas.getState().me.id };
           useCanvas.getState().upsert(updatedShape);
           broadcastUpsert(updatedShape);
-          persist(updatedShape);
+          // Auto-save handles persistence
         });
         break;
     }
@@ -3765,7 +3923,7 @@ function ContextMenu({ x, y, shapeIds, onClose }: {
         const updatedShape = { ...shape, x: currentX + gap, updated_at: Date.now(), updated_by: useCanvas.getState().me.id };
         useCanvas.getState().upsert(updatedShape);
         broadcastUpsert(updatedShape);
-        persist(updatedShape);
+        // Auto-save handles persistence
         currentX += (shape.w || 0) + gap;
       });
     } else {
@@ -3784,7 +3942,7 @@ function ContextMenu({ x, y, shapeIds, onClose }: {
         const updatedShape = { ...shape, y: currentY + gap, updated_at: Date.now(), updated_by: useCanvas.getState().me.id };
         useCanvas.getState().upsert(updatedShape);
         broadcastUpsert(updatedShape);
-        persist(updatedShape);
+        // Auto-save handles persistence
         currentY += (shape.h || 0) + gap;
       });
     }
@@ -3800,7 +3958,7 @@ function ContextMenu({ x, y, shapeIds, onClose }: {
     
     // Broadcast to multiplayer
     broadcastUpsert(updatedShape);
-    persist(updatedShape);
+    // Auto-save handles persistence
   };
 
   const handleColorChange = (type: 'fill' | 'stroke', newColor: string) => {
@@ -3895,7 +4053,7 @@ function ContextMenu({ x, y, shapeIds, onClose }: {
       
       // Broadcast to multiplayer
       broadcastUpsert(duplicateShape);
-      persist(duplicateShape);
+      // Auto-save handles persistence
     });
     
     // Select the new duplicates
@@ -4361,7 +4519,7 @@ function ContextMenu({ x, y, shapeIds, onClose }: {
                     const groupedShapes = useCanvas.getState().getSelectedShapes();
                     groupedShapes.forEach(shape => {
                       broadcastUpsert(shape);
-                      persist(shape);
+                      // Auto-save handles persistence
                     });
                     
                     console.log(`Grouped ${shapeIds.length} shapes`);
@@ -4405,7 +4563,7 @@ function ContextMenu({ x, y, shapeIds, onClose }: {
                           shapesToUngroup.forEach(shape => {
                             const updatedShape = { ...shape, groupId: undefined, updated_at: Date.now(), updated_by: useCanvas.getState().me.id };
                             broadcastUpsert(updatedShape);
-                            persist(updatedShape);
+                            // Auto-save handles persistence
                           });
                           
                           console.log(`Ungrouped shapes from group`);
@@ -4617,15 +4775,15 @@ function StarShape({ width, height, fill, stroke, strokeWidth }: {
   width: number; height: number; fill: string; stroke: string; strokeWidth: number;
 }) {
   return (
-    <RegularPolygon
+    <Star
       x={width / 2}
       y={height / 2}
-      sides={5}
-      radius={Math.min(width, height) / 2}
+      numPoints={5}
+      innerRadius={Math.min(width, height) / 4}
+      outerRadius={Math.min(width, height) / 2}
       fill={fill}
       stroke={stroke}
       strokeWidth={strokeWidth}
-      innerRadius={Math.min(width, height) / 4}
     />
   );
 }
@@ -4829,21 +4987,14 @@ async function broadcastRemove(ids: string[]) {
   await roomChannel.send({ type: "broadcast", event: "shape:remove", payload: ids });
 }
 
-// Debounced persistence for 60fps performance
-async function persist(shapes: ShapeBase | ShapeBase[]) {
-  const list = Array.isArray(shapes) ? shapes : [shapes];
-  list.forEach(s => pending.set(s.id, s));
-  
-  if (flushTimer) window.clearTimeout(flushTimer);
-  flushTimer = window.setTimeout(async () => {
-    const rows = Array.from(pending.values()).map((s) => ({ 
-      room_id: useCanvas.getState().roomId, 
-      ...s 
-    }));
-    pending.clear();
-  await supabase.from("shapes").upsert(rows, { onConflict: "id" });
-  }, 150); // 150ms is the sweet spot for batching
-}
+// DISABLED: Old debounced persistence system
+// This was conflicting with the new canvasService save system
+// Now using proper canvas-based saves through canvasService.saveShapesToCanvas()
+// DISABLED: Old persist function - functionality moved to canvasService auto-save
+// async function persist(shapes: ShapeBase | ShapeBase[]) {
+//   console.log('⚠️ Old persist() system disabled - using canvasService instead');
+//   // Shapes are now saved through the proper canvas save system in canvasService
+// }
 
 async function deleteFromDB(ids: string[]) {
   await supabase.from("shapes").delete().in("id", ids);

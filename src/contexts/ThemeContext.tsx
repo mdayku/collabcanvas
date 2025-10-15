@@ -38,23 +38,23 @@ export interface ThemeColors {
 
 const lightTheme: ThemeColors = {
   bg: '#ffffff',
-  bgSecondary: '#f9fafb',
-  bgTertiary: '#f3f4f6',
+  bgSecondary: '#f1f5f9', // Slightly darker for better contrast
+  bgTertiary: '#e2e8f0', // More contrast
   canvasBg: '#ffffff',
-  text: '#111827',
-  textSecondary: '#374151',
-  textMuted: '#6b7280',
-  border: '#e5e7eb',
-  borderLight: '#f3f4f6',
-  buttonBg: '#f9fafb',
-  buttonHover: '#f3f4f6',
-  buttonText: '#374151',
-  success: '#10b981',
-  warning: '#f59e0b',
-  error: '#ef4444',
-  info: '#3b82f6',
-  primary: '#3b82f6',
-  primaryHover: '#2563eb',
+  text: '#0f172a', // Darker text for better contrast
+  textSecondary: '#475569', // Better contrast
+  textMuted: '#64748b',
+  border: '#cbd5e1', // More visible border
+  borderLight: '#e2e8f0',
+  buttonBg: '#f1f5f9', // Better contrast
+  buttonHover: '#e2e8f0', // More noticeable hover
+  buttonText: '#334155', // Darker button text
+  success: '#059669', // Slightly darker green
+  warning: '#d97706', // Slightly darker orange  
+  error: '#dc2626', // Slightly darker red
+  info: '#2563eb', // Darker blue
+  primary: '#2563eb', // Darker primary
+  primaryHover: '#1d4ed8',
 };
 
 const darkTheme: ThemeColors = {

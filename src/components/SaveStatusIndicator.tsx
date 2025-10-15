@@ -11,14 +11,26 @@ export const SaveStatusIndicator: React.FC = () => {
     saveMessage,
     hasUnsavedChanges,
     currentCanvas,
-    triggerManualSave,
-    checkForRecovery
+    triggerManualSave
   } = useCanvas();
 
-  // Check for recovery on component mount
+  // Check for recovery on component mount - DISABLED
+  // We've deprecated the auto-save recovery dialog as it causes more confusion than help
+  // with the multi-canvas system
   useEffect(() => {
-    checkForRecovery();
-  }, [checkForRecovery]);
+    // checkForRecovery(); // Disabled - no longer showing recovery dialogs
+    
+    // Clear any existing recovery data to prevent issues
+    const clearOldRecoveryData = async () => {
+      try {
+        const { autoSaveService } = await import('../services/autoSaveService');
+        autoSaveService.clearRecoveryData();
+      } catch (error) {
+        console.warn('Failed to clear old recovery data:', error);
+      }
+    };
+    clearOldRecoveryData();
+  }, []); // Empty dependency array - only run once on mount
 
   // Initialize auto-save service
   useEffect(() => {
@@ -108,12 +120,32 @@ export const SaveStatusIndicator: React.FC = () => {
   };
 
   const handleManualSave = async () => {
-    if (!hasUnsavedChanges || saveStatus === 'saving') return;
+    console.log('💾 SaveStatusIndicator manual save clicked:', {
+      hasUnsavedChanges,
+      saveStatus,
+      currentCanvas: currentCanvas ? { id: currentCanvas.id, title: currentCanvas.title } : null
+    });
+    
+    if (!hasUnsavedChanges || saveStatus === 'saving') {
+      console.log('❌ Save skipped - no changes or already saving');
+      return;
+    }
+    
+    if (!currentCanvas) {
+      console.error('❌ Save failed - no current canvas');
+      alert('No canvas to save. Please create or load a canvas first.');
+      return;
+    }
     
     try {
+      console.log('🔄 Triggering manual save...');
       await triggerManualSave();
+      console.log('✅ Manual save completed');
     } catch (error) {
-      console.error('Manual save failed:', error);
+      console.error('❌ Manual save failed:', error);
+      // Show user-friendly error
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      alert(`Save failed: ${errorMessage}`);
     }
   };
 

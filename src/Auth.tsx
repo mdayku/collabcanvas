@@ -1,12 +1,15 @@
 import { useState } from "react";
 import { supabase } from "./lib/supabaseClient";
 import { randomColor } from "./state/store";
+import { useTheme } from "./contexts/ThemeContext";
 
 interface AuthProps {
   onAuthSuccess: (user: any, profile?: any) => void;
 }
 
+
 export default function Auth({ onAuthSuccess }: AuthProps) {
+  const { colors } = useTheme();
   const [isSignUp, setIsSignUp] = useState(false);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -19,28 +22,123 @@ export default function Auth({ onAuthSuccess }: AuthProps) {
       setLoading(true);
       setError('');
       
-      // Create a demo user profile directly
-      const demoProfile = {
-        id: `demo-${demoUser.email.split('@')[0]}`,
-        email: demoUser.email,
-        display_name: demoUser.name,
-        avatar_color: demoUser.color,
-        created_at: new Date().toISOString(),
-        updated_at: new Date().toISOString()
-      };
+      console.log('🎭 Attempting demo login for:', demoUser.email);
       
-      // Store demo user in localStorage to persist the session
-      localStorage.setItem('demo-user', JSON.stringify(demoProfile));
+      // Test Supabase connectivity first
+      try {
+        const { data: testData, error: testError } = await supabase.from('canvases').select('count').limit(1);
+        console.log('🔍 Supabase connectivity test:', { 
+          connected: !testError, 
+          error: testError?.message 
+        });
+      } catch (connError) {
+        console.error('❌ Supabase connection failed:', connError);
+      }
       
-      // Call onAuthSuccess with the demo profile - pass null as user since it's demo mode
-      onAuthSuccess(null, demoProfile);
+      // Clear localStorage to prevent conflicts
+      localStorage.clear();
+      
+      // Create/sign in with a real Supabase account for demo users
+      // This bypasses RLS policy issues by making them "real" users
+      const demoPassword = 'demo123456'; // Simple password for demo accounts
+      
+      try {
+        // First try to sign in (account might already exist)
+        console.log('🔐 Attempting sign in for demo user:', demoUser.email);
+        // Try to sign in with the individual demo user email
+        const { data: signInData, error: signInError } = await supabase.auth.signInWithPassword({
+          email: demoUser.email,
+          password: demoPassword,
+        });
+        
+        console.log('🔍 Demo sign in result:', { 
+          user: signInData?.user?.id, 
+          error: signInError?.message,
+          email: demoUser.email 
+        });
+
+        if (signInError && (signInError.message.includes('Invalid login credentials') || 
+                         signInError.message.includes('Email not confirmed'))) {
+          console.log('🆕 Demo account not found, creating new one...');
+          
+          // Account doesn't exist, create it
+          const { data: signUpData, error: signUpError } = await supabase.auth.signUp({
+            email: demoUser.email,
+            password: demoPassword,
+            options: {
+              data: {
+                display_name: demoUser.name,
+                avatar_color: demoUser.color,
+                is_demo: true
+              }
+            }
+          });
+
+          if (signUpError) {
+            console.error('❌ Demo account creation failed:', signUpError);
+            throw signUpError;
+          }
+
+          console.log('✅ Demo account created successfully');
+          
+          // For demo accounts, we can proceed immediately (skip email confirmation)
+          if (signUpData.user) {
+            // Create profile manually
+            const profile = {
+              id: signUpData.user.id,
+              email: demoUser.email,
+              display_name: demoUser.name,
+              avatar_color: demoUser.color,
+              created_at: new Date().toISOString(),
+              updated_at: new Date().toISOString()
+            };
+            
+            // Login tracking no longer needed - canvas selector logic simplified
+          onAuthSuccess(signUpData.user, profile);
+          }
+        } else if (signInError) {
+          console.error('❌ Demo sign in failed:', signInError);
+          throw signInError;
+        } else {
+          console.log('✅ Demo user signed in successfully');
+          
+          // Demo user signed in successfully
+          
+          // Get the user profile
+          const { data: profile } = await supabase
+            .from('user_profiles')
+            .select('*')
+            .eq('id', signInData.user.id)
+            .single();
+
+          const finalProfile = profile || {
+            id: signInData.user.id,
+            email: demoUser.email,
+            display_name: demoUser.name,
+            avatar_color: demoUser.color,
+            is_demo: true,
+            is_verified: false,
+            created_at: new Date().toISOString(),
+            updated_at: new Date().toISOString()
+          };
+
+          // Login tracking no longer needed - canvas selector logic simplified
+        onAuthSuccess(signInData.user, finalProfile);
+        }
+      } catch (authError) {
+        console.error('❌ Demo authentication failed:', authError);
+        throw authError;
+      }
+      
     } catch (err) {
+      console.error('❌ Demo login error:', err);
       setError(err instanceof Error ? err.message : 'Demo login failed');
     } finally {
       setLoading(false);
     }
   };
 
+  // With email verification disabled, we can use individual demo emails again
   const demoUsers = [
     { email: 'demo1@collabcanvas.com', name: 'Demo User 1', color: '#3b82f6' }, // Blue
     { email: 'demo2@collabcanvas.com', name: 'Demo User 2', color: '#ef4444' }, // Red  
@@ -77,6 +175,7 @@ export default function Auth({ onAuthSuccess }: AuthProps) {
             .eq('id', data.user.id)
             .single();
 
+          // Login tracking no longer needed - canvas selector logic simplified
           onAuthSuccess(data.user, profile || {
             id: data.user.id,
             display_name: displayName || "User",
@@ -100,6 +199,7 @@ export default function Auth({ onAuthSuccess }: AuthProps) {
             .eq('id', data.user.id)
             .single();
 
+          // Login tracking no longer needed - canvas selector logic simplified
           onAuthSuccess(data.user, profile);
         }
       }
@@ -111,55 +211,125 @@ export default function Auth({ onAuthSuccess }: AuthProps) {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 flex items-center justify-center p-4">
-      <div className="max-w-md w-full bg-white rounded-lg shadow-lg p-6">
+    <div 
+      className="min-h-screen flex items-center justify-center p-4"
+      style={{ backgroundColor: colors.bgSecondary }}
+    >
+      <div 
+        className="max-w-md w-full rounded-lg shadow-lg p-6 border"
+        style={{ 
+          backgroundColor: colors.bgPrimary,
+          borderColor: colors.border 
+        }}
+      >
         <div className="text-center mb-6">
-          <h1 className="text-3xl font-bold text-gray-900 mb-2">CollabCanvas</h1>
-          <p className="text-gray-600">
+          <h1 
+            className="text-3xl font-bold mb-2"
+            style={{ color: colors.text }}
+          >
+            CollabCanvas
+          </h1>
+          <p style={{ color: colors.textSecondary }}>
             {isSignUp ? "Create your account" : "Sign in to your account"}
           </p>
         </div>
 
         {/* Demo Login Section */}
         <div className="mb-6">
-          <h3 className="text-sm font-medium text-gray-700 mb-3">🚀 Quick Demo (No signup required)</h3>
+          <h3 
+            className="text-sm font-medium mb-3"
+            style={{ color: colors.text }}
+          >
+            🚀 Quick Demo
+          </h3>
+          
+          
           <div className="grid gap-2">
             {demoUsers.map((user) => (
               <button
                 key={user.email}
                 onClick={() => handleDemoLogin(user)}
                 disabled={loading}
-                className="flex items-center justify-between p-3 border border-gray-200 rounded-md hover:bg-gray-50 transition-colors disabled:opacity-50"
+                className="flex items-center justify-between p-3 border rounded-md transition-colors disabled:opacity-50"
+                style={{
+                  borderColor: colors.border,
+                  backgroundColor: colors.bgSecondary
+                }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.backgroundColor = colors.buttonHover;
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.backgroundColor = colors.bgSecondary;
+                }}
               >
                 <div className="flex items-center space-x-3">
                   <div 
                     className="w-4 h-4 rounded-full" 
                     style={{ backgroundColor: user.color }}
                   ></div>
-                  <span className="text-sm font-medium text-gray-900">{user.name}</span>
+                  <div>
+                    <div 
+                      className="text-sm font-medium"
+                      style={{ color: colors.text }}
+                    >
+                      {user.name}
+                    </div>
+                    <div 
+                      className="text-xs"
+                      style={{ color: colors.textSecondary }}
+                    >
+                      {user.email} • demo123456
+                    </div>
+                  </div>
                 </div>
-                <span className="text-xs text-gray-500">Click to join</span>
+                <span 
+                  className="text-xs px-2 py-1 rounded"
+                  style={{ 
+                    color: colors.primary,
+                    backgroundColor: colors.bgTertiary
+                  }}
+                >
+                  Sign In
+                </span>
               </button>
             ))}
           </div>
-          <p className="text-xs text-gray-500 mt-2">
-            💡 Open multiple browser tabs/windows to test multiplayer features
+          <p 
+            className="text-xs mt-2"
+            style={{ color: colors.textSecondary }}
+          >
+            💡 Demo accounts are real Supabase accounts with shared credentials
           </p>
         </div>
 
         <div className="relative mb-4">
           <div className="absolute inset-0 flex items-center">
-            <div className="w-full border-t border-gray-200" />
+            <div 
+              className="w-full border-t" 
+              style={{ borderColor: colors.border }}
+            />
           </div>
           <div className="relative flex justify-center text-sm">
-            <span className="px-2 bg-white text-gray-500">Or sign in with your account</span>
+            <span 
+              className="px-2"
+              style={{ 
+                backgroundColor: colors.bgPrimary, 
+                color: colors.textSecondary 
+              }}
+            >
+              Or sign in with your account
+            </span>
           </div>
         </div>
 
         <form onSubmit={handleSubmit} className="space-y-4">
           {isSignUp && (
             <div>
-              <label htmlFor="displayName" className="block text-sm font-medium text-gray-700 mb-1">
+              <label 
+                htmlFor="displayName" 
+                className="block text-sm font-medium mb-1"
+                style={{ color: colors.text }}
+              >
                 Display Name
               </label>
               <input
@@ -167,14 +337,23 @@ export default function Auth({ onAuthSuccess }: AuthProps) {
                 type="text"
                 value={displayName}
                 onChange={(e) => setDisplayName(e.target.value)}
-                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                className="w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                style={{
+                  backgroundColor: colors.bgSecondary,
+                  borderColor: colors.border,
+                  color: colors.text
+                }}
                 placeholder="Your display name"
               />
             </div>
           )}
 
           <div>
-            <label htmlFor="email" className="block text-sm font-medium text-gray-700 mb-1">
+            <label 
+              htmlFor="email" 
+              className="block text-sm font-medium mb-1"
+              style={{ color: colors.text }}
+            >
               Email
             </label>
             <input
@@ -183,13 +362,22 @@ export default function Auth({ onAuthSuccess }: AuthProps) {
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               required
-              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+              className="w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+              style={{
+                backgroundColor: colors.bgSecondary,
+                borderColor: colors.border,
+                color: colors.text
+              }}
               placeholder="you@example.com"
             />
           </div>
 
           <div>
-            <label htmlFor="password" className="block text-sm font-medium text-gray-700 mb-1">
+            <label 
+              htmlFor="password" 
+              className="block text-sm font-medium mb-1"
+              style={{ color: colors.text }}
+            >
               Password
             </label>
             <input
@@ -199,13 +387,25 @@ export default function Auth({ onAuthSuccess }: AuthProps) {
               onChange={(e) => setPassword(e.target.value)}
               required
               minLength={6}
-              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+              className="w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+              style={{
+                backgroundColor: colors.bgSecondary,
+                borderColor: colors.border,
+                color: colors.text
+              }}
               placeholder="••••••••"
             />
           </div>
 
           {error && (
-            <div className="text-red-600 text-sm bg-red-50 p-3 rounded-md">
+            <div 
+              className="text-sm p-3 rounded-md border"
+              style={{ 
+                color: '#dc2626',
+                backgroundColor: colors.bgSecondary,
+                borderColor: '#fca5a5'
+              }}
+            >
               {error}
             </div>
           )}
@@ -213,7 +413,21 @@ export default function Auth({ onAuthSuccess }: AuthProps) {
           <button
             type="submit"
             disabled={loading}
-            className="w-full bg-blue-600 hover:bg-blue-700 disabled:bg-blue-400 text-white font-medium py-2 px-4 rounded-md transition-colors duration-200"
+            className="w-full font-medium py-2 px-4 rounded-md transition-colors duration-200 disabled:opacity-50"
+            style={{
+              backgroundColor: loading ? colors.buttonBg : '#3b82f6',
+              color: 'white'
+            }}
+            onMouseEnter={(e) => {
+              if (!loading) {
+                e.currentTarget.style.backgroundColor = '#2563eb';
+              }
+            }}
+            onMouseLeave={(e) => {
+              if (!loading) {
+                e.currentTarget.style.backgroundColor = '#3b82f6';
+              }
+            }}
           >
             {loading ? "Loading..." : (isSignUp ? "Sign Up" : "Sign In")}
           </button>
@@ -223,7 +437,14 @@ export default function Auth({ onAuthSuccess }: AuthProps) {
           <button
             type="button"
             onClick={() => setIsSignUp(!isSignUp)}
-            className="text-blue-600 hover:text-blue-700 text-sm font-medium"
+            className="text-sm font-medium transition-colors"
+            style={{ color: '#3b82f6' }}
+            onMouseEnter={(e) => {
+              e.currentTarget.style.color = '#2563eb';
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.color = '#3b82f6';
+            }}
           >
             {isSignUp 
               ? "Already have an account? Sign in" 
@@ -232,8 +453,10 @@ export default function Auth({ onAuthSuccess }: AuthProps) {
           </button>
         </div>
 
-        <div className="mt-4 text-xs text-gray-500 text-center">
-          <p>Secure authentication powered by Supabase</p>
+        <div className="mt-4 text-xs text-center">
+          <p style={{ color: colors.textSecondary }}>
+            Secure authentication powered by Supabase
+          </p>
         </div>
       </div>
     </div>

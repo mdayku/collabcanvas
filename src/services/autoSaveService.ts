@@ -153,7 +153,7 @@ class AutoSaveService {
       await useCanvas.getState().saveCurrentCanvas();
       
       this.notifyStatus('saved', 'Auto-saved');
-      console.log('✅ Auto-save completed successfully');
+      // Auto-save completed
 
     } catch (error) {
       console.error('❌ Auto-save failed:', error);
@@ -257,6 +257,50 @@ class AutoSaveService {
       const store = useCanvas.getState();
       
       console.log('🔄 Restoring backup with', Object.keys(backup.shapes).length, 'shapes for canvas:', backup.canvasTitle);
+      console.log('📋 Backup canvas ID:', backup.canvasId);
+      console.log('📋 Current canvas ID:', store.currentCanvas?.id);
+      
+      // CRITICAL FIX: Only restore if we're on the correct canvas, or switch to it first
+      if (store.currentCanvas?.id !== backup.canvasId) {
+        console.log('⚠️ Canvas mismatch detected!');
+        console.log(`   Backup is for canvas: ${backup.canvasId} (${backup.canvasTitle})`);
+        console.log(`   Current canvas is: ${store.currentCanvas?.id} (${store.currentCanvas?.title})`);
+        
+        const shouldSwitch = confirm(
+          `This backup is for "${backup.canvasTitle}" but you're currently viewing "${store.currentCanvas?.title}".\n\n` +
+          `Switch to "${backup.canvasTitle}" to restore the backup?\n\n` +
+          `Click OK to switch and restore, or Cancel to restore to current canvas.`
+        );
+        
+        if (shouldSwitch) {
+          try {
+            // Try to load the correct canvas first
+            const { canvasService } = await import('./canvasService');
+            const targetCanvas = await canvasService.getCanvas(backup.canvasId);
+            
+            if (targetCanvas) {
+              console.log('🔄 Switching to target canvas before restore');
+              await store.loadCanvas(backup.canvasId);
+              store.openCanvasInTab(targetCanvas);
+            } else {
+              console.log('🆕 Target canvas not found, creating it from backup');
+              // Canvas doesn't exist in database, create it from backup
+              store.setCurrentCanvas({
+                id: backup.canvasId,
+                title: backup.canvasTitle,
+                user_id: store.me.id,
+                room_id: backup.roomId,
+                created_at: new Date().toISOString(),
+                updated_at: new Date().toISOString(),
+                is_public: false,
+                data: {}
+              });
+            }
+          } catch (error) {
+            console.warn('Failed to switch canvas, restoring to current canvas:', error);
+          }
+        }
+      }
       
       // For local recovery, don't try to load from database - just restore shapes to current canvas
       // Create a mock canvas object if needed
@@ -271,22 +315,15 @@ class AutoSaveService {
           is_public: false,
           data: {}
         });
-      } else {
-        // Update the current canvas title if different
-        if (store.currentCanvas.title !== backup.canvasTitle) {
-          store.setCurrentCanvas({
-            ...store.currentCanvas,
-            title: backup.canvasTitle
-          });
-        }
       }
       
       // Clear existing shapes and restore from backup
+      console.log('🗑️ Clearing existing shapes and restoring from backup');
       store.clear();
       store.upsert(Object.values(backup.shapes));
       store.setUnsavedChanges(true); // Mark as unsaved so user can save
       
-      console.log('✅ Successfully restored', Object.keys(backup.shapes).length, 'shapes from backup');
+      console.log('✅ Successfully restored', Object.keys(backup.shapes).length, 'shapes from backup to canvas:', store.currentCanvas?.title);
       
     } catch (error) {
       console.error('Failed to restore backup:', error);

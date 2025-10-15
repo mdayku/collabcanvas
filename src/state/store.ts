@@ -44,6 +44,7 @@ export type CanvasState = {
   isCanvasLoading: boolean;
   canvasError: string | null;
   hasUnsavedChanges: boolean;
+  showCanvasSelector: boolean;
   
   // Tab management (for multi-canvas workflow)
   openTabs: Canvas[];
@@ -105,6 +106,8 @@ export type CanvasState = {
   saveCurrentCanvas: (title?: string) => Promise<void>;
   duplicateCurrentCanvas: (newTitle?: string) => Promise<Canvas>;
   initializeCanvas: () => Promise<void>;
+  showCanvasSelectorDialog: () => void;
+  hideCanvasSelectorDialog: () => void;
   
   // Tab management functions
   openCanvasInTab: (canvas: Canvas) => void;
@@ -143,6 +146,7 @@ export const useCanvas = create<CanvasState>()(immer((set, get) => ({
   isCanvasLoading: false,
   canvasError: null,
   hasUnsavedChanges: false,
+  showCanvasSelector: false,
   
   // Tab management state
   openTabs: [],
@@ -232,6 +236,7 @@ export const useCanvas = create<CanvasState>()(immer((set, get) => ({
   }),
 
   remove: (ids) => set((s) => {
+    console.log('🗑️ Removing shapes:', { ids, canvasId: s.currentCanvas?.id, currentShapes: Object.keys(s.shapes) });
     ids.forEach((id) => delete s.shapes[id]);
     // Remove from selection if deleted
     s.selectedIds = s.selectedIds.filter(selectedId => !ids.includes(selectedId));
@@ -243,6 +248,7 @@ export const useCanvas = create<CanvasState>()(immer((set, get) => ({
 
   clear: () => set((s) => { 
     const hadShapes = Object.keys(s.shapes).length > 0;
+    console.log('🗑️ Clearing canvas shapes:', { hadShapes, canvasId: s.currentCanvas?.id });
     s.shapes = {}; 
     s.selectedIds = [];
     // Mark as unsaved when canvas is cleared
@@ -434,17 +440,25 @@ export const useCanvas = create<CanvasState>()(immer((set, get) => ({
       set((s) => {
         s.currentCanvas = canvas;
         s.roomId = canvas.room_id;
-        s.shapes = {};
+        
+        // CRITICAL: Don't clear shapes until we know we have new ones to load
+        const newShapes: Record<string, ShapeBase> = {};
         
         // Convert shapes array to shapes object
         shapes.forEach(shape => {
-          s.shapes[shape.id] = shape;
+          newShapes[shape.id] = shape;
         });
+        
+        // Only now replace the shapes object
+        s.shapes = newShapes;
         
         s.selectedIds = [];
         s.hasUnsavedChanges = false;
         s.isCanvasLoading = false;
       });
+      
+      // Store this canvas as the last active one
+      setLastActiveCanvasId(canvas.id);
       
     } catch (error) {
       set((s) => { 
@@ -464,13 +478,22 @@ export const useCanvas = create<CanvasState>()(immer((set, get) => ({
         s.canvasError = null; 
       });
       
-      // Get current shapes to save to new canvas
-      const currentShapes = Object.values(get().shapes);
+      // Save current canvas state before creating new one
+      const currentCanvasId = get().currentCanvas?.id;
+      console.log('🆕 Creating new canvas, current canvas:', currentCanvasId);
       
+      if (get().currentCanvas && get().hasUnsavedChanges) {
+        console.log('💾 Saving current canvas before creating new one');
+        await get().triggerManualSave();
+      }
+      
+      // Create new canvas with NO shapes (empty canvas)
+      console.log('🏗️ Creating new canvas with title:', title);
       const canvas = await canvasService.createCanvas({
         title,
-        shapes: currentShapes
+        shapes: [] // Always create empty canvas
       });
+      console.log('✅ New canvas created:', { id: canvas.id, title: canvas.title });
       
       set((s) => {
         s.currentCanvas = canvas;
@@ -479,6 +502,8 @@ export const useCanvas = create<CanvasState>()(immer((set, get) => ({
         s.isCanvasLoading = false;
         s.history = []; // Clear history for new canvas
         s.redoHistory = []; // Clear redo history for new canvas
+        s.shapes = {}; // Clear shapes for new empty canvas
+        s.selectedIds = []; // Clear selection
       });
       
       return canvas;
@@ -496,7 +521,10 @@ export const useCanvas = create<CanvasState>()(immer((set, get) => ({
     const { canvasService } = await import('../services/canvasService');
     const { currentCanvas } = get();
     
+    // Saving canvas...
+    
     if (!currentCanvas) {
+      console.error('❌ saveCurrentCanvas failed: No current canvas');
       throw new Error('No canvas to save');
     }
     
@@ -509,9 +537,8 @@ export const useCanvas = create<CanvasState>()(immer((set, get) => ({
         saveData.title = title;
       }
       
+      // Save canvas metadata and shapes
       await canvasService.saveCanvas(currentCanvas.id, saveData);
-      
-      // Save current shapes
       const currentShapes = Object.values(get().shapes);
       await canvasService.saveShapesToCanvas(currentCanvas.id, currentShapes);
       
@@ -520,6 +547,12 @@ export const useCanvas = create<CanvasState>()(immer((set, get) => ({
         set((s) => {
           if (s.currentCanvas) {
             s.currentCanvas.title = title;
+            
+            // Also update the tab title if this canvas is open in a tab
+            const tabIndex = s.openTabs.findIndex(tab => tab.id === s.currentCanvas!.id);
+            if (tabIndex >= 0) {
+              s.openTabs[tabIndex].title = title;
+            }
           }
         });
       }
@@ -527,6 +560,7 @@ export const useCanvas = create<CanvasState>()(immer((set, get) => ({
       set((s) => { s.hasUnsavedChanges = false; });
       
     } catch (error) {
+      console.error('❌ saveCurrentCanvas failed:', error);
       set((s) => { 
         s.canvasError = error instanceof Error ? error.message : 'Failed to save canvas';
       });
@@ -571,60 +605,102 @@ export const useCanvas = create<CanvasState>()(immer((set, get) => ({
   },
 
   initializeCanvas: async () => {
+    // Prevent duplicate initialization
+    const state = get();
+    if (state.isCanvasLoading || state.currentCanvas) {
+      console.log('🚫 Canvas initialization already in progress or complete, skipping');
+      return;
+    }
+
     const { canvasService } = await import('../services/canvasService');
     
     try {
+      console.log('🚀 Starting canvas initialization...');
+      set((s) => { s.isCanvasLoading = true; });
+      
       // Check for last active canvas in localStorage
       const lastActiveCanvasId = getLastActiveCanvasId();
+      console.log('📱 Last active canvas ID from localStorage:', lastActiveCanvasId);
       
+      // Always try to restore the last active canvas on refresh if it exists
+      // The canvas selector will only show for new users or when explicitly requested
       if (lastActiveCanvasId) {
-        // Try to load the last active canvas
+        // Try to load the last active canvas (for refresh scenarios only)
         try {
           await get().loadCanvas(lastActiveCanvasId);
-          console.log('✅ Restored last active canvas:', lastActiveCanvasId);
-          return;
+          // If loadCanvas succeeded, we need to get the canvas object to open in tab
+          const { canvasService } = await import('../services/canvasService');
+          const lastCanvas = await canvasService.getCanvas(lastActiveCanvasId);
+          if (lastCanvas) {
+            get().openCanvasInTab(lastCanvas);
+            console.log('✅ Restored last active canvas on refresh:', lastActiveCanvasId);
+            // Mark initialization as complete and don't show selector for refresh
+            set((s) => { s.isCanvasLoading = false; });
+            return;
+          }
         } catch (error) {
-          console.warn('❌ Failed to load last active canvas, trying most recent:', error);
-          // Fall through to load most recent canvas
+          console.warn('❌ Failed to load last active canvas, will show selector:', error);
+          // Clear the invalid lastActiveCanvasId from localStorage
+          setLastActiveCanvasId(null); // Use the helper function to ensure correct key
+          // Fall through to show canvas selector
         }
       }
       
       // Get user's canvases and load the most recent one
+      console.log('🔍 Fetching user canvases from database...');
       const canvases = await canvasService.getUserCanvases();
+      console.log('📊 Found', canvases.length, 'existing canvases');
       
-      if (canvases.length > 0) {
-        // Sort by updated_at descending and load the most recent
-        const mostRecent = canvases.sort((a, b) => 
-          new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime()
-        )[0];
-        
-        await get().loadCanvas(mostRecent.id);
-        console.log('✅ Loaded most recent canvas:', mostRecent.title);
-      } else {
-        // No canvases exist, create a new default one
-        const newCanvas = await get().createNewCanvas('My First Canvas');
-        console.log('✅ Created first canvas:', newCanvas.title);
-      }
+      // Always show canvas selector on sign-in for better user control
+      console.log('🎨 Always showing canvas selector on sign-in for better UX');
+      set((s) => { 
+        s.showCanvasSelector = true;
+        s.isCanvasLoading = false;
+      });
+      
+      // Mark initialization as complete
+      set((s) => { s.isCanvasLoading = false; });
       
     } catch (error) {
       console.error('❌ Failed to initialize canvas:', error);
       // Keep the default "room-1" state as fallback
       set((s) => { 
         s.canvasError = 'Failed to load canvas. Using default workspace.';
+        s.isCanvasLoading = false;
       });
     }
   },
+
+  // Canvas selector functions
+  showCanvasSelectorDialog: () => set((s) => { 
+    console.log('🎨 Showing canvas selector dialog');
+    s.showCanvasSelector = true; 
+  }),
+  
+  hideCanvasSelectorDialog: () => set((s) => { 
+    console.log('❌ Hiding canvas selector dialog');
+    s.showCanvasSelector = false; 
+  }),
   
   // Tab management functions
   openCanvasInTab: (canvas) => set((s) => {
+    console.log('📂 Opening canvas in tab:', { 
+      canvasId: canvas.id, 
+      canvasTitle: canvas.title,
+      currentTabs: s.openTabs.map(t => ({ id: t.id, title: t.title })),
+      activeTabId: s.activeTabId 
+    });
+    
     // Check if tab is already open
     const existingTabIndex = s.openTabs.findIndex(tab => tab.id === canvas.id);
     
     if (existingTabIndex >= 0) {
       // Tab already open, just switch to it
+      console.log('🔄 Tab already exists, switching to it');
       s.activeTabId = canvas.id;
     } else {
       // Add new tab
+      console.log('➕ Adding new tab');
       s.openTabs.push(canvas);
       s.activeTabId = canvas.id;
     }
@@ -632,6 +708,12 @@ export const useCanvas = create<CanvasState>()(immer((set, get) => ({
     // Update current canvas
     s.currentCanvas = canvas;
     s.roomId = canvas.room_id;
+    
+    console.log('✅ Tab operation complete:', {
+      totalTabs: s.openTabs.length,
+      activeTabId: s.activeTabId,
+      tabs: s.openTabs.map(t => ({ id: t.id, title: t.title }))
+    });
   }),
   
   closeTab: async (canvasId) => {
@@ -699,13 +781,29 @@ export const useCanvas = create<CanvasState>()(immer((set, get) => ({
   },
   
   switchToTab: (canvasId) => set((s) => {
+    console.log('🔄 switchToTab called:', { 
+      canvasId, 
+      currentActiveTab: s.activeTabId,
+      availableTabs: s.openTabs.map(t => ({ id: t.id, title: t.title }))
+    });
+    
     const targetTab = s.openTabs.find(tab => tab.id === canvasId);
     if (targetTab) {
+      console.log('✅ Found target tab:', targetTab.title);
       s.activeTabId = canvasId;
       s.currentCanvas = targetTab;
       s.roomId = targetTab.room_id;
       
-      // Load the canvas shapes (this will be handled by the UI)
+      console.log('✅ Tab state updated:', {
+        activeTabId: s.activeTabId,
+        currentCanvasTitle: s.currentCanvas?.title,
+        roomId: s.roomId
+      });
+    } else {
+      console.error('❌ Target tab not found in openTabs:', {
+        canvasId,
+        availableTabs: s.openTabs.map(t => t.id)
+      });
     }
   }),
   
@@ -793,14 +891,39 @@ export const useCanvas = create<CanvasState>()(immer((set, get) => ({
   },
 
   triggerManualSave: async () => {
+    const state = get();
+    const currentCanvas = state.currentCanvas;
+    console.log('🚀 triggerManualSave called:', {
+      hasCurrentCanvas: !!currentCanvas,
+      canvasId: currentCanvas?.id,
+      canvasTitle: currentCanvas?.title,
+      hasShapes: Object.keys(state.shapes).length > 0,
+      hasUnsavedChanges: state.hasUnsavedChanges,
+      activeTabId: state.activeTabId,
+      openTabsCount: state.openTabs.length
+    });
+    
+    if (!currentCanvas) {
+      const errorMsg = 'No canvas to save - currentCanvas is null';
+      console.error('❌', errorMsg);
+      set((s) => {
+        s.saveStatus = 'error';
+        s.saveMessage = errorMsg;
+      });
+      throw new Error(errorMsg);
+    }
+    
     try {
       set((s) => { s.saveStatus = 'saving'; s.saveMessage = 'Saving...'; });
       
+      console.log('🔄 Calling saveCurrentCanvas...');
       await get().saveCurrentCanvas();
+      console.log('✅ saveCurrentCanvas completed');
       
       set((s) => { 
         s.saveStatus = 'saved'; 
         s.saveMessage = 'Saved successfully'; 
+        s.hasUnsavedChanges = false; // Mark as saved
       });
       
       // Clear the "saved" status after a few seconds
@@ -814,11 +937,12 @@ export const useCanvas = create<CanvasState>()(immer((set, get) => ({
       }, 3000);
       
     } catch (error) {
-      console.error('Manual save failed:', error);
+      console.error('❌ triggerManualSave failed:', error);
       set((s) => {
         s.saveStatus = 'error';
         s.saveMessage = error instanceof Error ? error.message : 'Save failed';
       });
+      throw error; // Re-throw so calling code can handle it
     }
   },
 })));
