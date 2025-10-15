@@ -116,10 +116,6 @@ function TopRibbon({ onSignOut, stageRef, setShowHelpPopup, centerOnNewShape, se
   };
 
   const handleNewCanvas = async () => {
-    // Temporary disclaimer while database schema issues are resolved
-    alert('New Canvas feature is temporarily unavailable due to database schema caching. Please use the current canvas with auto-save for now. Feature coming soon!');
-    setShowFileMenu(false);
-    return;
     
     const canvasState = useCanvas.getState();
     const hasShapes = Object.keys(canvasState.shapes).length > 0;
@@ -1187,9 +1183,6 @@ function TabBar() {
   const { colors } = useTheme();
 
   const handleNewTab = async () => {
-    // Temporary disclaimer while database schema issues are resolved
-    alert('New Canvas Tab feature is temporarily unavailable due to database schema caching. Please use the current canvas with auto-save for now. Feature coming soon!');
-    return;
     
     try {
       const title = prompt('New canvas title:', 'Untitled Canvas') || 'Untitled Canvas';
