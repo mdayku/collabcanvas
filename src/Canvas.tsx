@@ -1281,7 +1281,7 @@ interface CanvasProps {
 interface ContextMenuData {
   x: number;
   y: number;
-  shapeId: string;
+  shapeIds: string[]; // Support multiple shapes for alignment tools
 }
 
 export default function Canvas({ onSignOut }: CanvasProps) {
@@ -1929,13 +1929,27 @@ export default function Canvas({ onSignOut }: CanvasProps) {
       e.evt.preventDefault();
       const stage = e.target.getStage();
       const pointer = stage.getPointerPosition();
+      // Determine which shapes to include in context menu
+      const currentSelectedIds = useCanvas.getState().selectedIds;
+      let contextShapeIds: string[];
+      
+      if (currentSelectedIds.includes(s.id) && currentSelectedIds.length > 1) {
+        // Right-clicked on a shape that's part of a multi-selection
+        contextShapeIds = currentSelectedIds;
+      } else {
+        // Right-clicked on unselected shape or single selection
+        contextShapeIds = [s.id];
+        // Select the shape when right-clicking if not already selected
+        if (!currentSelectedIds.includes(s.id)) {
+          useCanvas.getState().select([s.id]);
+        }
+      }
+      
       setContextMenu({
         x: pointer.x,
         y: pointer.y,
-        shapeId: s.id
+        shapeIds: contextShapeIds
       });
-      // Select the shape when right-clicking
-      useCanvas.getState().select([s.id]);
     };
     
     return (
@@ -2254,7 +2268,7 @@ export default function Canvas({ onSignOut }: CanvasProps) {
           <ContextMenu 
             x={contextMenu.x}
             y={contextMenu.y}
-            shapeId={contextMenu.shapeId}
+            shapeIds={contextMenu.shapeIds}
             onClose={() => setContextMenu(null)}
           />
         )}
@@ -3565,16 +3579,18 @@ function ColorPicker({ color, onChange }: { color: string; onChange: (color: str
 }
 
 // Context Menu Component
-function ContextMenu({ x, y, shapeId, onClose }: {
+function ContextMenu({ x, y, shapeIds, onClose }: {
   x: number;
   y: number;
-  shapeId: string;
+  shapeIds: string[];
   onClose: () => void;
 }) {
   const [showColorPicker, setShowColorPicker] = useState<'fill' | 'stroke' | null>(null);
   const [position, setPosition] = useState({ x, y });
   const menuRef = useRef<HTMLDivElement>(null);
-  const shape = useCanvas(state => state.shapes[shapeId]);
+  const shapes = useCanvas(state => shapeIds.map(id => state.shapes[id]).filter(Boolean));
+  const shape = shapes[0]; // For single-shape operations, use the first shape
+  const isMultiSelection = shapeIds.length > 1;
   const { colors } = useTheme();
   
   // Smart positioning to keep menu on screen
@@ -3606,6 +3622,144 @@ function ContextMenu({ x, y, shapeId, onClose }: {
     }
   }, [x, y, showColorPicker]); // Recalculate when color picker opens/closes
   
+  // Alignment functions for multiple shapes
+  const alignShapes = (alignment: 'left' | 'right' | 'center' | 'top' | 'middle' | 'bottom') => {
+    if (shapes.length < 2) return;
+    
+    // Save history before alignment
+    useCanvas.getState().pushHistory();
+    
+    // Calculate bounds
+    const bounds = shapes.map(shape => ({
+      id: shape.id,
+      left: shape.x,
+      right: shape.x + (shape.w || 0),
+      top: shape.y,
+      bottom: shape.y + (shape.h || 0),
+      centerX: shape.x + (shape.w || 0) / 2,
+      centerY: shape.y + (shape.h || 0) / 2
+    }));
+    
+    let targetValue: number;
+    
+    switch (alignment) {
+      case 'left':
+        targetValue = Math.min(...bounds.map(b => b.left));
+        shapes.forEach(shape => {
+          const updatedShape = { ...shape, x: targetValue, updated_at: Date.now(), updated_by: useCanvas.getState().me.id };
+          useCanvas.getState().upsert(updatedShape);
+          broadcastUpsert(updatedShape);
+          persist(updatedShape);
+        });
+        break;
+        
+      case 'right':
+        targetValue = Math.max(...bounds.map(b => b.right));
+        shapes.forEach(shape => {
+          const updatedShape = { ...shape, x: targetValue - (shape.w || 0), updated_at: Date.now(), updated_by: useCanvas.getState().me.id };
+          useCanvas.getState().upsert(updatedShape);
+          broadcastUpsert(updatedShape);
+          persist(updatedShape);
+        });
+        break;
+        
+      case 'center':
+        const leftmost = Math.min(...bounds.map(b => b.left));
+        const rightmost = Math.max(...bounds.map(b => b.right));
+        targetValue = (leftmost + rightmost) / 2;
+        shapes.forEach(shape => {
+          const updatedShape = { ...shape, x: targetValue - (shape.w || 0) / 2, updated_at: Date.now(), updated_by: useCanvas.getState().me.id };
+          useCanvas.getState().upsert(updatedShape);
+          broadcastUpsert(updatedShape);
+          persist(updatedShape);
+        });
+        break;
+        
+      case 'top':
+        targetValue = Math.min(...bounds.map(b => b.top));
+        shapes.forEach(shape => {
+          const updatedShape = { ...shape, y: targetValue, updated_at: Date.now(), updated_by: useCanvas.getState().me.id };
+          useCanvas.getState().upsert(updatedShape);
+          broadcastUpsert(updatedShape);
+          persist(updatedShape);
+        });
+        break;
+        
+      case 'middle':
+        const topmost = Math.min(...bounds.map(b => b.top));
+        const bottommost = Math.max(...bounds.map(b => b.bottom));
+        targetValue = (topmost + bottommost) / 2;
+        shapes.forEach(shape => {
+          const updatedShape = { ...shape, y: targetValue - (shape.h || 0) / 2, updated_at: Date.now(), updated_by: useCanvas.getState().me.id };
+          useCanvas.getState().upsert(updatedShape);
+          broadcastUpsert(updatedShape);
+          persist(updatedShape);
+        });
+        break;
+        
+      case 'bottom':
+        targetValue = Math.max(...bounds.map(b => b.bottom));
+        shapes.forEach(shape => {
+          const updatedShape = { ...shape, y: targetValue - (shape.h || 0), updated_at: Date.now(), updated_by: useCanvas.getState().me.id };
+          useCanvas.getState().upsert(updatedShape);
+          broadcastUpsert(updatedShape);
+          persist(updatedShape);
+        });
+        break;
+    }
+    
+    onClose();
+  };
+  
+  const distributeShapes = (direction: 'horizontal' | 'vertical') => {
+    if (shapes.length < 3) return; // Need at least 3 shapes to distribute
+    
+    // Save history before distribution
+    useCanvas.getState().pushHistory();
+    
+    if (direction === 'horizontal') {
+      // Sort shapes by x position
+      const sortedShapes = [...shapes].sort((a, b) => a.x - b.x);
+      const leftmost = sortedShapes[0].x;
+      const rightmost = sortedShapes[sortedShapes.length - 1].x + (sortedShapes[sortedShapes.length - 1].w || 0);
+      const totalWidth = rightmost - leftmost;
+      const shapeWidths = sortedShapes.reduce((sum, shape) => sum + (shape.w || 0), 0);
+      const availableSpace = totalWidth - shapeWidths;
+      const gap = availableSpace / (sortedShapes.length - 1);
+      
+      let currentX = leftmost;
+      sortedShapes.forEach((shape, index) => {
+        if (index === 0 || index === sortedShapes.length - 1) return; // Don't move first and last
+        const updatedShape = { ...shape, x: currentX + gap, updated_at: Date.now(), updated_by: useCanvas.getState().me.id };
+        useCanvas.getState().upsert(updatedShape);
+        broadcastUpsert(updatedShape);
+        persist(updatedShape);
+        currentX += (shape.w || 0) + gap;
+      });
+    } else {
+      // Sort shapes by y position
+      const sortedShapes = [...shapes].sort((a, b) => a.y - b.y);
+      const topmost = sortedShapes[0].y;
+      const bottommost = sortedShapes[sortedShapes.length - 1].y + (sortedShapes[sortedShapes.length - 1].h || 0);
+      const totalHeight = bottommost - topmost;
+      const shapeHeights = sortedShapes.reduce((sum, shape) => sum + (shape.h || 0), 0);
+      const availableSpace = totalHeight - shapeHeights;
+      const gap = availableSpace / (sortedShapes.length - 1);
+      
+      let currentY = topmost;
+      sortedShapes.forEach((shape, index) => {
+        if (index === 0 || index === sortedShapes.length - 1) return; // Don't move first and last
+        const updatedShape = { ...shape, y: currentY + gap, updated_at: Date.now(), updated_by: useCanvas.getState().me.id };
+        useCanvas.getState().upsert(updatedShape);
+        broadcastUpsert(updatedShape);
+        persist(updatedShape);
+        currentY += (shape.h || 0) + gap;
+      });
+    }
+    
+    onClose();
+  };
+  
   if (!shape) return null;
 
   const updateShape = (updates: Partial<ShapeBase>) => {
@@ -3631,22 +3785,25 @@ function ContextMenu({ x, y, shapeId, onClose }: {
   };
 
   const handleLayerCommand = (command: 'front' | 'back' | 'up' | 'down') => {
-    const shapes = useCanvas.getState().shapes;
-    const allShapes = Object.values(shapes);
+    const allCanvasShapes = useCanvas.getState().shapes;
+    const allShapesArray = Object.values(allCanvasShapes);
+    
+    // For multi-selection, operate on the first selected shape for layer commands
+    const primaryShapeId = shapeIds[0];
     
     // Assign zIndex if not present (based on current order)
-    const shapesWithZIndex = allShapes.map((s, index) => ({
+    const shapesWithZIndex = allShapesArray.map((s, index) => ({
       ...s,
       zIndex: s.zIndex ?? index
     }));
     
     // Find current shape
-    const currentShape = shapesWithZIndex.find(s => s.id === shapeId);
+    const currentShape = shapesWithZIndex.find(s => s.id === primaryShapeId);
     if (!currentShape) return;
     
     let newZIndex = currentShape.zIndex;
     const sortedShapes = shapesWithZIndex.sort((a, b) => a.zIndex - b.zIndex);
-    const currentIndex = sortedShapes.findIndex(s => s.id === shapeId);
+    const currentIndex = sortedShapes.findIndex(s => s.id === primaryShapeId);
     
     switch (command) {
       case 'front':
@@ -3680,28 +3837,37 @@ function ContextMenu({ x, y, shapeId, onClose }: {
     // Save history before duplicating
     useCanvas.getState().pushHistory();
     
-    // Create duplicate with smart positioning (offset by 20px right and down)
-    const duplicateShape = {
-      ...shape,
-      id: Math.random().toString(36).substring(2),
-      x: shape.x + 20,
-      y: shape.y + 20,
-      // For lines/arrows, also offset the end points
-      ...(shape.x2 !== undefined && { x2: shape.x2 + 20 }),
-      ...(shape.y2 !== undefined && { y2: shape.y2 + 20 }),
-      updated_at: Date.now(),
-      updated_by: useCanvas.getState().me.id,
-    };
+    const duplicatedShapeIds: string[] = [];
     
-    // Add the duplicated shape
-    useCanvas.getState().upsert(duplicateShape);
+    // Duplicate all selected shapes
+    shapes.forEach((currentShape) => {
+      if (!currentShape) return;
+      
+      // Create duplicate with smart positioning (offset by 20px right and down)
+      const duplicateShape = {
+        ...currentShape,
+        id: Math.random().toString(36).substring(2),
+        x: currentShape.x + 20,
+        y: currentShape.y + 20,
+        // For lines/arrows, also offset the end points
+        ...(currentShape.x2 !== undefined && { x2: currentShape.x2 + 20 }),
+        ...(currentShape.y2 !== undefined && { y2: currentShape.y2 + 20 }),
+        updated_at: Date.now(),
+        updated_by: useCanvas.getState().me.id,
+      };
+      
+      duplicatedShapeIds.push(duplicateShape.id);
+      
+      // Add the duplicated shape
+      useCanvas.getState().upsert(duplicateShape);
+      
+      // Broadcast to multiplayer
+      broadcastUpsert(duplicateShape);
+      persist(duplicateShape);
+    });
     
-    // Select the new duplicate
-    useCanvas.getState().select([duplicateShape.id]);
-    
-    // Broadcast to multiplayer
-    broadcastUpsert(duplicateShape);
-    persist(duplicateShape);
+    // Select the new duplicates
+    useCanvas.getState().select(duplicatedShapeIds);
     
     onClose();
   };
@@ -3710,11 +3876,11 @@ function ContextMenu({ x, y, shapeId, onClose }: {
     // Save history before deleting so it can be undone with all properties intact
     useCanvas.getState().pushHistory();
     
-    useCanvas.getState().remove([shapeId]);
+    useCanvas.getState().remove(shapeIds);
     
     // Broadcast to multiplayer
-    broadcastRemove([shapeId]);
-    deleteFromDB([shapeId]);
+    broadcastRemove(shapeIds);
+    deleteFromDB(shapeIds);
     
     onClose();
   };
@@ -3734,10 +3900,148 @@ function ContextMenu({ x, y, shapeId, onClose }: {
       className="rounded-lg shadow-lg border p-3 min-w-[200px]"
     >
       <div className="text-sm font-medium mb-2" style={{ color: colors.text }}>
-        {shape.type === 'text' ? 'Text Options' : 'Shape Options'}
+        {isMultiSelection ? `${shapeIds.length} Objects Selected` : (shape.type === 'text' ? 'Text Options' : 'Shape Options')}
       </div>
       
       <div className="space-y-2">
+        {/* Alignment Tools - only show for multiple selections */}
+        {isMultiSelection && (
+          <>
+            <div className="text-xs font-medium mb-1" style={{ color: colors.text }}>Alignment:</div>
+            
+            {/* Horizontal Alignment */}
+            <div className="flex gap-1 mb-2">
+              <button
+                onClick={() => alignShapes('left')}
+                className="flex-1 px-2 py-1 text-xs rounded border"
+                style={{
+                  backgroundColor: colors.bg,
+                  borderColor: colors.border,
+                  color: colors.text
+                }}
+                onMouseEnter={(e) => e.currentTarget.style.backgroundColor = colors.buttonHover}
+                onMouseLeave={(e) => e.currentTarget.style.backgroundColor = colors.bg}
+                title="Align Left"
+              >
+                ⬅️
+              </button>
+              <button
+                onClick={() => alignShapes('center')}
+                className="flex-1 px-2 py-1 text-xs rounded border"
+                style={{
+                  backgroundColor: colors.bg,
+                  borderColor: colors.border,
+                  color: colors.text
+                }}
+                onMouseEnter={(e) => e.currentTarget.style.backgroundColor = colors.buttonHover}
+                onMouseLeave={(e) => e.currentTarget.style.backgroundColor = colors.bg}
+                title="Align Center"
+              >
+                ↔️
+              </button>
+              <button
+                onClick={() => alignShapes('right')}
+                className="flex-1 px-2 py-1 text-xs rounded border"
+                style={{
+                  backgroundColor: colors.bg,
+                  borderColor: colors.border,
+                  color: colors.text
+                }}
+                onMouseEnter={(e) => e.currentTarget.style.backgroundColor = colors.buttonHover}
+                onMouseLeave={(e) => e.currentTarget.style.backgroundColor = colors.bg}
+                title="Align Right"
+              >
+                ➡️
+              </button>
+            </div>
+            
+            {/* Vertical Alignment */}
+            <div className="flex gap-1 mb-2">
+              <button
+                onClick={() => alignShapes('top')}
+                className="flex-1 px-2 py-1 text-xs rounded border"
+                style={{
+                  backgroundColor: colors.bg,
+                  borderColor: colors.border,
+                  color: colors.text
+                }}
+                onMouseEnter={(e) => e.currentTarget.style.backgroundColor = colors.buttonHover}
+                onMouseLeave={(e) => e.currentTarget.style.backgroundColor = colors.bg}
+                title="Align Top"
+              >
+                ⬆️
+              </button>
+              <button
+                onClick={() => alignShapes('middle')}
+                className="flex-1 px-2 py-1 text-xs rounded border"
+                style={{
+                  backgroundColor: colors.bg,
+                  borderColor: colors.border,
+                  color: colors.text
+                }}
+                onMouseEnter={(e) => e.currentTarget.style.backgroundColor = colors.buttonHover}
+                onMouseLeave={(e) => e.currentTarget.style.backgroundColor = colors.bg}
+                title="Align Middle"
+              >
+                ↕️
+              </button>
+              <button
+                onClick={() => alignShapes('bottom')}
+                className="flex-1 px-2 py-1 text-xs rounded border"
+                style={{
+                  backgroundColor: colors.bg,
+                  borderColor: colors.border,
+                  color: colors.text
+                }}
+                onMouseEnter={(e) => e.currentTarget.style.backgroundColor = colors.buttonHover}
+                onMouseLeave={(e) => e.currentTarget.style.backgroundColor = colors.bg}
+                title="Align Bottom"
+              >
+                ⬇️
+              </button>
+            </div>
+            
+            {/* Distribution - only show for 3+ shapes */}
+            {shapes.length >= 3 && (
+              <>
+                <div className="text-xs font-medium mb-1" style={{ color: colors.text }}>Distribution:</div>
+                <div className="flex gap-1 mb-2">
+                  <button
+                    onClick={() => distributeShapes('horizontal')}
+                    className="flex-1 px-2 py-1 text-xs rounded border"
+                    style={{
+                      backgroundColor: colors.bg,
+                      borderColor: colors.border,
+                      color: colors.text
+                    }}
+                    onMouseEnter={(e) => e.currentTarget.style.backgroundColor = colors.buttonHover}
+                    onMouseLeave={(e) => e.currentTarget.style.backgroundColor = colors.bg}
+                    title="Distribute Horizontally"
+                  >
+                    ⟷
+                  </button>
+                  <button
+                    onClick={() => distributeShapes('vertical')}
+                    className="flex-1 px-2 py-1 text-xs rounded border"
+                    style={{
+                      backgroundColor: colors.bg,
+                      borderColor: colors.border,
+                      color: colors.text
+                    }}
+                    onMouseEnter={(e) => e.currentTarget.style.backgroundColor = colors.buttonHover}
+                    onMouseLeave={(e) => e.currentTarget.style.backgroundColor = colors.bg}
+                    title="Distribute Vertically"
+                  >
+                    ⥮
+                  </button>
+                </div>
+              </>
+            )}
+            
+            <div className="border-t my-2" style={{ borderColor: colors.border }}></div>
+          </>
+        )}
+        
         {/* Text-specific controls */}
         {shape.type === 'text' && (
           <>
