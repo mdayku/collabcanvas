@@ -3208,6 +3208,36 @@ function ContextMenu({ x, y, shapeId, onClose }: {
     onClose();
   };
 
+  const handleDuplicate = () => {
+    // Save history before duplicating
+    useCanvas.getState().pushHistory();
+    
+    // Create duplicate with smart positioning (offset by 20px right and down)
+    const duplicateShape = {
+      ...shape,
+      id: Math.random().toString(36).substring(2),
+      x: shape.x + 20,
+      y: shape.y + 20,
+      // For lines/arrows, also offset the end points
+      ...(shape.x2 !== undefined && { x2: shape.x2 + 20 }),
+      ...(shape.y2 !== undefined && { y2: shape.y2 + 20 }),
+      updated_at: Date.now(),
+      updated_by: useCanvas.getState().me.id,
+    };
+    
+    // Add the duplicated shape
+    useCanvas.getState().upsert(duplicateShape);
+    
+    // Select the new duplicate
+    useCanvas.getState().select([duplicateShape.id]);
+    
+    // Broadcast to multiplayer
+    broadcastUpsert(duplicateShape);
+    persist(duplicateShape);
+    
+    onClose();
+  };
+
   const handleDelete = () => {
     // Save history before deleting so it can be undone with all properties intact
     useCanvas.getState().pushHistory();
@@ -3418,6 +3448,17 @@ function ContextMenu({ x, y, shapeId, onClose }: {
             
             <hr className="my-2" style={{ borderColor: colors.border }} />
             
+            {/* Duplicate */}
+            <button
+              onClick={handleDuplicate}
+              className="w-full text-left text-sm px-2 py-1 rounded"
+              style={{ color: colors.text }}
+              onMouseEnter={(e) => e.currentTarget.style.backgroundColor = colors.buttonHover}
+              onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
+            >
+              📄 Duplicate
+            </button>
+            
             {/* Delete */}
             <button
               onClick={handleDelete}
@@ -3426,7 +3467,7 @@ function ContextMenu({ x, y, shapeId, onClose }: {
               onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#fef2f2'}
               onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
             >
-              Delete Shape
+              🗑️ Delete Shape
             </button>
           </>
         )}
