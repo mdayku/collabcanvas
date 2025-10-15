@@ -771,7 +771,12 @@ function getShapeDefaults(type: ShapeType): Partial<ShapeBase> {
         w: 200, 
         h: 40, 
         text: 'Text', 
-        fontSize: 16 
+        fontSize: 16,
+        fontFamily: 'Arial',
+        textAlign: 'left',
+        fontStyle: 'normal',
+        fontWeight: 'normal',
+        textDecoration: 'none'
       };
     case 'image':
       return { x: 100, y: 100, w: 200, h: 150 };

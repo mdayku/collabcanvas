@@ -15,6 +15,10 @@ export type ShapeBase = {
   text?: string; // for text shapes
   fontSize?: number; // for text shapes
   fontFamily?: string; // for text shapes
+  textAlign?: 'left' | 'center' | 'right'; // for text shapes
+  fontStyle?: 'normal' | 'italic'; // for text shapes
+  fontWeight?: 'normal' | 'bold'; // for text shapes
+  textDecoration?: 'none' | 'underline'; // for text shapes
   imageUrl?: string; // for image shapes (data URL or external URL)
   originalWidth?: number; // for image shapes (original image dimensions)
   originalHeight?: number; // for image shapes (original image dimensions)

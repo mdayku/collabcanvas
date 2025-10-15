@@ -847,7 +847,7 @@ function HelpPopup({ isOpen, onClose }: { isOpen: boolean; onClose: () => void }
         className={`bg-white rounded-lg shadow-xl border transition-all duration-300 ${
           isMinimized 
             ? 'w-80 h-12' 
-            : 'w-[90vw] max-w-4xl h-[80vh] max-h-[600px]'
+            : 'w-[95vw] max-w-6xl h-[90vh] max-h-[800px]'
         }`}
         style={{ 
           backgroundColor: colors.bg,
@@ -1382,6 +1382,10 @@ export default function Canvas({ onSignOut }: CanvasProps) {
             text: r.text,
             fontSize: r.fontSize,
             fontFamily: r.fontFamily,
+            textAlign: r.textAlign,
+            fontStyle: r.fontStyle,
+            fontWeight: r.fontWeight,
+            textDecoration: r.textDecoration,
             imageUrl: r.imageUrl,
             originalWidth: r.originalWidth,
             originalHeight: r.originalHeight,
@@ -1974,7 +1978,7 @@ export default function Canvas({ onSignOut }: CanvasProps) {
               y={0}
               text={s.text || "Text"}
               fontSize={fontSize} 
-              fontFamily={s.fontFamily || "Arial"}
+              fontFamily={`${s.fontStyle === 'italic' ? 'italic ' : ''}${s.fontWeight === 'bold' ? 'bold ' : ''}${s.fontFamily || "Arial"}`}
               fill={s.color || "#111"} 
               stroke={s.stroke}
               strokeWidth={s.strokeWidth || 0}
@@ -1982,12 +1986,21 @@ export default function Canvas({ onSignOut }: CanvasProps) {
               height={textHeight}
               wrap="word"
               ellipsis={false}
-              align={isEmoji(s.text || "") ? "center" : "left"}
+              align={isEmoji(s.text || "") ? "center" : (s.textAlign || "left")}
               verticalAlign={isEmoji(s.text || "") ? "middle" : "top"}
               onDblClick={() => {
                 setEditingText({ id: s.id, x: s.x, y: s.y, value: s.text || '' });
               }}
             />
+            
+            {/* Underline decoration (since Konva Text doesn't support textDecoration directly) */}
+            {s.textDecoration === 'underline' && (
+              <Line 
+                points={[0, textHeight - 2, textWidth, textHeight - 2]}
+                stroke={s.color || "#111"}
+                strokeWidth={Math.max(1, fontSize * 0.05)}
+              />
+            )}
           </>
         )}
         {s.type === "image" && s.imageUrl && (
@@ -3761,6 +3774,92 @@ function ContextMenu({ x, y, shapeId, onClose }: {
                 <option value="Impact">Impact</option>
                 <option value="Comic Sans MS">Comic Sans MS</option>
               </select>
+            </div>
+            
+            {/* Text Alignment */}
+            <div className="flex flex-col">
+              <span className="text-sm mb-1" style={{ color: colors.text }}>Text Alignment:</span>
+              <div className="flex gap-1">
+                <button
+                  onClick={() => updateShape({ textAlign: 'left' })}
+                  className="flex-1 px-2 py-1 text-xs rounded border"
+                  style={{
+                    backgroundColor: (shape.textAlign || 'left') === 'left' ? colors.primary : colors.bg,
+                    borderColor: colors.border,
+                    color: (shape.textAlign || 'left') === 'left' ? colors.bg : colors.text
+                  }}
+                >
+                  ⬅️ Left
+                </button>
+                <button
+                  onClick={() => updateShape({ textAlign: 'center' })}
+                  className="flex-1 px-2 py-1 text-xs rounded border"
+                  style={{
+                    backgroundColor: shape.textAlign === 'center' ? colors.primary : colors.bg,
+                    borderColor: colors.border,
+                    color: shape.textAlign === 'center' ? colors.bg : colors.text
+                  }}
+                >
+                  ↔️ Center
+                </button>
+                <button
+                  onClick={() => updateShape({ textAlign: 'right' })}
+                  className="flex-1 px-2 py-1 text-xs rounded border"
+                  style={{
+                    backgroundColor: shape.textAlign === 'right' ? colors.primary : colors.bg,
+                    borderColor: colors.border,
+                    color: shape.textAlign === 'right' ? colors.bg : colors.text
+                  }}
+                >
+                  ➡️ Right
+                </button>
+              </div>
+            </div>
+            
+            {/* Text Style */}
+            <div className="flex flex-col">
+              <span className="text-sm mb-1" style={{ color: colors.text }}>Text Style:</span>
+              <div className="flex gap-1">
+                <button
+                  onClick={() => updateShape({ 
+                    fontWeight: shape.fontWeight === 'bold' ? 'normal' : 'bold' 
+                  })}
+                  className="flex-1 px-2 py-1 text-xs rounded border font-bold"
+                  style={{
+                    backgroundColor: shape.fontWeight === 'bold' ? colors.primary : colors.bg,
+                    borderColor: colors.border,
+                    color: shape.fontWeight === 'bold' ? colors.bg : colors.text
+                  }}
+                >
+                  B
+                </button>
+                <button
+                  onClick={() => updateShape({ 
+                    fontStyle: shape.fontStyle === 'italic' ? 'normal' : 'italic' 
+                  })}
+                  className="flex-1 px-2 py-1 text-xs rounded border italic"
+                  style={{
+                    backgroundColor: shape.fontStyle === 'italic' ? colors.primary : colors.bg,
+                    borderColor: colors.border,
+                    color: shape.fontStyle === 'italic' ? colors.bg : colors.text
+                  }}
+                >
+                  I
+                </button>
+                <button
+                  onClick={() => updateShape({ 
+                    textDecoration: shape.textDecoration === 'underline' ? 'none' : 'underline' 
+                  })}
+                  className="flex-1 px-2 py-1 text-xs rounded border underline"
+                  style={{
+                    backgroundColor: shape.textDecoration === 'underline' ? colors.primary : colors.bg,
+                    borderColor: colors.border,
+                    color: shape.textDecoration === 'underline' ? colors.bg : colors.text
+                  }}
+                >
+                  U
+                </button>
+              </div>
             </div>
             
             {/* Text Outline Color */}
