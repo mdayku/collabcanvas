@@ -5,16 +5,21 @@
 -- STEP 1: Update shapes table
 -- =======================
 
--- Add new shape types to the existing constraint
+-- Add new shape types to the existing constraint (including image type)
 ALTER TABLE public.shapes DROP CONSTRAINT IF EXISTS shapes_type_check;
 ALTER TABLE public.shapes ADD CONSTRAINT shapes_type_check 
-  CHECK (type IN ('rect','circle','text','triangle','star','heart','pentagon','hexagon','octagon','oval','trapezoid','rhombus','parallelogram'));
+  CHECK (type IN ('rect','circle','text','image','triangle','star','heart','pentagon','hexagon','octagon','oval','trapezoid','rhombus','parallelogram'));
 
 -- Add new columns for enhanced shape support
 ALTER TABLE public.shapes ADD COLUMN IF NOT EXISTS fontSize INTEGER;
 ALTER TABLE public.shapes ADD COLUMN IF NOT EXISTS fontFamily TEXT;
 ALTER TABLE public.shapes ADD COLUMN IF NOT EXISTS stroke TEXT;
 ALTER TABLE public.shapes ADD COLUMN IF NOT EXISTS strokeWidth INTEGER;
+
+-- Add image support columns
+ALTER TABLE public.shapes ADD COLUMN IF NOT EXISTS imageUrl TEXT;
+ALTER TABLE public.shapes ADD COLUMN IF NOT EXISTS originalWidth INTEGER;
+ALTER TABLE public.shapes ADD COLUMN IF NOT EXISTS originalHeight INTEGER;
 
 -- Add canvas relationship column (nullable for now during migration)
 ALTER TABLE public.shapes ADD COLUMN IF NOT EXISTS canvas_id UUID;
@@ -250,6 +255,7 @@ BEGIN
         INSERT INTO public.shapes (
             id, canvas_id, room_id, type, x, y, w, h, rotation, 
             color, text, fontSize, fontFamily, stroke, strokeWidth,
+            imageUrl, originalWidth, originalHeight,
             updated_at, updated_by
         ) VALUES (
             gen_random_uuid(), -- New ID for the copied shape
@@ -267,6 +273,9 @@ BEGIN
             shape_record.fontFamily,
             shape_record.stroke,
             shape_record.strokeWidth,
+            shape_record.imageUrl,
+            shape_record.originalWidth,
+            shape_record.originalHeight,
             extract(epoch from now()) * 1000, -- Current timestamp in milliseconds
             COALESCE(auth.uid()::text, 'system')
         );
