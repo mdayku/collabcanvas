@@ -4,7 +4,7 @@
  */
 
 import type { StateCreator } from 'zustand';
-import type { ShapeBase, CreateShapeData, UpdateShapeData, ShapeType } from '../types';
+import type { ShapeBase, CreateShapeData, UpdateShapeData, ShapeType } from '../../types';
 
 export interface ShapesSlice {
   // Shape state

@@ -4,7 +4,7 @@
  */
 
 import type { StateCreator } from 'zustand';
-import type { Cursor } from '../types';
+import type { Cursor } from '../../types';
 
 export interface MultiplayerSlice {
   // Multiplayer state

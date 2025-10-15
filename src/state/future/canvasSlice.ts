@@ -4,7 +4,7 @@
  */
 
 import type { StateCreator } from 'zustand';
-import type { Canvas } from '../services/canvasService';
+import type { Canvas } from '../../services/canvasService';
 
 export interface CanvasSlice {
   // Canvas state
@@ -65,7 +65,7 @@ export const createCanvasSlice: StateCreator<
   setUnsavedChanges: (hasChanges) => set({ hasUnsavedChanges: hasChanges }),
 
   loadCanvas: async (canvasId) => {
-    const { canvasService } = await import('../services/canvasService');
+    const { canvasService } = await import('../../services/canvasService');
     
     try {
       set({ isCanvasLoading: true, canvasError: null });
@@ -96,7 +96,7 @@ export const createCanvasSlice: StateCreator<
   },
 
   createNewCanvas: async (title = 'Untitled Canvas') => {
-    const { canvasService } = await import('../services/canvasService');
+    const { canvasService } = await import('../../services/canvasService');
     
     try {
       set({ isCanvasLoading: true, canvasError: null });
@@ -128,7 +128,7 @@ export const createCanvasSlice: StateCreator<
   },
 
   saveCurrentCanvas: async (title) => {
-    const { canvasService } = await import('../services/canvasService');
+    const { canvasService } = await import('../../services/canvasService');
     const { currentCanvas } = get();
     
     if (!currentCanvas) {
@@ -165,7 +165,7 @@ export const createCanvasSlice: StateCreator<
   },
 
   duplicateCurrentCanvas: async (newTitle) => {
-    const { canvasService } = await import('../services/canvasService');
+    const { canvasService } = await import('../../services/canvasService');
     const { currentCanvas } = get();
     
     if (!currentCanvas) {

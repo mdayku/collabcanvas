@@ -4,7 +4,7 @@
  */
 
 import type { StateCreator } from 'zustand';
-import type { AutoSaveSettings } from '../services/autoSaveService';
+import type { AutoSaveSettings } from '../../services/autoSaveService';
 
 export interface AutoSaveSlice {
   // Auto-save state
@@ -50,13 +50,13 @@ export const createAutoSaveSlice: StateCreator<
     }));
     
     // Update the auto-save service
-    const { autoSaveService } = await import('../services/autoSaveService');
+    const { autoSaveService } = await import('../../services/autoSaveService');
     autoSaveService.updateSettings(settings);
   },
 
   checkForRecovery: async () => {
     try {
-      const { autoSaveService } = await import('../services/autoSaveService');
+      const { autoSaveService } = await import('../../services/autoSaveService');
       const recoveryData = autoSaveService.checkForRecovery();
       
       set({ hasRecoveryData: !!recoveryData });
@@ -81,7 +81,7 @@ export const createAutoSaveSlice: StateCreator<
 
   restoreFromRecovery: async (recoveryData) => {
     try {
-      const { autoSaveService } = await import('../services/autoSaveService');
+      const { autoSaveService } = await import('../../services/autoSaveService');
       await autoSaveService.restoreFromBackup(recoveryData);
       
       set({ 
@@ -98,7 +98,7 @@ export const createAutoSaveSlice: StateCreator<
 
   clearRecoveryData: async () => {
     try {
-      const { autoSaveService } = await import('../services/autoSaveService');
+      const { autoSaveService } = await import('../../services/autoSaveService');
       autoSaveService.clearRecoveryData();
       
       set({ hasRecoveryData: false });
