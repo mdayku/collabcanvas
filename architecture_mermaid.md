@@ -500,3 +500,44 @@ flowchart LR
   LOCAL --> PATENT2
   CACHE --> PATENT3
 ```
+
+## 🔗 Advanced Features Architecture (Phase 6 & 8) - ✅ COMPLETED
+
+```mermaid
+flowchart TB
+    subgraph Productivity["Core Productivity Features - Phase 6"]
+        GROUP[Shape Grouping<br/>Ctrl+G/Shift+G<br/>Smart Selection]
+        ALIGN[Alignment Tools<br/>Left/Right/Center<br/>Distribute Evenly]
+        GRID[Grid System<br/>25px Snap-to-Grid<br/>Visual Overlay]
+        FORMAT[Text Formatting<br/>Bold/Italic/Underline<br/>Alignment Controls]
+        SHORTCUTS[Keyboard Shortcuts<br/>Comprehensive System<br/>All Operations]
+        CLIPBOARD[Copy/Paste System<br/>Ctrl+C/V/X<br/>Smart Positioning]
+    end
+    
+    subgraph AI["Enhanced AI System - Phase 8"]
+        HYBRID[Hybrid AI Agent<br/>Rule-based + LLM<br/>Optimal Performance]
+        PARSER[Smart Parser<br/>Instant Commands<br/>Sub-100ms Response]
+        HINTS[AI Hint Chips<br/>User Guidance<br/>Command Suggestions]
+        MULTI[Multi-language<br/>7 Languages<br/>Auto-Detection]
+        VOICE[Voice Integration<br/>Speech Recognition<br/>Language-Aware]
+        CONTEXT[Context Awareness<br/>Target Resolution<br/>Smart Selection]
+    end
+    
+    subgraph Testing["Quality Assurance - 68 Tests"]
+        GROUP_TEST[Grouping: 6 Tests ✅]
+        ALIGN_TEST[Alignment: 7 Tests ✅]
+        GRID_TEST[Grid/Snap: 18 Tests ✅]
+        FORMAT_TEST[Text Format: 12 Tests ✅]
+        STORE_TEST[Store Functions: 25 Tests ✅]
+    end
+    
+    GROUP --> CONTEXT
+    ALIGN --> GRID
+    HYBRID --> PARSER
+    PARSER --> HINTS
+    HINTS --> MULTI
+    VOICE --> CONTEXT
+    
+    Productivity --> Testing
+    AI --> Testing
+```
