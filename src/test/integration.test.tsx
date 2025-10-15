@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import Canvas from '../Canvas';
+import { ThemeProvider } from '../contexts/ThemeContext';
 import { supabase } from '../lib/supabaseClient';
 import React from 'react';
 
@@ -99,6 +100,13 @@ vi.mock('../state/store', () => ({
 describe('Final Deliverable Integration Tests', () => {
   const mockOnSignOut = vi.fn();
 
+  // Helper to render Canvas with ThemeProvider
+  const renderCanvas = () => render(
+    <ThemeProvider>
+      <Canvas onSignOut={mockOnSignOut} />
+    </ThemeProvider>
+  );
+
   beforeEach(() => {
     vi.clearAllMocks();
     // Reset mock state
@@ -110,7 +118,7 @@ describe('Final Deliverable Integration Tests', () => {
 
   describe('MVP Requirements Verification', () => {
     it('renders complete canvas interface with all MVP features', () => {
-      render(<Canvas onSignOut={mockOnSignOut} />);
+      renderCanvas();
       
       // Basic canvas with pan/zoom
       expect(screen.getByTestId('konva-stage')).toBeInTheDocument();
@@ -139,7 +147,7 @@ describe('Final Deliverable Integration Tests', () => {
         'user-3': { id: 'user-3', name: 'Bob', x: 200, y: 150, color: '#00ff00', last: Date.now() },
       };
       
-      render(<Canvas onSignOut={mockOnSignOut} />);
+      renderCanvas();
       
       // Should show online users count (including current user)
       expect(screen.getByText(/online \(/i)).toBeInTheDocument(); // Check for presence indicator
@@ -153,7 +161,7 @@ describe('Final Deliverable Integration Tests', () => {
   describe('Core Collaborative Canvas Features', () => {
     it('supports all required canvas operations', async () => {
       const user = userEvent.setup();
-      render(<Canvas onSignOut={mockOnSignOut} />);
+      renderCanvas();
       
       // Create shapes - buttons exist but canvas click creates shapes
       await user.click(screen.getByRole('button', { name: '▭' }));
@@ -188,7 +196,7 @@ describe('Final Deliverable Integration Tests', () => {
         },
       };
       
-      render(<Canvas onSignOut={mockOnSignOut} />);
+      renderCanvas();
       
       // Should render transformer for selected shapes
       expect(screen.getByTestId('konva-transformer')).toBeInTheDocument();
@@ -198,7 +206,7 @@ describe('Final Deliverable Integration Tests', () => {
   describe('AI Agent Integration', () => {
     it('provides AI interface with proper UX', async () => {
       const user = userEvent.setup();
-      render(<Canvas onSignOut={mockOnSignOut} />);
+      renderCanvas();
       
       // AI input interface
       const aiInput = screen.getByPlaceholderText(/create a dashboard layout/i);
@@ -220,7 +228,7 @@ describe('Final Deliverable Integration Tests', () => {
 
     it('shows AI feedback and state', async () => {
       const user = userEvent.setup();
-      render(<Canvas onSignOut={mockOnSignOut} />);
+      renderCanvas();
       
       // Should provide immediate feedback
       expect(screen.getByRole('button', { name: /run/i })).toBeInTheDocument();
@@ -238,7 +246,7 @@ describe('Final Deliverable Integration Tests', () => {
   describe('Performance & User Experience', () => {
     it('provides smooth interaction experience', async () => {
       const user = userEvent.setup();
-      render(<Canvas onSignOut={mockOnSignOut} />);
+      renderCanvas();
       
       // Help menu contains performance tips (click to expand if not already)
       const helpButton = screen.getByRole('button', { name: '?' });
@@ -270,7 +278,11 @@ describe('Final Deliverable Integration Tests', () => {
       mockStoreState.shapes = manyShapes;
       
       // Should render without issues
-      const { container } = render(<Canvas onSignOut={mockOnSignOut} />);
+      const { container } = render(
+        <ThemeProvider>
+          <Canvas onSignOut={mockOnSignOut} />
+        </ThemeProvider>
+      );
       expect(container).toBeInTheDocument();
       
       // Should show all shapes
@@ -280,7 +292,7 @@ describe('Final Deliverable Integration Tests', () => {
 
   describe('Authentication & Security', () => {
     it('handles user authentication properly', () => {
-      render(<Canvas onSignOut={mockOnSignOut} />);
+      renderCanvas();
       
       // Should show authenticated user
       expect(screen.getByText('Test User')).toBeInTheDocument();
@@ -294,7 +306,7 @@ describe('Final Deliverable Integration Tests', () => {
       mockStoreState.isAuthenticated = true;
       mockStoreState.me.name = 'Authenticated User';
       
-      render(<Canvas onSignOut={mockOnSignOut} />);
+      renderCanvas();
       
       expect(screen.getByText('Authenticated User')).toBeInTheDocument();
     });
@@ -303,11 +315,15 @@ describe('Final Deliverable Integration Tests', () => {
   describe('Deployment Readiness', () => {
     it('works without breaking on public deployment', () => {
       // Should handle missing environment gracefully
-      const { container } = render(<Canvas onSignOut={mockOnSignOut} />);
+      const { container } = render(
+        <ThemeProvider>
+          <Canvas onSignOut={mockOnSignOut} />
+        </ThemeProvider>
+      );
       expect(container).toBeInTheDocument();
       
       // No console errors should be thrown
-      expect(() => render(<Canvas onSignOut={mockOnSignOut} />)).not.toThrow();
+      expect(() => renderCanvas()).not.toThrow();
     });
 
     it('supports concurrent users simulation', () => {
@@ -320,7 +336,7 @@ describe('Final Deliverable Integration Tests', () => {
         ])
       );
       
-      render(<Canvas onSignOut={mockOnSignOut} />);
+      renderCanvas();
       
       // Should handle many users without breaking  
       expect(screen.getByText(/online \(/i)).toBeInTheDocument(); // Check for presence indicator

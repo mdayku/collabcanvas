@@ -407,4 +407,163 @@ describe('Canvas Store', () => {
       });
     });
   });
+
+  describe('Shape Grouping', () => {
+    it('groups multiple shapes with a shared groupId', () => {
+      const shapes: ShapeBase[] = [
+        {
+          id: 'shape-1',
+          type: 'rect',
+          x: 100, y: 100, w: 50, h: 50,
+          color: '#ff0000',
+          updated_at: Date.now(),
+          updated_by: 'test-user',
+        },
+        {
+          id: 'shape-2',
+          type: 'circle',
+          x: 200, y: 200, w: 60, h: 60,
+          color: '#00ff00',
+          updated_at: Date.now(),
+          updated_by: 'test-user',
+        },
+      ];
+
+      shapes.forEach(shape => useCanvas.getState().upsert(shape));
+
+      const groupId = useCanvas.getState().groupShapes(['shape-1', 'shape-2']);
+      
+      expect(groupId).toBeTruthy();
+      expect(useCanvas.getState().shapes['shape-1'].groupId).toBe(groupId);
+      expect(useCanvas.getState().shapes['shape-2'].groupId).toBe(groupId);
+    });
+
+    it('returns null when grouping insufficient shapes', () => {
+      const shape: ShapeBase = {
+        id: 'shape-1',
+        type: 'rect',
+        x: 100, y: 100, w: 50, h: 50,
+        color: '#ff0000',
+        updated_at: Date.now(),
+        updated_by: 'test-user',
+      };
+
+      useCanvas.getState().upsert(shape);
+      const groupId = useCanvas.getState().groupShapes(['shape-1']);
+      
+      expect(groupId).toBeNull();
+      expect(useCanvas.getState().shapes['shape-1'].groupId).toBeUndefined();
+    });
+
+    it('ungroups shapes by removing groupId', () => {
+      const shapes: ShapeBase[] = [
+        {
+          id: 'shape-1',
+          type: 'rect',
+          x: 100, y: 100, w: 50, h: 50,
+          color: '#ff0000',
+          updated_at: Date.now(),
+          updated_by: 'test-user',
+        },
+        {
+          id: 'shape-2',
+          type: 'circle',
+          x: 200, y: 200, w: 60, h: 60,
+          color: '#00ff00',
+          updated_at: Date.now(),
+          updated_by: 'test-user',
+        },
+      ];
+
+      shapes.forEach(shape => useCanvas.getState().upsert(shape));
+      const groupId = useCanvas.getState().groupShapes(['shape-1', 'shape-2']);
+      
+      // Verify grouped
+      expect(useCanvas.getState().shapes['shape-1'].groupId).toBe(groupId);
+      expect(useCanvas.getState().shapes['shape-2'].groupId).toBe(groupId);
+
+      // Ungroup
+      useCanvas.getState().ungroupShapes(groupId!);
+
+      // Verify ungrouped
+      expect(useCanvas.getState().shapes['shape-1'].groupId).toBeUndefined();
+      expect(useCanvas.getState().shapes['shape-2'].groupId).toBeUndefined();
+    });
+
+    it('retrieves all shapes in a group', () => {
+      const shapes: ShapeBase[] = [
+        {
+          id: 'shape-1',
+          type: 'rect',
+          x: 100, y: 100, w: 50, h: 50,
+          color: '#ff0000',
+          updated_at: Date.now(),
+          updated_by: 'test-user',
+        },
+        {
+          id: 'shape-2',
+          type: 'circle',
+          x: 200, y: 200, w: 60, h: 60,
+          color: '#00ff00',
+          updated_at: Date.now(),
+          updated_by: 'test-user',
+        },
+        {
+          id: 'shape-3',
+          type: 'rect',
+          x: 300, y: 300, w: 40, h: 40,
+          color: '#0000ff',
+          updated_at: Date.now(),
+          updated_by: 'test-user',
+        },
+      ];
+
+      shapes.forEach(shape => useCanvas.getState().upsert(shape));
+      
+      // Group first two shapes
+      const groupId = useCanvas.getState().groupShapes(['shape-1', 'shape-2']);
+      
+      // Get grouped shapes
+      const groupShapes = useCanvas.getState().getGroupShapes(groupId!);
+      
+      expect(groupShapes).toHaveLength(2);
+      expect(groupShapes.map(s => s.id).sort()).toEqual(['shape-1', 'shape-2']);
+      
+      // Shape-3 should not be in the group
+      expect(groupShapes.find(s => s.id === 'shape-3')).toBeUndefined();
+    });
+
+    it('correctly identifies grouped shapes', () => {
+      const shape: ShapeBase = {
+        id: 'shape-1',
+        type: 'rect',
+        x: 100, y: 100, w: 50, h: 50,
+        color: '#ff0000',
+        updated_at: Date.now(),
+        updated_by: 'test-user',
+      };
+
+      useCanvas.getState().upsert(shape);
+
+      // Initially not grouped
+      expect(useCanvas.getState().isGrouped('shape-1')).toBe(false);
+
+      // Add another shape and group them
+      const shape2: ShapeBase = {
+        id: 'shape-2',
+        type: 'circle',
+        x: 200, y: 200, w: 60, h: 60,
+        color: '#00ff00',
+        updated_at: Date.now(),
+        updated_by: 'test-user',
+      };
+
+      useCanvas.getState().upsert(shape2);
+      useCanvas.getState().groupShapes(['shape-1', 'shape-2']);
+
+      // Now should be grouped
+      expect(useCanvas.getState().isGrouped('shape-1')).toBe(true);
+      expect(useCanvas.getState().isGrouped('shape-2')).toBe(true);
+    });
+  });
 });

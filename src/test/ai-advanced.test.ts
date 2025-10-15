@@ -12,6 +12,7 @@ vi.mock('../state/store', async (importOriginal) => {
       vi.fn(() => ({
         me: { id: 'test-user', name: 'Test User', color: '#3b82f6' },
         shapes: {},
+        selectedIds: [],
         pushHistory: vi.fn(),
         upsert: vi.fn(),
         select: vi.fn(),
@@ -20,6 +21,7 @@ vi.mock('../state/store', async (importOriginal) => {
         getState: vi.fn(() => ({
           me: { id: 'test-user', name: 'Test User', color: '#3b82f6' },
           shapes: {},
+          selectedIds: [],
           pushHistory: vi.fn(),
           upsert: vi.fn(),
           select: vi.fn(),

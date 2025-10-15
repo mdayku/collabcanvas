@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import Canvas from '../Canvas';
+import { ThemeProvider } from '../contexts/ThemeContext';
 
 // Mock Konva components
 vi.mock('react-konva', () => ({
@@ -102,12 +103,19 @@ vi.mock('../state/store', () => ({
 describe('Canvas Component', () => {
   const mockOnSignOut = vi.fn();
 
+  // Helper to render Canvas with ThemeProvider
+  const renderCanvas = () => render(
+    <ThemeProvider>
+      <Canvas onSignOut={mockOnSignOut} />
+    </ThemeProvider>
+  );
+
   beforeEach(() => {
     vi.clearAllMocks();
   });
 
   it('renders the canvas interface', () => {
-    render(<Canvas onSignOut={mockOnSignOut} />);
+    renderCanvas();
     
     // Check for main elements (using getAllByText since there are multiple instances)
     expect(screen.getAllByText('CollabCanvas')).toHaveLength(2); // Top ribbon + sidebar
@@ -116,7 +124,7 @@ describe('Canvas Component', () => {
   });
 
   it('renders toolbar buttons', () => {
-    render(<Canvas onSignOut={mockOnSignOut} />);
+    renderCanvas();
     
     // Basic shape buttons
     expect(screen.getByRole('button', { name: '▭' })).toBeInTheDocument();
@@ -140,7 +148,7 @@ describe('Canvas Component', () => {
   });
 
   it('renders all shape categories', () => {
-    render(<Canvas onSignOut={mockOnSignOut} />);
+    renderCanvas();
     
     // Check shape categories are present
     expect(screen.getByText('Shapes')).toBeInTheDocument();
@@ -149,7 +157,7 @@ describe('Canvas Component', () => {
   });
 
   it('renders AI input box', () => {
-    render(<Canvas onSignOut={mockOnSignOut} />);
+    renderCanvas();
     
     const aiInput = screen.getByPlaceholderText(/create a dashboard layout/i);
     expect(aiInput).toBeInTheDocument();
@@ -158,7 +166,7 @@ describe('Canvas Component', () => {
 
   it('calls onSignOut when sign out button is clicked', async () => {
     const user = userEvent.setup();
-    render(<Canvas onSignOut={mockOnSignOut} />);
+    renderCanvas();
     
     const signOutButton = screen.getByText('Sign out');
     await user.click(signOutButton);
@@ -167,7 +175,7 @@ describe('Canvas Component', () => {
   });
 
   it('renders user information', () => {
-    render(<Canvas onSignOut={mockOnSignOut} />);
+    renderCanvas();
     
     expect(screen.getByText(/signed in as/i)).toBeInTheDocument();
     expect(screen.getByText('Test User')).toBeInTheDocument();
@@ -175,7 +183,7 @@ describe('Canvas Component', () => {
 
   it('shows performance hints', async () => {
     const user = userEvent.setup();
-    render(<Canvas onSignOut={mockOnSignOut} />);
+    renderCanvas();
     
     // Performance hints are now in the Help menu
     const helpButton = screen.getByRole('button', { name: '?' });

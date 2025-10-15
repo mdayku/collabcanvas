@@ -10,6 +10,7 @@ vi.mock('../state/store', () => ({
       me: { id: 'user-1', name: 'Test User', color: '#3b82f6' },
       upsert: vi.fn(),
       shapes: {},
+      selectedIds: [],
       select: vi.fn(),
     })),
   },

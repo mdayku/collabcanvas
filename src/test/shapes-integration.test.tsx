@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import Canvas from '../Canvas';
+import { ThemeProvider } from '../contexts/ThemeContext';
 
 // Mock Konva components
 vi.mock('react-konva', () => ({
@@ -111,6 +112,13 @@ vi.mock('../services/openaiService', () => ({
 describe('Shape Integration Tests', () => {
   const mockOnSignOut = vi.fn();
 
+  // Helper to render Canvas with ThemeProvider
+  const renderCanvas = () => render(
+    <ThemeProvider>
+      <Canvas onSignOut={mockOnSignOut} />
+    </ThemeProvider>
+  );
+
   beforeEach(() => {
     vi.clearAllMocks();
     mockStoreState.shapes = {};
@@ -119,7 +127,7 @@ describe('Shape Integration Tests', () => {
 
   describe('Shape Creation Functionality', () => {
     it('provides all new shape creation buttons', async () => {
-      render(<Canvas onSignOut={mockOnSignOut} />);
+      renderCanvas();
       
       // All shape buttons should be present
       const shapeButtons = [
@@ -146,7 +154,7 @@ describe('Shape Integration Tests', () => {
 
     it('calls shape creation functions when buttons are clicked', async () => {
       const user = userEvent.setup();
-      render(<Canvas onSignOut={mockOnSignOut} />);
+      renderCanvas();
       
       // Test triangle creation
       const triangleButton = screen.getByRole('button', { name: '▲' });
@@ -158,7 +166,7 @@ describe('Shape Integration Tests', () => {
     });
 
     it('shows proper tooltips for shape buttons', async () => {
-      render(<Canvas onSignOut={mockOnSignOut} />);
+      renderCanvas();
       
       const triangleButton = screen.getByRole('button', { name: '▲' });
       expect(triangleButton).toHaveAttribute('title', 'Triangle');
@@ -190,7 +198,7 @@ describe('Shape Integration Tests', () => {
 
   describe('Shape Organization', () => {
     it('groups shapes into logical categories', () => {
-      render(<Canvas onSignOut={mockOnSignOut} />);
+      renderCanvas();
       
       // Should show Shapes category
       expect(screen.getByText('Shapes')).toBeInTheDocument();
@@ -203,7 +211,7 @@ describe('Shape Integration Tests', () => {
     });
 
     it('displays visual icons instead of text labels', () => {
-      render(<Canvas onSignOut={mockOnSignOut} />);
+      renderCanvas();
       
       // Should use symbol icons, not text like "Rectangle" or "Circle"
       expect(screen.queryByText('Rectangle')).not.toBeInTheDocument();
