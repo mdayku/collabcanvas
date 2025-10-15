@@ -11,6 +11,7 @@ export type ShapeBase = {
   color?: string;
   stroke?: string;
   strokeWidth?: number;
+  zIndex?: number; // for layer ordering
   text?: string; // for text shapes
   fontSize?: number; // for text shapes
   fontFamily?: string; // for text shapes

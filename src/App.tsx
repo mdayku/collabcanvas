@@ -3,6 +3,7 @@ import Canvas from "./Canvas";
 import Auth from "./Auth";
 import { supabase } from "./lib/supabaseClient";
 import { useCanvas } from "./state/store";
+import { ThemeProvider } from "./contexts/ThemeContext";
 
 export default function App() {
   const [loading, setLoading] = useState(true);
@@ -238,20 +239,30 @@ export default function App() {
 
   if (loading) {
     return (
-      <div className="h-screen grid place-items-center bg-gradient-to-br from-blue-50 to-indigo-100">
-        <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
-          <p className="text-gray-600">Loading CollabCanvas...</p>
+      <ThemeProvider>
+        <div className="h-screen grid place-items-center bg-gradient-to-br from-blue-50 to-indigo-100">
+          <div className="text-center">
+            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
+            <p className="text-gray-600">Loading CollabCanvas...</p>
+          </div>
         </div>
-      </div>
+      </ThemeProvider>
     );
   }
 
   // Show Auth if no userProfile, or if no user AND no demo user in localStorage
   const hasDemoUser = localStorage.getItem('demo-user');
   if (!userProfile || (!user && !hasDemoUser)) {
-    return <Auth onAuthSuccess={handleAuthSuccess} />;
+    return (
+      <ThemeProvider>
+        <Auth onAuthSuccess={handleAuthSuccess} />
+      </ThemeProvider>
+    );
   }
 
-  return <Canvas onSignOut={handleSignOut} />;
+  return (
+    <ThemeProvider>
+      <Canvas onSignOut={handleSignOut} />
+    </ThemeProvider>
+  );
 }

@@ -7,6 +7,7 @@ import { interpretWithResponse, type AIResponse } from "./ai/agent";
 import { isOpenAIConfigured } from "./services/openaiService";
 import { isGroqConfigured } from "./services/groqService";
 import { SaveStatusIndicator } from "./components/SaveStatusIndicator";
+import { useTheme } from "./contexts/ThemeContext";
 
 // Web Speech API type declarations
 declare global {
@@ -16,15 +17,56 @@ declare global {
   }
 }
 
+// FPS Counter Hook
+function useFps() {
+  const [fps, setFps] = React.useState(0);
+  React.useEffect(() => {
+    let last = performance.now(), frames = 0, id: number;
+    const loop = () => {
+      frames++;
+      const now = performance.now();
+      if (now - last >= 1000) { setFps(frames); frames = 0; last = now; }
+      id = requestAnimationFrame(loop);
+    };
+    id = requestAnimationFrame(loop);
+    return () => cancelAnimationFrame(id);
+  }, []);
+  return fps;
+}
+
+// FPS Overlay Component
+function FPSOverlay() {
+  const fps = useFps();
+  const { showFPS, colors } = useTheme();
+  
+  if (!showFPS) return null;
+  
+  return (
+    <div 
+      className="fixed top-2 right-2 z-50 px-2 py-1 rounded text-xs font-mono"
+      style={{ 
+        backgroundColor: colors.bgSecondary, 
+        color: colors.textMuted,
+        border: `1px solid ${colors.border}`
+      }}
+    >
+      FPS: {fps}
+    </div>
+  );
+}
+
 // const CANVAS_W = 2400, CANVAS_H = 1600;
 
 // TopRibbon Component with File Menu
 function TopRibbon({ onSignOut, stageRef }: { onSignOut: () => void; stageRef: React.RefObject<any> }) {
   const [showFileMenu, setShowFileMenu] = useState(false);
+  const [showViewMenu, setShowViewMenu] = useState(false);
   const [showOpenDialog, setShowOpenDialog] = useState(false);
+  const [showClearConfirmation, setShowClearConfirmation] = useState(false);
   const [availableCanvases, setAvailableCanvases] = useState<any[]>([]);
   const [isLoadingCanvases, setIsLoadingCanvases] = useState(false);
-  const { currentCanvas, hasUnsavedChanges } = useCanvas();
+  const { currentCanvas, hasUnsavedChanges, shapes } = useCanvas();
+  const { theme, colors, setTheme, showFPS, setShowFPS, showGrid, setShowGrid, halloweenMode, setHalloweenMode } = useTheme();
 
   const exportToPNG = () => {
     if (stageRef.current) {
@@ -62,7 +104,35 @@ function TopRibbon({ onSignOut, stageRef }: { onSignOut: () => void; stageRef: R
     }
   };
 
+  const handleClearCanvas = async () => {
+    // Save history before clearing so it can be undone
+    useCanvas.getState().pushHistory();
+    
+    // Get all shape IDs before clearing
+    const allShapeIds = Object.keys(shapes);
+    
+    // Clear all shapes locally
+    useCanvas.getState().clear();
+    
+    // Broadcast removal to other users (for multiplayer sync)
+    if (allShapeIds.length > 0) {
+      await broadcastRemove(allShapeIds);
+      
+      // Delete from database
+      await supabase.from("shapes").delete().eq("room_id", useCanvas.getState().roomId);
+    }
+    
+    // Close dialogs
+    setShowClearConfirmation(false);
+    setShowFileMenu(false);
+  };
+
   const handleNewCanvas = async () => {
+    // Temporary disclaimer while database schema issues are resolved
+    alert('New Canvas feature is temporarily unavailable due to database schema caching. Please use the current canvas with auto-save for now. Feature coming soon!');
+    setShowFileMenu(false);
+    return;
+    
     const canvasState = useCanvas.getState();
     const hasShapes = Object.keys(canvasState.shapes).length > 0;
     
@@ -288,22 +358,46 @@ function TopRibbon({ onSignOut, stageRef }: { onSignOut: () => void; stageRef: R
   };
 
   return (
-    <div className="bg-white border-b border-gray-200 px-4 py-2 flex items-center justify-between">
-      {/* Left side - File Menu */}
-      <div className="relative">
-        <button
-          onClick={() => setShowFileMenu(!showFileMenu)}
-          className="px-3 py-1.5 text-sm font-medium text-gray-700 hover:bg-gray-100 rounded focus:outline-none focus:ring-2 focus:ring-blue-500"
-        >
-          File
-        </button>
+    <div 
+      className="px-4 py-2 flex items-center justify-between border-b"
+      style={{ 
+        backgroundColor: colors.bg, 
+        borderColor: colors.border,
+        color: colors.text 
+      }}
+    >
+      {/* Left side - File & View Menus */}
+      <div className="flex items-center space-x-2">
+        {/* File Menu */}
+        <div className="relative">
+          <button
+            onClick={() => setShowFileMenu(!showFileMenu)}
+            className="px-3 py-1.5 text-sm font-medium rounded focus:outline-none focus:ring-2 focus:ring-blue-500"
+            style={{ 
+              color: colors.text,
+              backgroundColor: 'transparent'
+            }}
+            onMouseEnter={(e) => e.currentTarget.style.backgroundColor = colors.buttonHover}
+            onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
+          >
+            File
+          </button>
         
         {showFileMenu && (
-          <div className="absolute left-0 top-full mt-1 w-48 bg-white rounded-md shadow-lg border border-gray-200 z-50">
+          <div 
+            className="absolute left-0 top-full mt-1 w-48 rounded-md shadow-lg border z-50"
+            style={{ 
+              backgroundColor: colors.bg, 
+              borderColor: colors.border 
+            }}
+          >
             <div className="py-1">
                 <button
                   onClick={handleNewCanvas}
-                  className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 flex items-center"
+                  className="w-full text-left px-4 py-2 text-sm flex items-center transition-colors"
+                  style={{ color: colors.text }}
+                  onMouseEnter={(e) => e.currentTarget.style.backgroundColor = colors.buttonHover}
+                  onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
                 >
                   <span className="mr-2">📄</span>
                   New Canvas
@@ -312,17 +406,23 @@ function TopRibbon({ onSignOut, stageRef }: { onSignOut: () => void; stageRef: R
                 <button
                   onClick={handleOpen}
                   disabled={isLoadingCanvases}
-                  className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 flex items-center disabled:opacity-50"
+                  className="w-full text-left px-4 py-2 text-sm flex items-center disabled:opacity-50 transition-colors"
+                  style={{ color: colors.text }}
+                  onMouseEnter={(e) => !isLoadingCanvases && (e.currentTarget.style.backgroundColor = colors.buttonHover)}
+                  onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
                 >
                   <span className="mr-2">📂</span>
                   {isLoadingCanvases ? 'Loading...' : 'Open Canvas'}
                 </button>
                 
-                <hr className="my-1 border-gray-200" />
+                <hr className="my-1" style={{ borderColor: colors.border }} />
               
               <button
                 onClick={handleSave}
-                className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 flex items-center"
+                className="w-full text-left px-4 py-2 text-sm flex items-center transition-colors"
+                style={{ color: colors.text }}
+                onMouseEnter={(e) => e.currentTarget.style.backgroundColor = colors.buttonHover}
+                onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
               >
                 <span className="mr-2">💾</span>
                 Save
@@ -330,7 +430,10 @@ function TopRibbon({ onSignOut, stageRef }: { onSignOut: () => void; stageRef: R
               
               <button
                 onClick={handleSaveAs}
-                className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 flex items-center"
+                className="w-full text-left px-4 py-2 text-sm flex items-center transition-colors"
+                style={{ color: colors.text }}
+                onMouseEnter={(e) => e.currentTarget.style.backgroundColor = colors.buttonHover}
+                onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
               >
                 <span className="mr-2">💾</span>
                 Save As...
@@ -338,7 +441,10 @@ function TopRibbon({ onSignOut, stageRef }: { onSignOut: () => void; stageRef: R
               
               <button
                 onClick={handleDuplicate}
-                className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 flex items-center"
+                className="w-full text-left px-4 py-2 text-sm flex items-center transition-colors"
+                style={{ color: colors.text }}
+                onMouseEnter={(e) => e.currentTarget.style.backgroundColor = colors.buttonHover}
+                onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
               >
                 <span className="mr-2">📋</span>
                 Duplicate Canvas
@@ -349,41 +455,63 @@ function TopRibbon({ onSignOut, stageRef }: { onSignOut: () => void; stageRef: R
               {/* Import */}
               <button
                 onClick={handleImportImage}
-                className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 flex items-center"
+                className="w-full text-left px-4 py-2 text-sm flex items-center transition-colors"
+                style={{ color: colors.text }}
+                onMouseEnter={(e) => e.currentTarget.style.backgroundColor = colors.buttonHover}
+                onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
               >
                 <span className="mr-2">🖼️</span>
                 Import Image
               </button>
               
-              <hr className="my-1 border-gray-200" />
+              <hr className="my-1" style={{ borderColor: colors.border }} />
               
               {/* Export submenu */}
               <div className="px-4 py-2">
-                <div className="text-xs font-medium text-gray-500 mb-1">Export</div>
+                <div className="text-xs font-medium mb-1" style={{ color: colors.textMuted }}>Export</div>
                 <button
                   onClick={exportToPNG}
-                  className="w-full text-left px-2 py-1 text-sm text-gray-700 hover:bg-gray-100 rounded flex items-center"
+                  className="w-full text-left px-2 py-1 text-sm rounded flex items-center transition-colors"
+                  style={{ color: colors.text }}
+                  onMouseEnter={(e) => e.currentTarget.style.backgroundColor = colors.buttonHover}
+                  onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
                 >
                   <span className="mr-2">🖼️</span>
                   Export as PNG
                 </button>
                 <button
                   onClick={exportToPDF}
-                  className="w-full text-left px-2 py-1 text-sm text-gray-700 hover:bg-gray-100 rounded flex items-center"
+                  className="w-full text-left px-2 py-1 text-sm rounded flex items-center transition-colors"
+                  style={{ color: colors.text }}
+                  onMouseEnter={(e) => e.currentTarget.style.backgroundColor = colors.buttonHover}
+                  onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
                 >
                   <span className="mr-2">📄</span>
                   Export as PDF
                 </button>
               </div>
               
-              <hr className="my-1 border-gray-200" />
+                <hr className="my-1" style={{ borderColor: colors.border }} />
+              
+              {/* Clear Canvas */}
+              {Object.keys(shapes).length > 0 && (
+                <button
+                  onClick={() => setShowClearConfirmation(true)}
+                  className="w-full text-left px-4 py-2 text-sm text-red-600 hover:bg-red-50 flex items-center transition-colors"
+                >
+                  <span className="mr-2">🗑️</span>
+                  Clear Canvas
+                </button>
+              )}
+              
+              <hr className="my-1" style={{ borderColor: colors.border }} />
               
               <button
                 onClick={() => {
                   setShowFileMenu(false);
                   onSignOut();
                 }}
-                className="w-full text-left px-4 py-2 text-sm text-red-600 hover:bg-red-50 flex items-center"
+                className="w-full text-left px-4 py-2 text-sm text-red-600 hover:bg-red-50 flex items-center transition-colors"
               >
                 <span className="mr-2">🚪</span>
                 Sign Out
@@ -391,6 +519,195 @@ function TopRibbon({ onSignOut, stageRef }: { onSignOut: () => void; stageRef: R
             </div>
           </div>
         )}
+        </div>
+
+        {/* View Menu */}
+        <div className="relative">
+          <button
+            onClick={() => setShowViewMenu(!showViewMenu)}
+            className="px-3 py-1.5 text-sm font-medium rounded focus:outline-none focus:ring-2 focus:ring-blue-500"
+            style={{ 
+              color: colors.text,
+              backgroundColor: 'transparent'
+            }}
+            onMouseEnter={(e) => e.currentTarget.style.backgroundColor = colors.buttonHover}
+            onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
+          >
+            View
+          </button>
+
+          {showViewMenu && (
+            <div 
+              className="absolute left-0 top-full mt-1 w-48 rounded-md shadow-lg border z-50"
+              style={{ 
+                backgroundColor: colors.bg, 
+                borderColor: colors.border 
+              }}
+            >
+              <div className="py-1">
+                <div className="px-4 py-2">
+                  <div className="text-xs font-medium mb-2" style={{ color: colors.textMuted }}>Theme</div>
+                  <button
+                    onClick={() => {
+                      setTheme('light');
+                      setShowViewMenu(false);
+                    }}
+                    className="w-full text-left px-2 py-1 text-sm rounded flex items-center transition-colors"
+                    style={{
+                      backgroundColor: theme === 'light' ? colors.primary : 'transparent',
+                      color: theme === 'light' ? colors.bg : colors.text
+                    }}
+                    onMouseEnter={(e) => {
+                      if (theme !== 'light') {
+                        e.currentTarget.style.backgroundColor = colors.buttonHover;
+                      }
+                    }}
+                    onMouseLeave={(e) => {
+                      if (theme !== 'light') {
+                        e.currentTarget.style.backgroundColor = 'transparent';
+                      }
+                    }}
+                  >
+                    <span className="mr-2">☀️</span>
+                    Light Mode
+                    {theme === 'light' && <span className="ml-auto text-xs">✓</span>}
+                  </button>
+                  <button
+                    onClick={() => {
+                      setTheme('dark');
+                      setShowViewMenu(false);
+                    }}
+                    className="w-full text-left px-2 py-1 text-sm rounded flex items-center transition-colors"
+                    style={{
+                      backgroundColor: theme === 'dark' ? colors.primary : 'transparent',
+                      color: theme === 'dark' ? colors.bg : colors.text
+                    }}
+                    onMouseEnter={(e) => {
+                      if (theme !== 'dark') {
+                        e.currentTarget.style.backgroundColor = colors.buttonHover;
+                      }
+                    }}
+                    onMouseLeave={(e) => {
+                      if (theme !== 'dark') {
+                        e.currentTarget.style.backgroundColor = 'transparent';
+                      }
+                    }}
+                  >
+                    <span className="mr-2">🌙</span>
+                    Dark Mode
+                    {theme === 'dark' && <span className="ml-auto text-xs">✓</span>}
+                  </button>
+                  <button
+                    onClick={() => {
+                      setTheme('system');
+                      setShowViewMenu(false);
+                    }}
+                    className="w-full text-left px-2 py-1 text-sm rounded flex items-center transition-colors"
+                    style={{
+                      backgroundColor: theme === 'system' ? colors.primary : 'transparent',
+                      color: theme === 'system' ? colors.bg : colors.text
+                    }}
+                    onMouseEnter={(e) => {
+                      if (theme !== 'system') {
+                        e.currentTarget.style.backgroundColor = colors.buttonHover;
+                      }
+                    }}
+                    onMouseLeave={(e) => {
+                      if (theme !== 'system') {
+                        e.currentTarget.style.backgroundColor = 'transparent';
+                      }
+                    }}
+                  >
+                    <span className="mr-2">🖥️</span>
+                    System Default
+                    {theme === 'system' && <span className="ml-auto text-xs">✓</span>}
+                  </button>
+                </div>
+                
+                <hr className="my-1" style={{ borderColor: colors.border }} />
+                
+                <div className="px-4 py-2">
+                  <div className="text-xs font-medium mb-2" style={{ color: colors.textMuted }}>Display</div>
+                  <button
+                    onClick={() => {
+                      setShowFPS(!showFPS);
+                      setShowViewMenu(false);
+                    }}
+                    className="w-full text-left px-2 py-1 text-sm rounded flex items-center transition-colors"
+                    style={{
+                      backgroundColor: showFPS ? colors.primary : 'transparent',
+                      color: showFPS ? colors.bg : colors.text
+                    }}
+                    onMouseEnter={(e) => {
+                      if (!showFPS) {
+                        e.currentTarget.style.backgroundColor = colors.buttonHover;
+                      }
+                    }}
+                    onMouseLeave={(e) => {
+                      if (!showFPS) {
+                        e.currentTarget.style.backgroundColor = 'transparent';
+                      }
+                    }}
+                  >
+                    <span className="mr-2">📊</span>
+                    Show FPS Counter
+                    {showFPS && <span className="ml-auto text-xs">✓</span>}
+                  </button>
+                  <button
+                    onClick={() => {
+                      setShowGrid(!showGrid);
+                      setShowViewMenu(false);
+                    }}
+                    className="w-full text-left px-2 py-1 text-sm rounded flex items-center transition-colors"
+                    style={{
+                      backgroundColor: showGrid ? colors.primary : 'transparent',
+                      color: showGrid ? colors.bg : colors.text
+                    }}
+                    onMouseEnter={(e) => {
+                      if (!showGrid) {
+                        e.currentTarget.style.backgroundColor = colors.buttonHover;
+                      }
+                    }}
+                    onMouseLeave={(e) => {
+                      if (!showGrid) {
+                        e.currentTarget.style.backgroundColor = 'transparent';
+                      }
+                    }}
+                  >
+                    <span className="mr-2">⚏</span>
+                    Show Grid
+                    {showGrid && <span className="ml-auto text-xs">✓</span>}
+                  </button>
+                  <button
+                    onClick={() => {
+                      setHalloweenMode(!halloweenMode);
+                      setShowViewMenu(false);
+                    }}
+                    className="w-full text-left px-2 py-1 text-sm rounded flex items-center transition-colors"
+                    style={{
+                      backgroundColor: halloweenMode ? colors.primary : 'transparent',
+                      color: halloweenMode ? colors.bg : colors.text
+                    }}
+                    onMouseEnter={(e) => {
+                      if (!halloweenMode) {
+                        e.currentTarget.style.backgroundColor = colors.buttonHover;
+                      }
+                    }}
+                    onMouseLeave={(e) => {
+                      if (!halloweenMode) {
+                        e.currentTarget.style.backgroundColor = 'transparent';
+                      }
+                    }}
+                  >
+                    <span className="mr-2">🎃</span>
+                    Halloween Mode
+                    {halloweenMode && <span className="ml-auto text-xs">✓</span>}
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
       </div>
 
       {/* Open Canvas Dialog */}
@@ -441,14 +758,53 @@ function TopRibbon({ onSignOut, stageRef }: { onSignOut: () => void; stageRef: R
         </div>
       )}
 
+      {/* Clear Canvas Confirmation Dialog */}
+      {showClearConfirmation && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div 
+            className="rounded-lg p-6 max-w-sm mx-4 shadow-xl border"
+            style={{ 
+              backgroundColor: colors.bg,
+              borderColor: colors.border,
+              color: colors.text 
+            }}
+          >
+            <h3 className="text-lg font-semibold mb-2">Clear Canvas?</h3>
+            <p className="text-sm mb-4" style={{ color: colors.textSecondary }}>
+              Are you sure you want to remove all {Object.keys(shapes).length} shape{Object.keys(shapes).length !== 1 ? 's' : ''} from the canvas? 
+              This action can be undone with Ctrl+Z.
+            </p>
+            <div className="flex gap-3 justify-end">
+              <button
+                onClick={() => setShowClearConfirmation(false)}
+                className="px-4 py-2 text-sm rounded border"
+                style={{
+                  backgroundColor: colors.buttonBg,
+                  color: colors.text,
+                  borderColor: colors.border
+                }}
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleClearCanvas}
+                className="px-4 py-2 text-sm bg-red-600 text-white rounded hover:bg-red-700"
+              >
+                Clear Canvas
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Center - Canvas Title */}
       <div className="flex-1 text-center">
-        <h1 className="text-lg font-semibold text-gray-800">CollabCanvas</h1>
+        <h1 className="text-lg font-semibold" style={{ color: colors.text }}>CollabCanvas</h1>
       </div>
 
           {/* Right side - Canvas Info & Save Status */}
           <div className="flex items-center space-x-4">
-            <div className="text-sm text-gray-600">
+            <div className="text-sm" style={{ color: colors.textSecondary }}>
               <span className="font-medium">
                 {currentCanvas?.title || 'Untitled Canvas'}
               </span>
@@ -462,8 +818,13 @@ function TopRibbon({ onSignOut, stageRef }: { onSignOut: () => void; stageRef: R
 // TabBar Component for Multi-Canvas Management
 function TabBar() {
   const { openTabs, activeTabId, openCanvasInTab, closeTab, switchToTab, hasUnsavedTab } = useCanvas();
+  const { colors } = useTheme();
 
   const handleNewTab = async () => {
+    // Temporary disclaimer while database schema issues are resolved
+    alert('New Canvas Tab feature is temporarily unavailable due to database schema caching. Please use the current canvas with auto-save for now. Feature coming soon!');
+    return;
+    
     try {
       const title = prompt('New canvas title:', 'Untitled Canvas') || 'Untitled Canvas';
       const canvasState = useCanvas.getState();
@@ -515,10 +876,28 @@ function TabBar() {
   if (openTabs.length === 0) {
     // No tabs open, show a clean state with just the + button
     return (
-      <div className="bg-gray-100 border-b border-gray-200 px-4 py-2 flex items-center">
+      <div 
+        className="border-b px-4 py-2 flex items-center"
+        style={{ 
+          backgroundColor: colors.bgSecondary, 
+          borderColor: colors.border 
+        }}
+      >
         <button
           onClick={handleNewTab}
-          className="flex items-center px-3 py-1 text-sm text-gray-600 hover:text-gray-800 hover:bg-gray-200 rounded transition-colors"
+          className="flex items-center px-3 py-1 text-sm rounded transition-colors"
+          style={{
+            color: colors.textSecondary,
+            backgroundColor: colors.buttonBg
+          }}
+          onMouseEnter={(e) => {
+            e.currentTarget.style.color = colors.text;
+            e.currentTarget.style.backgroundColor = colors.buttonHover;
+          }}
+          onMouseLeave={(e) => {
+            e.currentTarget.style.color = colors.textSecondary;
+            e.currentTarget.style.backgroundColor = colors.buttonBg;
+          }}
           title="New Canvas"
         >
           <span className="text-lg mr-1">+</span>
@@ -529,7 +908,13 @@ function TabBar() {
   }
 
   return (
-    <div className="bg-gray-100 border-b border-gray-200 px-4 py-2 flex items-center overflow-x-auto">
+    <div 
+      className="border-b px-4 py-2 flex items-center overflow-x-auto"
+      style={{ 
+        backgroundColor: colors.bgSecondary, 
+        borderColor: colors.border 
+      }}
+    >
       {/* Canvas Tabs */}
       <div className="flex space-x-1 mr-4">
         {openTabs.map((tab) => {
@@ -539,13 +924,24 @@ function TabBar() {
           return (
             <div
               key={tab.id}
-              className={`
-                flex items-center px-3 py-1 rounded-t text-sm cursor-pointer transition-colors
-                ${isActive 
-                  ? 'bg-white border-b-2 border-blue-500 text-gray-900' 
-                  : 'bg-gray-200 hover:bg-gray-300 text-gray-700'
+              className="flex items-center px-3 py-1 rounded-t text-sm cursor-pointer transition-colors border-b-2"
+              style={{
+                backgroundColor: isActive ? colors.bg : colors.buttonBg,
+                color: isActive ? colors.text : colors.textSecondary,
+                borderBottomColor: isActive ? colors.primary : 'transparent'
+              }}
+              onMouseEnter={(e) => {
+                if (!isActive) {
+                  e.currentTarget.style.backgroundColor = colors.buttonHover;
+                  e.currentTarget.style.color = colors.text;
                 }
-              `}
+              }}
+              onMouseLeave={(e) => {
+                if (!isActive) {
+                  e.currentTarget.style.backgroundColor = colors.buttonBg;
+                  e.currentTarget.style.color = colors.textSecondary;
+                }
+              }}
               onClick={() => handleTabClick(tab.id)}
             >
               <span className="max-w-32 truncate">
@@ -556,7 +952,16 @@ function TabBar() {
               {/* Close button */}
               <button
                 onClick={(e) => handleCloseTab(e, tab.id)}
-                className="ml-2 w-4 h-4 flex items-center justify-center text-gray-500 hover:text-gray-700 hover:bg-gray-300 rounded-full transition-colors"
+                className="ml-2 w-4 h-4 flex items-center justify-center rounded-full transition-colors"
+                style={{ color: colors.textMuted }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.color = colors.text;
+                  e.currentTarget.style.backgroundColor = colors.buttonHover;
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.color = colors.textMuted;
+                  e.currentTarget.style.backgroundColor = 'transparent';
+                }}
                 title="Close tab"
               >
                 <span className="text-xs">×</span>
@@ -569,7 +974,19 @@ function TabBar() {
       {/* New Tab Button */}
       <button
         onClick={handleNewTab}
-        className="flex items-center px-2 py-1 text-sm text-gray-600 hover:text-gray-800 hover:bg-gray-200 rounded transition-colors"
+        className="flex items-center px-2 py-1 text-sm rounded transition-colors"
+        style={{
+          color: colors.textSecondary,
+          backgroundColor: colors.buttonBg
+        }}
+        onMouseEnter={(e) => {
+          e.currentTarget.style.color = colors.text;
+          e.currentTarget.style.backgroundColor = colors.buttonHover;
+        }}
+        onMouseLeave={(e) => {
+          e.currentTarget.style.color = colors.textSecondary;
+          e.currentTarget.style.backgroundColor = colors.buttonBg;
+        }}
         title="New Canvas Tab"
       >
         <span className="text-lg">+</span>
@@ -598,6 +1015,7 @@ interface ContextMenuData {
 
 export default function Canvas({ onSignOut }: CanvasProps) {
   const { shapes, selectedIds, me, cursors, roomId } = useCanvas();
+  const { colors } = useTheme();
   const [contextMenu, setContextMenu] = useState<ContextMenuData | null>(null);
   const [_scale, setScale] = useState(1);
   const [editingText, setEditingText] = useState<{id: string, x: number, y: number, value: string} | null>(null);
@@ -999,8 +1417,10 @@ export default function Canvas({ onSignOut }: CanvasProps) {
   };
 
 
-  // Shape elements with right-click support and styling
-  const shapeEls = useMemo(() => Object.values(shapes).map((s: ShapeBase) => {
+  // Shape elements with right-click support and styling - sorted by zIndex for layer ordering
+  const shapeEls = useMemo(() => Object.values(shapes)
+    .sort((a, b) => (a.zIndex ?? 0) - (b.zIndex ?? 0))
+    .map((s: ShapeBase) => {
     // For text shapes, calculate dynamic dimensions
     let textWidth = s.w;
     let textHeight = s.h;
@@ -1198,13 +1618,21 @@ export default function Canvas({ onSignOut }: CanvasProps) {
   const canvasStageRef = useRef<any>(null);
 
   return (
-    <div className="h-screen w-screen flex flex-col overflow-hidden">
+    <div 
+      className="h-screen w-screen flex flex-col overflow-hidden"
+      style={{ backgroundColor: colors.bgSecondary }}
+    >
       {/* Layout fix v2: Force cache refresh for production deployment */}
       <TopRibbon onSignOut={onSignOut} stageRef={canvasStageRef} />
       <TabBar />
+      <FPSOverlay />
       <div className="flex-1 flex min-h-0">
         <Toolbar onSignOut={onSignOut} status={status} />
-        <div ref={canvasContainerRef} className="flex-1 bg-slate-50 relative overflow-hidden">
+        <div 
+          ref={canvasContainerRef} 
+          className="flex-1 relative overflow-hidden"
+          style={{ backgroundColor: colors.canvasBg }}
+        >
         <Stage 
             ref={canvasStageRef}
             width={canvasSize.width} 
@@ -1295,6 +1723,9 @@ export default function Canvas({ onSignOut }: CanvasProps) {
         )}
       </div>
       </div>
+      
+      {/* Floating AI Agent Widget - Bottom Right */}
+      <FloatingAIWidget />
     </div>
   );
 }
@@ -1305,6 +1736,7 @@ interface ToolbarProps {
 }
 
 function CategorizedToolbar() {
+  const { colors } = useTheme();
   const [expandedCategories, setExpandedCategories] = useState<Set<string>>(
     new Set(['shapes', 'emojis']) // Start with shapes and emojis expanded
   );
@@ -1465,7 +1897,13 @@ function CategorizedToolbar() {
             </button>
             
             {expandedCategories.has(category.id) && (
-              <div className="px-3 pb-3 border-t bg-gray-50">
+              <div 
+                className="px-3 pb-3 border-t" 
+                style={{ 
+                  backgroundColor: colors.bgSecondary, 
+                  borderColor: colors.border 
+                }}
+              >
                 {category.tools.length === 0 ? (
                   <div className="text-xs text-gray-500 py-2 italic">Coming soon...</div>
                 ) : (
@@ -1477,12 +1915,17 @@ function CategorizedToolbar() {
                         disabled={!tool.available}
                         title={tool.tooltip || (tool.available ? `Create ${tool.name}` : 'Coming soon')}
                         className={`
-                          px-2 py-1 text-sm rounded transition-colors flex items-center justify-center min-h-[32px]
+                          px-2 py-1 text-sm rounded transition-colors flex items-center justify-center min-h-[32px] border
                           ${tool.available 
-                            ? 'bg-white hover:bg-blue-50 hover:text-blue-700 border border-gray-200' 
-                            : 'bg-gray-100 text-gray-400 cursor-not-allowed'
+                            ? 'hover:opacity-80' 
+                            : 'opacity-50 cursor-not-allowed'
                           }
                         `}
+                        style={{
+                          backgroundColor: tool.available ? colors.buttonBg : colors.bgTertiary,
+                          color: tool.available ? colors.text : colors.textMuted,
+                          borderColor: colors.border
+                        }}
                       >
                         {tool.name}
                       </button>
@@ -1496,9 +1939,18 @@ function CategorizedToolbar() {
       </div>
       
       {/* Stress Test Button for Demos */}
-      <div className="mt-4 border-t pt-3">
+      <div 
+        className="mt-4 border-t pt-3"
+        style={{ borderColor: colors.border }}
+      >
         <button 
-          className="px-3 py-2 rounded bg-slate-200 hover:bg-slate-300 transition-colors text-sm font-medium w-full"
+          className="px-3 py-2 rounded transition-colors text-sm font-medium w-full"
+          style={{
+            backgroundColor: colors.buttonBg,
+            color: colors.text,
+          }}
+          onMouseEnter={(e) => e.currentTarget.style.backgroundColor = colors.buttonHover}
+          onMouseLeave={(e) => e.currentTarget.style.backgroundColor = colors.buttonBg}
           onClick={() => {
             const { me } = useCanvas.getState();
             const batch: ShapeBase[] = [];
@@ -1530,6 +1982,7 @@ function CategorizedToolbar() {
 
 function Toolbar({ onSignOut, status }: ToolbarProps) {
   const { me, onlineUsers, cursors, roomId } = useCanvas();
+  const { colors } = useTheme();
   
   // Clear selection when clicking on sidebar background (not on interactive elements)
   const handleSidebarClick = (e: React.MouseEvent) => {
@@ -1541,7 +1994,15 @@ function Toolbar({ onSignOut, status }: ToolbarProps) {
   };
   
   return (
-    <div className="w-64 p-4 border-r bg-white space-y-3 overflow-y-auto" onClick={handleSidebarClick}>
+    <div 
+      className="w-64 p-4 border-r space-y-3 overflow-y-auto" 
+      style={{ 
+        backgroundColor: colors.bg, 
+        borderColor: colors.border,
+        color: colors.text 
+      }}
+      onClick={handleSidebarClick}
+    >
       <div className="flex items-center justify-between">
         <div className="text-xl font-semibold">CollabCanvas</div>
         <div className="flex gap-2">
@@ -1584,7 +2045,6 @@ function Toolbar({ onSignOut, status }: ToolbarProps) {
         </div>
       )}
       
-      <AIBox />
       <CategorizedToolbar />
       
       {/* Connection Status Badge */}
@@ -1601,7 +2061,7 @@ function Toolbar({ onSignOut, status }: ToolbarProps) {
                status === 'connecting' ? '⏳ Connecting...' : 
                '↻ Reconnecting...'}
             </span>
-          </div>
+      </div>
           <div className="flex items-center justify-between">
             <span>Room:</span>
             <span className="font-mono font-medium">{roomId}</span>
@@ -1664,6 +2124,7 @@ function addShape(type: ShapeType) {
   useCanvas.getState().pushHistory();
   
   const { me, shapes } = useCanvas.getState();
+  const { colors } = useTheme();
   
   let s: ShapeBase;
   if (type === "text") {
@@ -1684,14 +2145,14 @@ function addShape(type: ShapeType) {
       y: position.y, 
       w: width, 
       h: height, 
-      color: "#111", 
+      color: colors.text, 
       text: defaultText,
       fontSize: fontSize,
       updated_at: Date.now(), 
       updated_by: me.id 
     };
   } else {
-    // Other shapes with default colors
+    // Other shapes with theme-aware default colors
     let color = "#3b82f6"; // Default blue
     if (type === "circle") color = "#10b981"; // Green for circles
     if (type === "triangle") color = "#10b981"; // Green
@@ -1717,6 +2178,8 @@ function addShape(type: ShapeType) {
       w, 
       h, 
       color, 
+      stroke: colors.text, // Add visible stroke for dark mode
+      strokeWidth: 2,
       text: "", 
       updated_at: Date.now(), 
       updated_by: me.id 
@@ -1799,6 +2262,7 @@ function ClearCanvasButton() {
 }
 
 function AIBox() {
+  const { colors } = useTheme();
   const [q, setQ] = useState("");
   const [working, setWorking] = useState(false);
   const [isListening, setIsListening] = useState(false);
@@ -1987,7 +2451,15 @@ function AIBox() {
           selectedLanguage={selectedLanguage}
           onLanguageChange={handleLanguageChange}
         />
-        <button className="px-3 py-2 rounded bg-emerald-500 text-white disabled:opacity-60 flex-1" disabled={!q||working} onClick={onRun}>
+        <button 
+          className="px-3 py-2 rounded disabled:opacity-60 flex-1 font-medium"
+          style={{
+            backgroundColor: colors.primary,
+            color: colors.bg, // Use background color as text for contrast
+          }}
+          disabled={!q||working} 
+          onClick={onRun}
+        >
         {working?"Thinking…":"Run"}
       </button>
       </div>
@@ -2048,9 +2520,261 @@ function AIBox() {
         </div>
       )}
 
-      <div className="mt-2 pt-2 border-t border-gray-200">
-        <ClearCanvasButton />
             </div>
+  );
+}
+
+// ChatGPT-style AI Widget - Bottom Right
+function FloatingAIWidget() {
+  const { colors, halloweenMode } = useTheme();
+  const [isMinimized, setIsMinimized] = useState(false);
+  const [prompt, setPrompt] = useState('');
+  const [isWorking, setIsWorking] = useState(false);
+  const [position, setPosition] = useState({ x: 20, y: 20 }); // From bottom-right
+  const [isListening, setIsListening] = useState(false);
+  const [recognition, setRecognition] = useState<any | null>(null);
+  const [selectedLanguage, setSelectedLanguage] = useState(localStorage.getItem('ai-language') || 'en');
+  const [isDragging, setIsDragging] = useState(false);
+  const [dragOffset, setDragOffset] = useState({ x: 0, y: 0 });
+
+  // Speech recognition language mapping
+  const getSpeechLang = (aiLang: string): string => {
+    const langMap: Record<string, string> = {
+      'en': 'en-US',
+      'zh': 'zh-CN',
+      'es': 'es-ES',
+      'fr': 'fr-FR',
+      'de': 'de-DE',
+      'ja': 'ja-JP',
+      'ar': 'ar-SA',
+    };
+    return langMap[aiLang] || 'en-US';
+  };
+
+  // Initialize speech recognition
+  useEffect(() => {
+    if ('webkitSpeechRecognition' in window || 'SpeechRecognition' in window) {
+      const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+      const recognition = new SpeechRecognition();
+      
+      recognition.continuous = false;
+      recognition.interimResults = false;
+      recognition.lang = getSpeechLang(selectedLanguage);
+
+      recognition.onstart = () => {
+        setIsListening(true);
+      };
+
+      recognition.onresult = (event: any) => {
+        const transcript = event.results[0][0].transcript;
+        setPrompt(transcript);
+        setIsListening(false);
+      };
+
+      recognition.onerror = (event: any) => {
+        console.error('Speech recognition error:', event.error);
+        setIsListening(false);
+      };
+
+      recognition.onend = () => {
+        setIsListening(false);
+      };
+
+      setRecognition(recognition);
+    }
+  }, [selectedLanguage]);
+
+  const startListening = () => {
+    if (recognition) {
+      recognition.start();
+    }
+  };
+
+  const stopListening = () => {
+    if (recognition) {
+      recognition.stop();
+    }
+  };
+
+  const handleLanguageChange = (lang: string) => {
+    setSelectedLanguage(lang);
+    localStorage.setItem('ai-language', lang);
+  };
+
+  // Drag functionality
+  const handleMouseDown = (e: React.MouseEvent) => {
+    setIsDragging(true);
+    const rect = e.currentTarget.getBoundingClientRect();
+    setDragOffset({
+      x: e.clientX - rect.left,
+      y: e.clientY - rect.top
+    });
+  };
+
+  useEffect(() => {
+    const handleMouseMove = (e: MouseEvent) => {
+      if (!isDragging) return;
+      
+      const newX = Math.max(10, Math.min(window.innerWidth - 400, window.innerWidth - e.clientX - dragOffset.x));
+      const newY = Math.max(10, Math.min(window.innerHeight - 200, window.innerHeight - e.clientY - dragOffset.y));
+      
+      setPosition({ x: newX, y: newY });
+    };
+
+    const handleMouseUp = () => {
+      setIsDragging(false);
+    };
+
+    if (isDragging) {
+      document.addEventListener('mousemove', handleMouseMove);
+      document.addEventListener('mouseup', handleMouseUp);
+    }
+
+    return () => {
+      document.removeEventListener('mousemove', handleMouseMove);
+      document.removeEventListener('mouseup', handleMouseUp);
+    };
+  }, [isDragging, dragOffset]);
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!prompt.trim() || isWorking) return;
+
+    setIsWorking(true);
+    try {
+      // Use the existing AIBox logic with language support
+      const response = await interpretWithResponse(prompt.trim(), selectedLanguage);
+      console.log('AI Response:', response);
+      
+      // Clear the input after successful submission
+      setPrompt('');
+    } catch (error) {
+      console.error('AI Error:', error);
+    } finally {
+      setIsWorking(false);
+    }
+  };
+
+  const handleKeyPress = (e: React.KeyboardEvent) => {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault();
+      handleSubmit(e);
+    }
+  };
+
+  return (
+    <div 
+      className={`fixed z-50 transition-all duration-300 border rounded-xl ${
+        isMinimized ? 'w-12 h-12' : 'w-96' 
+      }`}
+      style={{ 
+        bottom: position.y, 
+        right: position.x,
+        backgroundColor: colors.bg,
+        borderColor: colors.border,
+        boxShadow: '0 8px 32px rgba(0,0,0,0.12)'
+      }}
+    >
+      {/* Minimized state - just the AI emoji */}
+      {isMinimized ? (
+        <button
+          onClick={() => setIsMinimized(false)}
+          className="w-full h-full flex items-center justify-center text-2xl rounded-xl hover:scale-105 transition-transform"
+          title={halloweenMode ? "Open FrAInkenstein" : "Open AI Assistant"}
+        >
+          {halloweenMode ? '🎃' : '🤖'}
+              </button>
+      ) : (
+        <>
+          {/* Header - Draggable */}
+          <div 
+            className="flex items-center justify-between p-4 border-b cursor-move select-none"
+            style={{ 
+              borderColor: colors.border,
+              color: colors.text,
+              cursor: isDragging ? 'grabbing' : 'grab'
+            }}
+            onMouseDown={handleMouseDown}
+          >
+            <div className="flex items-center gap-2">
+              <span className="text-xl">{halloweenMode ? '🎃' : '🤖'}</span>
+              <span className="font-medium">{halloweenMode ? 'FrAInkenstein' : 'AI Assistant'}</span>
+            </div>
+            
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                setIsMinimized(true);
+              }}
+              onMouseDown={(e) => e.stopPropagation()}
+              className="w-6 h-6 rounded hover:bg-opacity-20 hover:bg-gray-500 flex items-center justify-center text-xs"
+              title="Minimize"
+            >
+              −
+            </button>
+          </div>
+
+          {/* Chat Input */}
+          <div className="p-4">
+            <form onSubmit={handleSubmit} className="space-y-3">
+              <textarea
+                value={prompt}
+                onChange={(e) => setPrompt(e.target.value)}
+                onKeyPress={handleKeyPress}
+                placeholder="What do you want on your canvas today?"
+                className="w-full p-3 rounded-lg border resize-none focus:outline-none focus:ring-2 focus:ring-blue-500"
+                style={{
+                  backgroundColor: colors.bgSecondary,
+                  borderColor: colors.border,
+                  color: colors.text,
+                  minHeight: '60px'
+                }}
+                disabled={isWorking}
+              />
+              
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  {/* Language Dropdown */}
+                  <LanguageDropdown 
+                    selectedLanguage={selectedLanguage}
+                    onLanguageChange={handleLanguageChange}
+                  />
+                  
+                  {/* Audio Input Button */}
+                  {recognition && (
+                    <button
+                      type="button"
+                      onClick={isListening ? stopListening : startListening}
+                      disabled={isWorking}
+                      className="p-2 rounded-lg transition-colors disabled:opacity-50"
+                      style={{
+                        backgroundColor: isListening ? colors.primary : colors.buttonBg,
+                        color: isListening ? colors.bg : colors.text
+                      }}
+                      title={isListening ? "Stop listening" : "Start voice input"}
+                    >
+                      {isListening ? '🔴' : '🎤'}
+                    </button>
+                  )}
+                </div>
+                
+                {/* Send Button - aligned to right */}
+                <button
+                  type="submit"
+                  disabled={!prompt.trim() || isWorking}
+                  className="px-4 py-2 rounded-lg font-medium disabled:opacity-50 transition-colors"
+                  style={{
+                    backgroundColor: colors.primary,
+                    color: colors.bg
+                  }}
+                >
+                  {isWorking ? 'Creating...' : 'Send'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </>
+      )}
     </div>
   );
 }
@@ -2131,6 +2855,52 @@ function ContextMenu({ x, y, shapeId, onClose }: {
 
   const handleStrokeWidthChange = (width: number) => {
     updateShape({ strokeWidth: width });
+  };
+
+  const handleLayerCommand = (command: 'front' | 'back' | 'up' | 'down') => {
+    const shapes = useCanvas.getState().shapes;
+    const allShapes = Object.values(shapes);
+    
+    // Assign zIndex if not present (based on current order)
+    const shapesWithZIndex = allShapes.map((s, index) => ({
+      ...s,
+      zIndex: s.zIndex ?? index
+    }));
+    
+    // Find current shape
+    const currentShape = shapesWithZIndex.find(s => s.id === shapeId);
+    if (!currentShape) return;
+    
+    let newZIndex = currentShape.zIndex;
+    const sortedShapes = shapesWithZIndex.sort((a, b) => a.zIndex - b.zIndex);
+    const currentIndex = sortedShapes.findIndex(s => s.id === shapeId);
+    
+    switch (command) {
+      case 'front':
+        newZIndex = Math.max(...shapesWithZIndex.map(s => s.zIndex)) + 1;
+        break;
+      case 'back':
+        newZIndex = Math.min(...shapesWithZIndex.map(s => s.zIndex)) - 1;
+        break;
+      case 'up':
+        if (currentIndex < sortedShapes.length - 1) {
+          const nextShape = sortedShapes[currentIndex + 1];
+          newZIndex = nextShape.zIndex + 0.5;
+        }
+        break;
+      case 'down':
+        if (currentIndex > 0) {
+          const prevShape = sortedShapes[currentIndex - 1];
+          newZIndex = prevShape.zIndex - 0.5;
+        }
+        break;
+    }
+    
+    if (newZIndex !== currentShape.zIndex) {
+      updateShape({ zIndex: newZIndex } as any);
+    }
+    
+    onClose();
   };
 
   const handleDelete = () => {
@@ -2280,6 +3050,37 @@ function ContextMenu({ x, y, shapeId, onClose }: {
             </div>
             
             {/* Divider */}
+            <hr className="my-2" />
+            
+            {/* Layer Commands */}
+            <div className="space-y-1">
+              <div className="text-xs font-medium text-gray-500 mb-1">Layer Order</div>
+              <button
+                onClick={() => { handleLayerCommand('front'); }}
+                className="w-full text-left text-sm hover:bg-gray-50 px-2 py-1 rounded"
+              >
+                🔝 Move to Front
+              </button>
+              <button
+                onClick={() => { handleLayerCommand('up'); }}
+                className="w-full text-left text-sm hover:bg-gray-50 px-2 py-1 rounded"
+              >
+                ⬆️ Move Up
+              </button>
+              <button
+                onClick={() => { handleLayerCommand('down'); }}
+                className="w-full text-left text-sm hover:bg-gray-50 px-2 py-1 rounded"
+              >
+                ⬇️ Move Down
+              </button>
+              <button
+                onClick={() => { handleLayerCommand('back'); }}
+                className="w-full text-left text-sm hover:bg-gray-50 px-2 py-1 rounded"
+              >
+                🔻 Move to Back
+              </button>
+            </div>
+            
             <hr className="my-2" />
             
             {/* Delete */}
@@ -2559,6 +3360,7 @@ function LanguageDropdown({ selectedLanguage, onLanguageChange }: {
   selectedLanguage: string; 
   onLanguageChange: (lang: string) => void; 
 }) {
+  const { colors } = useTheme();
   const languages = [
     { code: 'en', name: 'English', flag: '🇺🇸' },
     { code: 'zh', name: '中文', flag: '🇨🇳' },
@@ -2574,7 +3376,12 @@ function LanguageDropdown({ selectedLanguage, onLanguageChange }: {
       <select
         value={selectedLanguage}
         onChange={(e) => onLanguageChange(e.target.value)}
-        className="px-2 py-2 text-xs border rounded bg-white hover:bg-gray-50 transition-colors cursor-pointer appearance-none pr-6"
+        className="px-2 py-2 text-xs border rounded transition-colors cursor-pointer appearance-none pr-6"
+        style={{
+          backgroundColor: colors.buttonBg,
+          color: colors.text,
+          borderColor: colors.border
+        }}
         title="Select AI language"
       >
         {languages.map(lang => (
@@ -2583,7 +3390,10 @@ function LanguageDropdown({ selectedLanguage, onLanguageChange }: {
           </option>
         ))}
       </select>
-      <div className="absolute right-1 top-1/2 transform -translate-y-1/2 pointer-events-none text-xs text-gray-400">
+      <div 
+        className="absolute right-1 top-1/2 transform -translate-y-1/2 pointer-events-none text-xs"
+        style={{ color: colors.textMuted }}
+      >
         ▼
       </div>
     </div>
@@ -2604,7 +3414,7 @@ function HelpMenu() {
           e.stopPropagation();
           setIsOpen(!isOpen);
         }}
-        className="text-xs px-2 py-1 text-gray-600 hover:text-gray-800 hover:bg-gray-100 rounded transition-colors"
+        className="text-lg px-3 py-2 text-gray-600 hover:text-gray-800 hover:bg-gray-100 rounded transition-colors font-bold"
         title="Help & Examples"
       >
         ?
@@ -2614,12 +3424,12 @@ function HelpMenu() {
         <>
           {/* Backdrop */}
           <div 
-            className="fixed inset-0 z-40" 
+            className="fixed inset-0 z-[90]" 
             onClick={() => setIsOpen(false)}
           ></div>
           
           {/* Help Menu */}
-          <div className="absolute left-0 top-full mt-1 w-80 bg-white border rounded-lg shadow-lg p-4 z-50 max-h-96 overflow-y-auto">
+          <div className="absolute left-0 top-full mt-1 w-80 bg-white border rounded-lg shadow-lg p-4 z-[100] max-h-96 overflow-y-auto">
             <div className="space-y-4">
               {/* AI Command Examples */}
               <div>
