@@ -242,7 +242,9 @@ class CanvasService {
               user_id: '', // Will be populated by RLS
               room_id: `room_${canvasId}`, // Fallback room ID
               created_at: new Date().toISOString(),
-              updated_at: new Date().toISOString()
+              updated_at: new Date().toISOString(),
+              is_public: false,
+              data: {}
             };
             console.log('✅ Using fallback canvas object:', canvas);
             break;
@@ -511,7 +513,7 @@ class CanvasService {
         throw new Error(`Failed to save shapes to canvas: ${error.message}`);
       }
       
-      totalSaved = data ? data.length : shapesToInsert.length;
+      totalSaved = (data as any)?.length ?? shapesToInsert.length;
       console.log('✅ Shapes saved successfully');
       
     } else {
@@ -532,7 +534,7 @@ class CanvasService {
           throw new Error(`Failed to save shapes batch ${batchNum}: ${error.message}`);
         }
         
-        const batchSaved = data ? data.length : chunk.length;
+        const batchSaved = (data as any)?.length ?? chunk.length;
         totalSaved += batchSaved;
         
         // Small delay between batches to avoid overwhelming the database

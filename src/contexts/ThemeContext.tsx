@@ -34,6 +34,7 @@ export interface ThemeColors {
   // Accent colors
   primary: string;
   primaryHover: string;
+  bgPrimary: string;
 }
 
 const lightTheme: ThemeColors = {
@@ -55,6 +56,7 @@ const lightTheme: ThemeColors = {
   info: '#2563eb', // Darker blue
   primary: '#2563eb', // Darker primary
   primaryHover: '#1d4ed8',
+  bgPrimary: '#f8fafc',
 };
 
 const darkTheme: ThemeColors = {
@@ -76,6 +78,7 @@ const darkTheme: ThemeColors = {
   info: '#60a5fa',
   primary: '#3b82f6',
   primaryHover: '#2563eb',
+  bgPrimary: '#1f2937',
 };
 
 const halloweenTheme: ThemeColors = {
@@ -97,6 +100,7 @@ const halloweenTheme: ThemeColors = {
   info: '#ff8c42',
   primary: '#ff6b35', // Halloween orange
   primaryHover: '#ff4500',
+  bgPrimary: '#2d1b2d',
 };
 
 interface ThemeContextType {
