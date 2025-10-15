@@ -666,6 +666,31 @@ function TopRibbon({ onSignOut, stageRef, setShowHelpPopup }: {
                   </button>
                   <button
                     onClick={() => {
+                      setSnapToGrid(!snapToGrid);
+                      setShowViewMenu(false);
+                    }}
+                    className="w-full text-left px-2 py-1 text-sm rounded flex items-center transition-colors"
+                    style={{
+                      backgroundColor: snapToGrid ? colors.primary : 'transparent',
+                      color: snapToGrid ? colors.bg : colors.text
+                    }}
+                    onMouseEnter={(e) => {
+                      if (!snapToGrid) {
+                        e.currentTarget.style.backgroundColor = colors.buttonHover;
+                      }
+                    }}
+                    onMouseLeave={(e) => {
+                      if (!snapToGrid) {
+                        e.currentTarget.style.backgroundColor = 'transparent';
+                      }
+                    }}
+                  >
+                    <span className="mr-2">🧲</span>
+                    Snap to Grid
+                    {snapToGrid && <span className="ml-auto text-xs">✓</span>}
+                  </button>
+                  <button
+                    onClick={() => {
                       setHalloweenMode(!halloweenMode);
                       setShowViewMenu(false);
                     }}
@@ -1325,7 +1350,7 @@ interface ContextMenuData {
 
 export default function Canvas({ onSignOut }: CanvasProps) {
   const { shapes, selectedIds, me, cursors, roomId } = useCanvas();
-  const { colors, showGrid } = useTheme();
+  const { colors, showGrid, snapToGrid, setSnapToGrid } = useTheme();
   const [contextMenu, setContextMenu] = useState<ContextMenuData | null>(null);
   const [_scale, setScale] = useState(1);
   const [editingText, setEditingText] = useState<{id: string, x: number, y: number, value: string} | null>(null);
@@ -1335,6 +1360,12 @@ export default function Canvas({ onSignOut }: CanvasProps) {
   const trRef = useRef<any>(null);
   const layerRef = useRef<any>(null);
   const canvasContainerRef = useRef<HTMLDivElement>(null);
+
+  // Snap-to-grid utility function
+  const snapToGridCoordinate = (value: number, gridSize: number = 25) => {
+    if (!snapToGrid) return value;
+    return Math.round(value / gridSize) * gridSize;
+  };
 
   // Initialize with last active canvas on app start
   useEffect(() => {
@@ -1573,8 +1604,25 @@ export default function Canvas({ onSignOut }: CanvasProps) {
           // Duplicate shapes (this also selects the new shapes)
           useCanvas.getState().duplicateShapes(selectedIds);
           
-          // Get the newly created shapes to broadcast them
+          // Get the newly created shapes and apply snapping if enabled
           const newShapes = useCanvas.getState().getSelectedShapes();
+          
+          // Apply snap-to-grid to duplicated shapes if enabled
+          if (snapToGrid) {
+            newShapes.forEach(shape => {
+              const snappedShape = {
+                ...shape,
+                x: snapToGridCoordinate(shape.x),
+                y: snapToGridCoordinate(shape.y),
+                // Also snap end points for lines/arrows
+                ...(shape.x2 !== undefined && { x2: snapToGridCoordinate(shape.x2) }),
+                ...(shape.y2 !== undefined && { y2: snapToGridCoordinate(shape.y2) }),
+                updated_at: Date.now(),
+                updated_by: me.id
+              };
+              useCanvas.getState().upsert(snappedShape);
+            });
+          }
           
           // Broadcast new shapes to other users
           broadcastUpsert(newShapes);
@@ -1693,11 +1741,11 @@ export default function Canvas({ onSignOut }: CanvasProps) {
             const newShape = {
               ...originalShape,
               id: Math.random().toString(36).substring(2),
-              x: originalShape.x + offsetX,
-              y: originalShape.y + offsetY,
+              x: snapToGridCoordinate(originalShape.x + offsetX),
+              y: snapToGridCoordinate(originalShape.y + offsetY),
               // Also offset end points for lines/arrows
-              ...(originalShape.x2 !== undefined && { x2: originalShape.x2 + offsetX }),
-              ...(originalShape.y2 !== undefined && { y2: originalShape.y2 + offsetY }),
+              ...(originalShape.x2 !== undefined && { x2: snapToGridCoordinate(originalShape.x2 + offsetX) }),
+              ...(originalShape.y2 !== undefined && { y2: snapToGridCoordinate(originalShape.y2 + offsetY) }),
               updated_at: Date.now(),
               updated_by: useCanvas.getState().me.id,
             };
@@ -1856,7 +1904,10 @@ export default function Canvas({ onSignOut }: CanvasProps) {
     useCanvas.getState().pushHistory();
     
     const node = e.target;
-    const next = { ...useCanvas.getState().shapes[id], x: node.x(), y: node.y(), updated_at: Date.now(), updated_by: me.id } as ShapeBase;
+    // Apply snap-to-grid if enabled
+    const snappedX = snapToGridCoordinate(node.x());
+    const snappedY = snapToGridCoordinate(node.y());
+    const next = { ...useCanvas.getState().shapes[id], x: snappedX, y: snappedY, updated_at: Date.now(), updated_by: me.id } as ShapeBase;
     useCanvas.getState().upsert(next); broadcastUpsert(next); persist(next);
   };
 
@@ -1870,9 +1921,12 @@ export default function Canvas({ onSignOut }: CanvasProps) {
     const node = trRef.current.nodes()[0];
     const prev = useCanvas.getState().shapes[ids[0]];
     const scaleX = node.scaleX(); const scaleY = node.scaleY();
+    // Apply snap-to-grid for position but not size
+    const snappedX = snapToGridCoordinate(node.x());
+    const snappedY = snapToGridCoordinate(node.y());
     const next: ShapeBase = {
       ...prev,
-      x: node.x(), y: node.y(),
+      x: snappedX, y: snappedY,
       w: Math.max(10, prev.w * scaleX),
       h: Math.max(10, prev.h * scaleY),
       rotation: node.rotation(),
@@ -2347,23 +2401,23 @@ function CategorizedToolbar() {
     setExpandedCategories(newExpanded);
   };
 
-  const addRect = () => addShape("rect", colors);
-  const addCircle = () => addShape("circle", colors);
-  const addText = () => addShape("text", colors);
-  const addTriangle = () => addShape("triangle", colors);
-  const addStar = () => addShape("star", colors);
-  const addHeart = () => addShape("heart", colors);
-  const addPentagon = () => addShape("pentagon", colors);
-  const addHexagon = () => addShape("hexagon", colors);
-  const addOctagon = () => addShape("octagon", colors);
-  const addOval = () => addShape("oval", colors);
-  const addTrapezoid = () => addShape("trapezoid", colors);
-  const addRhombus = () => addShape("rhombus", colors);
-  const addParallelogram = () => addShape("parallelogram", colors);
+  const addRect = () => addShape("rect", colors, snapToGrid, snapToGridCoordinate);
+  const addCircle = () => addShape("circle", colors, snapToGrid, snapToGridCoordinate);
+  const addText = () => addShape("text", colors, snapToGrid, snapToGridCoordinate);
+  const addTriangle = () => addShape("triangle", colors, snapToGrid, snapToGridCoordinate);
+  const addStar = () => addShape("star", colors, snapToGrid, snapToGridCoordinate);
+  const addHeart = () => addShape("heart", colors, snapToGrid, snapToGridCoordinate);
+  const addPentagon = () => addShape("pentagon", colors, snapToGrid, snapToGridCoordinate);
+  const addHexagon = () => addShape("hexagon", colors, snapToGrid, snapToGridCoordinate);
+  const addOctagon = () => addShape("octagon", colors, snapToGrid, snapToGridCoordinate);
+  const addOval = () => addShape("oval", colors, snapToGrid, snapToGridCoordinate);
+  const addTrapezoid = () => addShape("trapezoid", colors, snapToGrid, snapToGridCoordinate);
+  const addRhombus = () => addShape("rhombus", colors, snapToGrid, snapToGridCoordinate);
+  const addParallelogram = () => addShape("parallelogram", colors, snapToGrid, snapToGridCoordinate);
   
   // Line and arrow creation functions
-  const addLine = () => addShape("line", colors);
-  const addArrow = () => addShape("arrow", colors);
+  const addLine = () => addShape("line", colors, snapToGrid, snapToGridCoordinate);
+  const addArrow = () => addShape("arrow", colors, snapToGrid, snapToGridCoordinate);
   
   const addEmoji = (emoji: string) => {
     // Save history before creating
@@ -2385,8 +2439,8 @@ function CategorizedToolbar() {
     const emojiShape: ShapeBase = { 
       id: crypto.randomUUID(), 
       type: "image", 
-      x: position.x, 
-      y: position.y, 
+      x: snapToGridCoordinate(position.x), 
+      y: snapToGridCoordinate(position.y), 
       w: size, 
       h: size, 
       imageUrl: twemojiUrl,
@@ -2605,11 +2659,13 @@ function CategorizedToolbar() {
             const { me } = useCanvas.getState();
             const batch: ShapeBase[] = [];
             for (let i = 0; i < 500; i++) {
+              const baseX = 50 + (i % 25) * 90;
+              const baseY = 80 + Math.floor(i / 25) * 60;
               batch.push({ 
                 id: crypto.randomUUID(), 
                 type: "rect", 
-                x: 50 + (i % 25) * 90, 
-                y: 80 + Math.floor(i / 25) * 60, 
+                x: snapToGridCoordinate(baseX), 
+                y: snapToGridCoordinate(baseY), 
                 w: 80, 
                 h: 40, 
                 color: "#e5e7eb", 
@@ -2756,11 +2812,14 @@ function findBlankArea(shapes: Record<string, ShapeBase>, width: number, height:
   };
 }
 
-function addShape(type: ShapeType, colors: any) {
+function addShape(type: ShapeType, colors: any, snapToGrid: boolean = false, snapFn?: (value: number) => number) {
   // Save history before creating
   useCanvas.getState().pushHistory();
   
   const { me, shapes } = useCanvas.getState();
+  
+  // Helper function to apply snapping if enabled
+  const applySnap = (value: number) => snapToGrid && snapFn ? snapFn(value) : value;
   
   let s: ShapeBase;
   if (type === "text") {
@@ -2777,8 +2836,8 @@ function addShape(type: ShapeType, colors: any) {
     s = { 
       id: crypto.randomUUID(), 
       type, 
-      x: position.x, 
-      y: position.y, 
+      x: applySnap(position.x), 
+      y: applySnap(position.y), 
       w: width, 
       h: height, 
       color: colors.text, 
@@ -2792,15 +2851,15 @@ function addShape(type: ShapeType, colors: any) {
     const defaultLength = 120;
     const position = findBlankArea(shapes, defaultLength, 2); // Minimal height for findBlankArea
     
-    s = { 
-      id: crypto.randomUUID(), 
-      type, 
-      x: position.x, 
-      y: position.y + 20, // Start point
+    s = {
+      id: crypto.randomUUID(),
+      type,
+      x: applySnap(position.x), 
+      y: applySnap(position.y + 20), // Start point with snap
       w: defaultLength, // Use w to store length for collision detection
       h: 2, // Minimal height for collision detection  
-      x2: position.x + defaultLength, // End point
-      y2: position.y + 20,
+      x2: applySnap(position.x + defaultLength), // End point with snap
+      y2: applySnap(position.y + 20),
       stroke: colors.text, // Lines use stroke, not fill
       strokeWidth: 3,
       arrowHead: type === "arrow" ? "end" : "none",
@@ -2830,11 +2889,11 @@ function addShape(type: ShapeType, colors: any) {
     s = { 
       id: crypto.randomUUID(), 
       type, 
-      x: position.x, 
-      y: position.y, 
+      x: applySnap(position.x), 
+      y: applySnap(position.y), 
       w, 
       h, 
-      color, 
+      color,
       stroke: colors.text, // Add visible stroke for dark mode
       strokeWidth: 2,
       text: "", 

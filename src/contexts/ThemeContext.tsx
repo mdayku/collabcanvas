@@ -108,6 +108,8 @@ interface ThemeContextType {
   setShowFPS: (show: boolean) => void;
   showGrid: boolean;
   setShowGrid: (show: boolean) => void;
+  snapToGrid: boolean;
+  setSnapToGrid: (snap: boolean) => void;
   halloweenMode: boolean;
   setHalloweenMode: (enabled: boolean) => void;
 }
@@ -127,6 +129,11 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
   
   const [showGrid, setShowGrid] = useState(() => {
     const saved = localStorage.getItem('collabcanvas-show-grid');
+    return saved === 'true';
+  });
+  
+  const [snapToGrid, setSnapToGrid] = useState(() => {
+    const saved = localStorage.getItem('collabcanvas-snap-to-grid');
     return saved === 'true';
   });
   
@@ -175,6 +182,11 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
     setShowGrid(show);
     localStorage.setItem('collabcanvas-show-grid', show.toString());
   };
+  
+  const handleSetSnapToGrid = (snap: boolean) => {
+    setSnapToGrid(snap);
+    localStorage.setItem('collabcanvas-snap-to-grid', snap.toString());
+  };
 
   const setHalloweenMode = (enabled: boolean) => {
     setHalloweenModeState(enabled);
@@ -192,6 +204,8 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
         setShowFPS: handleSetShowFPS,
         showGrid,
         setShowGrid: handleSetShowGrid,
+        snapToGrid,
+        setSnapToGrid: handleSetSnapToGrid,
         halloweenMode,
         setHalloweenMode,
       }}
