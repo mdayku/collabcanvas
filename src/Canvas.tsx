@@ -844,7 +844,7 @@ function HelpPopup({ isOpen, onClose }: { isOpen: boolean; onClose: () => void }
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-[10000]">
       <div 
-        className={`bg-white rounded-lg shadow-xl border transition-all duration-300 ${
+        className={`rounded-lg shadow-xl border transition-all duration-300 flex flex-col ${
           isMinimized 
             ? 'w-80 h-12' 
             : 'w-[95vw] max-w-6xl h-[90vh] max-h-[800px]'
@@ -857,7 +857,7 @@ function HelpPopup({ isOpen, onClose }: { isOpen: boolean; onClose: () => void }
       >
         {/* Header */}
         <div 
-          className="flex items-center justify-between p-4 border-b cursor-pointer"
+          className="flex items-center justify-between p-4 border-b cursor-pointer flex-shrink-0"
           style={{ borderColor: colors.border }}
           onClick={() => isMinimized && setIsMinimized(false)}
         >
@@ -893,7 +893,7 @@ function HelpPopup({ isOpen, onClose }: { isOpen: boolean; onClose: () => void }
 
         {/* Content */}
         {!isMinimized && (
-          <div className="flex-1 overflow-y-auto p-6" style={{ maxHeight: 'calc(90vh - 120px)' }}>
+          <div className="flex-1 overflow-y-auto p-6 min-h-0">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
               
               {/* Left Column - AI Agent & Keyboard Shortcuts */}
