@@ -1221,9 +1221,9 @@ function CategorizedToolbar() {
     
     const { me, shapes } = useCanvas.getState();
     const fontSize = 32; // Larger size for emojis
-    // Emojis have inherent padding, make bounds much tighter
-    const width = fontSize * 0.5; // Much tighter for visual emoji content
-    const height = fontSize * 0.6; // Slightly taller to account for emoji proportions
+    // Make emoji bounds match the visual fontSize for better resize behavior
+    const width = fontSize * 1.1; // Slightly larger than fontSize for padding
+    const height = fontSize * 1.1; // Square bounds work better for emojis
     const position = findBlankArea(shapes, width, height);
     
     const s: ShapeBase = { 
@@ -1404,13 +1404,17 @@ function CategorizedToolbar() {
 function Toolbar({ onSignOut, status }: ToolbarProps) {
   const { me, onlineUsers, cursors, roomId } = useCanvas();
   
-  // Clear selection when clicking on sidebar
-  const handleSidebarClick = () => {
-    useCanvas.getState().select([]);
+  // Clear selection when clicking on sidebar background (not on interactive elements)
+  const handleSidebarClick = (e: React.MouseEvent) => {
+    // Only clear selection if clicking directly on the sidebar background,
+    // not on buttons, scrollable areas, or other interactive elements
+    if (e.target === e.currentTarget) {
+      useCanvas.getState().select([]);
+    }
   };
   
   return (
-    <div className="w-64 p-4 border-r bg-white space-y-3" onClick={handleSidebarClick}>
+    <div className="w-64 p-4 border-r bg-white space-y-3 overflow-y-auto" onClick={handleSidebarClick}>
       <div className="flex items-center justify-between">
         <div className="text-xl font-semibold">CollabCanvas</div>
         <div className="flex gap-2">
