@@ -51,12 +51,17 @@ export async function runAgentSmokeTests() {
       const res = await interpret(test);
       const duration = Math.round(performance.now() - start);
       
-      const success = res && typeof res === 'object' && (res.ok || res.error);
-      const status = res?.ok ? '✅ SUCCESS' : res?.error ? '⚠️  ERROR' : '❌ FAILED';
+      const success = res && typeof res === 'object' && !Array.isArray(res) && ('ok' in res || 'error' in res);
+      const status = (res && typeof res === 'object' && !Array.isArray(res) && 'ok' in res && res.ok) ? '✅ SUCCESS' : 
+                     (res && typeof res === 'object' && !Array.isArray(res) && 'error' in res && res.error) ? '⚠️  ERROR' : '❌ FAILED';
       
       console.log(`[${status}] "${test}" (${duration}ms)`);
-      if (res?.error) console.log(`    → ${res.error}`);
-      if (res?.tool_calls) console.log(`    → ${res.tool_calls.length} tool calls`);
+      if (res && typeof res === 'object' && !Array.isArray(res) && 'error' in res && res.error) {
+        console.log(`    → ${res.error}`);
+      }
+      if (res && typeof res === 'object' && !Array.isArray(res) && 'tool_calls' in res && res.tool_calls) {
+        console.log(`    → ${res.tool_calls.length} tool calls`);
+      }
       
       results.push({ test, success, duration, result: res });
       

@@ -1,118 +1,9 @@
 import type { ShapeBase } from "../types";
 import { useCanvas } from "../state/store";
 import { supabase } from "../lib/supabaseClient";
-import { callOpenAI, isOpenAIConfigured, type AIResponse as OpenAIResponse, type AIAction } from "../services/openaiService";
+import { callOpenAI, isOpenAIConfigured, type AIResponse as OpenAIResponse } from "../services/openaiService";
 import { callGroq, isGroqConfigured } from "../services/groqService";
-import { callServerlessAI } from "../services/serverlessAI";
 
-// Execute AI actions using our existing tools
-async function executeAIActions(actions: AIAction[]): Promise<any[]> {
-  const results: any[] = [];
-  
-  for (const action of actions) {
-    try {
-      let result;
-      
-      switch (action.tool) {
-        case 'createShape':
-          result = tools.createShape(
-            action.params.type,
-            action.params.x,
-            action.params.y, 
-            action.params.w,
-            action.params.h,
-            action.params.color,
-            action.params.text
-          );
-          break;
-          
-        case 'moveShape':
-          result = tools.moveShape(action.params.id, action.params.x, action.params.y);
-          break;
-          
-        case 'resizeShape':
-          result = tools.resizeShape(action.params.id, action.params.w, action.params.h);
-          break;
-          
-        case 'rotateShape':
-          result = tools.rotateShape(action.params.id, action.params.rotation);
-          break;
-          
-        case 'createGrid':
-          const gx = action.params.rows || 2;
-          const gy = action.params.cols || 2;
-          const gridIds: string[] = [];
-          for (let i = 0; i < gx; i++) {
-            for (let j = 0; j < gy; j++) {
-              const gridId = tools.createShape("rect", 80 + i * 110, 80 + j * 110, 90, 90, "#ddd");
-              gridIds.push(gridId);
-            }
-          }
-          result = gridIds;
-          break;
-          
-        case 'createLoginForm':
-          const baseX = 400, baseY = 200, gap = 60, W = 280, H = 40;
-          const u = tools.createShape("rect", baseX, baseY, W, H, "#ffffff");
-          const p = tools.createShape("rect", baseX, baseY + gap, W, H, "#ffffff");
-          const b = tools.createShape("rect", baseX, baseY + gap * 2, W, H, "#0ea5e9");
-          tools.createText("Username", baseX - 120, baseY - 26, 16, "#444");
-          tools.createText("Password", baseX - 120, baseY + gap - 26, 16, "#444");
-          tools.createText("Sign in", baseX + W / 2 - 34, baseY + gap * 2 + 10, 18, "#fff");
-          result = [u, p, b];
-          break;
-          
-        case 'createNavBar':
-          const navBaseX = 100, navBaseY = 50, itemHeight = 40, spacing = 140;
-          const navBg = tools.createShape("rect", navBaseX, navBaseY, 580, itemHeight, "#f8f9fa");
-          const menuItems = ["Home", "About", "Services", "Contact"];
-          const navIds = [navBg];
-          menuItems.forEach((item, index) => {
-            const x = navBaseX + 20 + (index * spacing);
-            const textId = tools.createText(item, x, navBaseY + 8, 16, "#333");
-            navIds.push(textId);
-          });
-          result = navIds;
-          break;
-          
-        case 'createCard':
-          const cardX = 300, cardY = 150, cardWidth = 280, cardHeight = 320;
-          const container = tools.createShape("rect", cardX, cardY, cardWidth, cardHeight, "#ffffff");
-          const image = tools.createShape("rect", cardX + 20, cardY + 20, cardWidth - 40, 160, "#e5e7eb");
-          const title = tools.createText("Card Title", cardX + 20, cardY + 200, 20, "#111");
-          const description = tools.createText("This is a card description with some sample text.", cardX + 20, cardY + 240, 14, "#666");
-          result = [container, image, title, description];
-          break;
-          
-        case 'arrangeHorizontally':
-          const shapes = tools.getCanvasState();
-          if (shapes.length > 0) {
-            const sortedShapes = [...shapes].sort((a, b) => a.x - b.x);
-            const startX = 100, arrangeSpacing = 150, baseY = 200;
-            sortedShapes.forEach((shape, index) => {
-              const newX = startX + (index * arrangeSpacing);
-              tools.moveShape(shape.id, newX, baseY);
-            });
-            result = sortedShapes.map(s => s.id);
-          } else {
-            result = [];
-          }
-          break;
-          
-        default:
-          console.warn(`Unknown AI action: ${action.tool}`);
-          result = null;
-      }
-      
-      results.push(result);
-    } catch (error) {
-      console.error(`Error executing AI action ${action.tool}:`, error);
-      results.push(null);
-    }
-  }
-  
-  return results;
-}
 
 export const tools = {
   createShape: (type: "rect"|"circle"|"text", x:number, y:number, w:number, h:number, color?:string, text?:string) => {
@@ -244,16 +135,16 @@ export async function interpretWithResponse(text: string, language: string = 'en
   const ruleResult = await interpret(text);
   
   // If rule-based parser handled it successfully, return immediately
-  if (ruleResult && typeof ruleResult === 'object') {
-    if (ruleResult.ok) {
+  if (ruleResult && typeof ruleResult === 'object' && !Array.isArray(ruleResult)) {
+    if ('ok' in ruleResult && ruleResult.ok) {
       console.log('[AI] ⚡ Rule-based parser SUCCESS:', ruleResult);
       return {
         type: 'success',
         message: `✅ Successfully executed: "${text}"`,
-        result: ruleResult.tool_calls || ruleResult
+        result: ('tool_calls' in ruleResult && ruleResult.tool_calls) ? ruleResult.tool_calls : ruleResult
       };
     }
-    if (ruleResult.error) {
+    if ('error' in ruleResult && ruleResult.error) {
       console.log('[AI] Rule-based parser error:', ruleResult.error);
       return {
         type: 'clarification_needed',
@@ -270,33 +161,7 @@ export async function interpretWithResponse(text: string, language: string = 'en
   // If rule-based parser didn't handle it, fall back to LLMs for complex commands
   console.log('[AI] Rule-based parser didn\'t handle command, trying LLMs...');
   
-  // Try serverless AI endpoint first (only in production)
-  if (import.meta.env.PROD) {
-    try {
-      console.log('[AI] Trying serverless AI endpoint for:', text);
-      const serverlessResponse = await callServerlessAI(text);
-      
-      // Execute actions if any
-      if (serverlessResponse.actions && serverlessResponse.actions.length > 0) {
-        await executeAIActions(serverlessResponse.actions);
-      }
-      
-      // Convert serverless response to our AIResponse format
-      return {
-        type: serverlessResponse.intent === 'error' ? 'error' :
-              serverlessResponse.intent === 'clarify' ? 'clarification_needed' : 'success',
-        message: serverlessResponse.message,
-        result: serverlessResponse.actions,
-        suggestions: serverlessResponse.suggestions || []
-      };
-      
-    } catch (error) {
-      console.error('[AI] Serverless AI failed, trying browser-based APIs:', error);
-      // Fall through to browser-based APIs
-    }
-  } else {
-    console.log('[AI] Development mode - skipping serverless, using browser APIs');
-  }
+  // Skip serverless AI - using browser-based APIs directly
 
   // Try Groq browser client if configured (free and fast!)
   console.log('[DEBUG] Checking Groq configuration...');
@@ -305,10 +170,7 @@ export async function interpretWithResponse(text: string, language: string = 'en
       console.log('[AI] Using browser Groq for:', text);
       const groqResponse = await callGroq(text, language);
       
-      // Execute actions if any
-      if (groqResponse.actions && groqResponse.actions.length > 0) {
-        await executeAIActions(groqResponse.actions);
-      }
+      // Actions are now handled by rule-based parser, not LLM fallback
       
       // Convert Groq response to our AIResponse format
       return {
@@ -332,10 +194,7 @@ export async function interpretWithResponse(text: string, language: string = 'en
       console.log('[AI] Using browser OpenAI for:', text);
       const openaiResponse = await callOpenAI(text, language);
       
-      // Execute actions if any
-      if (openaiResponse.actions && openaiResponse.actions.length > 0) {
-        await executeAIActions(openaiResponse.actions);
-      }
+      // Actions are now handled by rule-based parser, not LLM fallback
       
       // Convert OpenAI response to our AIResponse format
       return {

@@ -23,14 +23,10 @@ vi.mock('../services/openaiService', () => ({
   isOpenAIConfigured: vi.fn(() => true),
 }));
 
-vi.mock('../services/serverlessAI', () => ({
-  callServerlessAI: vi.fn(),
-}));
 
 // Import the modules after mocking
 import { callGroq } from '../services/groqService';
 import { callOpenAI } from '../services/openaiService';
-import { callServerlessAI } from '../services/serverlessAI';
 import { interpretWithResponse } from '../ai/agent';
 
 // Mock the canvas store

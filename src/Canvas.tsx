@@ -8,7 +8,6 @@ import { isOpenAIConfigured } from "./services/openaiService";
 import { isGroqConfigured } from "./services/groqService";
 import { SaveStatusIndicator } from "./components/SaveStatusIndicator";
 import { useTheme } from "./contexts/ThemeContext";
-import { runAgentSmokeTests, testCommand } from "./ai/devEval";
 
 // Web Speech API type declarations
 declare global {
@@ -66,7 +65,7 @@ function TopRibbon({ onSignOut, stageRef }: { onSignOut: () => void; stageRef: R
   const [showClearConfirmation, setShowClearConfirmation] = useState(false);
   const [availableCanvases, setAvailableCanvases] = useState<any[]>([]);
   const [isLoadingCanvases, setIsLoadingCanvases] = useState(false);
-  const { currentCanvas, hasUnsavedChanges, shapes } = useCanvas();
+  const { currentCanvas, shapes } = useCanvas();
   const { theme, colors, setTheme, showFPS, setShowFPS, showGrid, setShowGrid, halloweenMode, setHalloweenMode } = useTheme();
 
   const exportToPNG = () => {
@@ -274,7 +273,7 @@ function TopRibbon({ onSignOut, stageRef }: { onSignOut: () => void; stageRef: R
         const reader = new FileReader();
         reader.onload = (e) => {
           const imageUrl = e.target?.result as string;
-          createImageShape(imageUrl, file.name);
+          createImageShape(imageUrl);
         };
         reader.readAsDataURL(file);
       }
@@ -282,7 +281,7 @@ function TopRibbon({ onSignOut, stageRef }: { onSignOut: () => void; stageRef: R
     input.click();
   };
 
-  const createImageShape = (imageUrl: string, fileName: string) => {
+  const createImageShape = (imageUrl: string) => {
     // Create an Image object to get dimensions
     const img = new Image();
     img.onload = () => {
@@ -1278,33 +1277,8 @@ export default function Canvas({ onSignOut }: CanvasProps) {
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [editingText]);
 
-  const onSelect = (id: string, e:any) => {
-    e.cancelBubble = true; // Prevent event from bubbling to stage
-    if (e.evt.shiftKey) {
-      const currentSelection = useCanvas.getState().selectedIds;
-      const newSelection = [...currentSelection, id];
-      const uniqueSelection = Array.from(new Set(newSelection));
-      useCanvas.getState().select(uniqueSelection);
-    } else {
-      useCanvas.getState().select([id]);
-    }
-  };
 
   // Text editing
-  const onTextDoubleClick = (id: string, e: any) => {
-    const shape = useCanvas.getState().shapes[id];
-    if (shape && shape.type === 'text') {
-      const stage = canvasStageRef.current;
-      const pos = stage.getPointerPosition();
-      setEditingText({
-        id,
-        x: pos.x,
-        y: pos.y,
-        value: shape.text || ''
-      });
-      e.cancelBubble = true;
-    }
-  };
 
   const finishTextEdit = (save: boolean = true) => {
     if (editingText && save) {
@@ -3856,24 +3830,6 @@ function HelpMenu() {
                 <div className="border-t pt-3">
                   <div className="font-medium text-slate-600 mb-2">🤖 AI Agent Testing</div>
                   <div className="space-y-2">
-                    <button
-                      onClick={async () => {
-                        console.log('🧪 Running AI Agent Smoke Tests...');
-                        await runAgentSmokeTests();
-                      }}
-                      className="w-full px-3 py-1 bg-blue-100 text-blue-700 rounded text-xs hover:bg-blue-200 transition-colors"
-                    >
-                      Run Smoke Tests
-                    </button>
-                    <button
-                      onClick={async () => {
-                        const cmd = prompt('Test AI command:');
-                        if (cmd) await testCommand(cmd);
-                      }}
-                      className="w-full px-3 py-1 bg-green-100 text-green-700 rounded text-xs hover:bg-green-200 transition-colors"
-                    >
-                      Test Single Command
-                    </button>
                   </div>
                   <div className="text-xs text-slate-400 mt-1">
                     Check browser console for results
