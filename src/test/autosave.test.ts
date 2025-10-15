@@ -175,7 +175,7 @@ describe('Auto-Save Service', () => {
     });
   });
 
-  describe.skip('Auto-Save Timer', () => {
+  describe('Auto-Save Timer', () => {
     it('should start and stop auto-save timer', () => {
       const setIntervalSpy = vi.spyOn(global, 'setInterval');
       const clearIntervalSpy = vi.spyOn(global, 'clearInterval');
@@ -210,7 +210,7 @@ describe('Auto-Save Service', () => {
   });
 });
 
-describe.skip('Zustand Store Auto-Save Integration', () => {
+describe('Zustand Store Auto-Save Integration', () => {
   let useCanvas: any;
 
   beforeEach(async () => {
