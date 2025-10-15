@@ -45,50 +45,7 @@ useCanvas.subscribe(
 );
 
 // Canvas-auto-save integration - Connect triggerManualSave to canvas save
-const originalCreateCanvasSlice = createCanvasSlice;
-const enhancedCreateCanvasSlice = (...args: any[]) => {
-  const canvasSlice = originalCreateCanvasSlice(...args);
-  
-  // Enhance triggerManualSave to use canvas saving
-  const originalTriggerManualSave = canvasSlice.saveCurrentCanvas;
-  
-  return {
-    ...canvasSlice,
-    // Override the auto-save slice's triggerManualSave to use canvas save
-    triggerManualSave: async () => {
-      const store = useCanvas.getState();
-      
-      try {
-        store.setSaveStatus('saving', 'Saving...');
-        
-        // Save current shapes first
-        const currentShapes = Object.values(store.shapes);
-        if (store.currentCanvas) {
-          const { canvasService } = await import('../services/canvasService');
-          await canvasService.saveShapesToCanvas(store.currentCanvas.id, currentShapes);
-        }
-        
-        // Then save canvas metadata
-        await store.saveCurrentCanvas();
-        
-        store.setSaveStatus('saved', 'Saved successfully');
-        
-        // Clear the "saved" status after a few seconds
-        setTimeout(() => {
-          const currentState = useCanvas.getState();
-          if (currentState.saveStatus === 'saved') {
-            currentState.setSaveStatus('idle');
-          }
-        }, 3000);
-        
-      } catch (error) {
-        console.error('Manual save failed:', error);
-        store.setSaveStatus('error', error instanceof Error ? error.message : 'Save failed');
-        throw error;
-      }
-    },
-  };
-};
+// TODO: This will be implemented when we fully migrate to the slice architecture
 
 // Room synchronization - Update roomId when currentCanvas changes
 useCanvas.subscribe(
