@@ -4,6 +4,29 @@ import type { ShapeBase, CreateShapeData, UpdateShapeData, ShapeType, Cursor } f
 import type { Canvas } from "../services/canvasService";
 import type { AutoSaveSettings } from "../services/autoSaveService";
 
+// Helper functions for last active canvas persistence
+const LAST_CANVAS_KEY = 'collabcanvas_last_active';
+
+function getLastActiveCanvasId(): string | null {
+  try {
+    return localStorage.getItem(LAST_CANVAS_KEY);
+  } catch {
+    return null;
+  }
+}
+
+function setLastActiveCanvasId(canvasId: string | null): void {
+  try {
+    if (canvasId) {
+      localStorage.setItem(LAST_CANVAS_KEY, canvasId);
+    } else {
+      localStorage.removeItem(LAST_CANVAS_KEY);
+    }
+  } catch {
+    // Ignore localStorage errors
+  }
+}
+
 export type CanvasState = {
   shapes: Record<string, ShapeBase>;
   selectedIds: string[];
@@ -73,6 +96,7 @@ export type CanvasState = {
   createNewCanvas: (title?: string) => Promise<Canvas>;
   saveCurrentCanvas: (title?: string) => Promise<void>;
   duplicateCurrentCanvas: (newTitle?: string) => Promise<Canvas>;
+  initializeCanvas: () => Promise<void>;
   
   // Tab management functions
   openCanvasInTab: (canvas: Canvas) => void;
@@ -281,6 +305,11 @@ export const useCanvas = create<CanvasState>()(immer((set, get) => ({
     s.currentCanvas = canvas;
     if (canvas) {
       s.roomId = canvas.room_id;
+      // Save as last active canvas
+      setLastActiveCanvasId(canvas.id);
+    } else {
+      // Clear last active if no canvas
+      setLastActiveCanvasId(null);
     }
   }),
   
@@ -442,6 +471,51 @@ export const useCanvas = create<CanvasState>()(immer((set, get) => ({
         s.isCanvasLoading = false;
       });
       throw error;
+    }
+  },
+
+  initializeCanvas: async () => {
+    const { canvasService } = await import('../services/canvasService');
+    
+    try {
+      // Check for last active canvas in localStorage
+      const lastActiveCanvasId = getLastActiveCanvasId();
+      
+      if (lastActiveCanvasId) {
+        // Try to load the last active canvas
+        try {
+          await get().loadCanvas(lastActiveCanvasId);
+          console.log('✅ Restored last active canvas:', lastActiveCanvasId);
+          return;
+        } catch (error) {
+          console.warn('❌ Failed to load last active canvas, trying most recent:', error);
+          // Fall through to load most recent canvas
+        }
+      }
+      
+      // Get user's canvases and load the most recent one
+      const canvases = await canvasService.getUserCanvases();
+      
+      if (canvases.length > 0) {
+        // Sort by updated_at descending and load the most recent
+        const mostRecent = canvases.sort((a, b) => 
+          new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime()
+        )[0];
+        
+        await get().loadCanvas(mostRecent.id);
+        console.log('✅ Loaded most recent canvas:', mostRecent.title);
+      } else {
+        // No canvases exist, create a new default one
+        const newCanvas = await get().createNewCanvas('My First Canvas');
+        console.log('✅ Created first canvas:', newCanvas.title);
+      }
+      
+    } catch (error) {
+      console.error('❌ Failed to initialize canvas:', error);
+      // Keep the default "room-1" state as fallback
+      set((s) => { 
+        s.canvasError = 'Failed to load canvas. Using default workspace.';
+      });
     }
   },
   

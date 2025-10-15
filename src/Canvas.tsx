@@ -1027,6 +1027,19 @@ export default function Canvas({ onSignOut }: CanvasProps) {
   const layerRef = useRef<any>(null);
   const canvasContainerRef = useRef<HTMLDivElement>(null);
 
+  // Initialize with last active canvas on app start
+  useEffect(() => {
+    const initCanvas = async () => {
+      try {
+        await useCanvas.getState().initializeCanvas();
+      } catch (error) {
+        console.error('Failed to initialize canvas on startup:', error);
+      }
+    };
+    
+    initCanvas();
+  }, []); // Only run once on mount
+
   // Realtime init with connection status tracking
   useEffect(() => {
     const roomId = useCanvas.getState().roomId;
