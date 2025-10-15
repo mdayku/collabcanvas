@@ -80,7 +80,25 @@ function TopRibbon({ onSignOut, stageRef }: { onSignOut: () => void; stageRef: R
         canvasState.openCanvasInTab(newCanvas);
       } catch (error) {
         console.error('Canvas creation error:', error);
-      alert('Unable to create new canvas. Please check your connection and try again.');
+        
+        // More detailed error handling for better debugging
+        if (error instanceof Error) {
+          console.log('Full error details:', {
+            message: error.message,
+            stack: error.stack,
+            name: error.name
+          });
+          
+          if (error.message.includes('Failed to create canvas')) {
+            alert(`Canvas creation failed: ${error.message}. This may be a temporary database issue. Please try again in a moment.`);
+          } else if (error.message.includes('Failed to retrieve')) {
+            alert('Canvas was created but could not be loaded immediately. Please refresh the page and check your canvases.');
+          } else {
+            alert(`Error: ${error.message}. Please try again or contact support if this continues.`);
+          }
+        } else {
+          alert('Unable to create new canvas. Please check your connection and try again.');
+        }
       }
     }
     setShowFileMenu(false);
@@ -458,7 +476,13 @@ function TabBar() {
       await canvasState.loadCanvas(newCanvas.id);
     } catch (error) {
       console.error('Canvas creation error:', error);
-      alert('Unable to create new canvas. Please check your connection and try again.');
+      
+      // More detailed error handling
+      if (error instanceof Error) {
+        alert(`Tab creation failed: ${error.message}. Please try creating a new canvas from the File menu instead.`);
+      } else {
+        alert('Unable to create new canvas tab. Please check your connection and try again.');
+      }
     }
   };
 
@@ -1071,6 +1095,8 @@ export default function Canvas({ onSignOut }: CanvasProps) {
             imageUrl={s.imageUrl}
             width={s.w}
             height={s.h}
+            stroke={s.stroke}
+            strokeWidth={s.strokeWidth}
           />
         )}
         {s.type === "triangle" && (
@@ -1173,6 +1199,7 @@ export default function Canvas({ onSignOut }: CanvasProps) {
 
   return (
     <div className="h-screen w-screen flex flex-col overflow-hidden">
+      {/* Layout fix v2: Force cache refresh for production deployment */}
       <TopRibbon onSignOut={onSignOut} stageRef={canvasStageRef} />
       <TabBar />
       <div className="flex-1 flex min-h-0">
@@ -2285,8 +2312,8 @@ function ContextMenu({ x, y, shapeId, onClose }: {
 }
 
 // Custom Shape Components
-function ImageShape({ imageUrl, width, height }: {
-  imageUrl: string; width: number; height: number;
+function ImageShape({ imageUrl, width, height, stroke, strokeWidth }: {
+  imageUrl: string; width: number; height: number; stroke?: string; strokeWidth?: number;
 }) {
   const [image, setImage] = useState<HTMLImageElement | null>(null);
 
@@ -2302,9 +2329,11 @@ function ImageShape({ imageUrl, width, height }: {
     img.src = imageUrl;
   }, [imageUrl]);
 
+  const hasStroke = stroke && strokeWidth && strokeWidth > 0;
+
   if (!image) {
     // Show loading placeholder
-    return (
+  return (
       <Rect
         x={0}
         y={0}
@@ -2319,13 +2348,29 @@ function ImageShape({ imageUrl, width, height }: {
   }
 
   return (
-    <KonvaImage
-      image={image}
-      x={0}
-      y={0}
-      width={width}
-      height={height}
-    />
+    <>
+      {/* Border/Outline if stroke is defined */}
+      {hasStroke && (
+        <Rect
+          x={0}
+          y={0}
+          width={width}
+          height={height}
+          fill="transparent"
+          stroke={stroke}
+          strokeWidth={strokeWidth}
+        />
+      )}
+      
+      {/* The actual image */}
+      <KonvaImage
+        image={image}
+        x={0}
+        y={0}
+        width={width}
+        height={height}
+      />
+    </>
   );
 }
 
