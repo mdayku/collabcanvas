@@ -32,11 +32,26 @@ export default function Auth({ onAuthSuccess }: AuthProps) {
     }
 
     // Listen for Supabase auth events (password recovery)
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
-      console.log('Auth event:', event);
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
+      console.log('Auth event:', event, 'Session:', !!session);
       
       if (event === 'PASSWORD_RECOVERY') {
-        console.log('Password recovery detected!');
+        console.log('Password recovery detected! Session established.');
+        setIsResettingPassword(true);
+        setError(""); // Clear any errors
+      }
+      
+      // If session exists and we're in recovery mode, we're good to go
+      if (event === 'SIGNED_IN' && params.get('reset') === 'true') {
+        console.log('Session established for password reset');
+        setIsResettingPassword(true);
+      }
+    });
+
+    // Also check if there's already an active session (user refreshed page)
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      if (session && params.get('reset') === 'true') {
+        console.log('Existing session found for password reset');
         setIsResettingPassword(true);
       }
     });
@@ -282,6 +297,13 @@ export default function Auth({ onAuthSuccess }: AuthProps) {
     }
 
     try {
+      // Check if we have an active session
+      const { data: { session } } = await supabase.auth.getSession();
+      
+      if (!session) {
+        throw new Error("Your reset link has expired or is invalid. Please request a new password reset.");
+      }
+
       const { error } = await supabase.auth.updateUser({
         password: newPassword
       });
@@ -300,7 +322,8 @@ export default function Auth({ onAuthSuccess }: AuthProps) {
         setPasswordUpdated(false);
       }, 3000);
     } catch (error: any) {
-      setError(error.message);
+      console.error('Password update error:', error);
+      setError(error.message || "Failed to update password. Please try again.");
     } finally {
       setLoading(false);
     }
