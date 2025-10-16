@@ -161,6 +161,30 @@ function TopRibbon({ onSignOut, stageRef, setShowHelpPopup, centerOnNewShape, se
   const { currentCanvas, shapes } = useCanvas();
   const { theme, colors, setTheme, showFPS, setShowFPS, showGrid, setShowGrid, snapToGrid, setSnapToGrid } = useTheme();
   const fps = useFps();
+  
+  // Refs for click-outside detection
+  const fileMenuRef = useRef<HTMLDivElement>(null);
+  const viewMenuRef = useRef<HTMLDivElement>(null);
+  
+  // Click-outside detection for dropdown menus
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      const target = event.target as Node;
+      
+      // Close File menu if clicking outside
+      if (showFileMenu && fileMenuRef.current && !fileMenuRef.current.contains(target)) {
+        setShowFileMenu(false);
+      }
+      
+      // Close View menu if clicking outside
+      if (showViewMenu && viewMenuRef.current && !viewMenuRef.current.contains(target)) {
+        setShowViewMenu(false);
+      }
+    };
+    
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, [showFileMenu, showViewMenu]);
 
   const exportToPNG = () => {
     if (stageRef.current) {
@@ -460,7 +484,7 @@ function TopRibbon({ onSignOut, stageRef, setShowHelpPopup, centerOnNewShape, se
       {/* Left side - File & View Menus */}
       <div className="flex items-center space-x-2">
         {/* File Menu */}
-        <div className="relative">
+        <div className="relative" ref={fileMenuRef}>
           <button
             onClick={() => {
               setShowFileMenu(!showFileMenu);
@@ -479,7 +503,7 @@ function TopRibbon({ onSignOut, stageRef, setShowHelpPopup, centerOnNewShape, se
         
         {showFileMenu && (
           <div 
-            className="absolute left-0 top-full mt-1 w-48 rounded-md shadow-lg border z-50"
+            className="absolute left-0 top-full mt-1 w-48 rounded-md shadow-lg border z-50 animate-slideDown"
             style={{ 
               backgroundColor: colors.bg, 
               borderColor: colors.border 
@@ -630,7 +654,7 @@ function TopRibbon({ onSignOut, stageRef, setShowHelpPopup, centerOnNewShape, se
         </div>
 
         {/* View Menu */}
-        <div className="relative">
+        <div className="relative" ref={viewMenuRef}>
           <button
             onClick={() => {
               setShowViewMenu(!showViewMenu);
@@ -649,7 +673,7 @@ function TopRibbon({ onSignOut, stageRef, setShowHelpPopup, centerOnNewShape, se
 
           {showViewMenu && (
             <div 
-              className="absolute left-0 top-full mt-1 w-48 rounded-md shadow-lg border z-50"
+              className="absolute left-0 top-full mt-1 w-48 rounded-md shadow-lg border z-50 animate-slideDown"
               style={{ 
                 backgroundColor: colors.bg, 
                 borderColor: colors.border 
@@ -2999,6 +3023,15 @@ export default function Canvas({ onSignOut }: CanvasProps) {
             const screenX = cursor.x * stageScale + stagePos.x;
             const screenY = cursor.y * stageScale + stagePos.y;
             
+            // Get user initials for avatar bubble
+            const getInitials = (name: string) => {
+              const parts = name.trim().split(' ');
+              if (parts.length >= 2) {
+                return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
+              }
+              return name.slice(0, 2).toUpperCase();
+            };
+            
             return (
               <div
                 key={cursor.id}
@@ -3018,12 +3051,25 @@ export default function Canvas({ onSignOut }: CanvasProps) {
                     strokeWidth="1"
                   />
                 </svg>
-                {/* User name label */}
-                <div
-                  className="absolute top-6 left-2 px-2 py-1 rounded text-xs font-medium text-white shadow-lg whitespace-nowrap"
-                  style={{ backgroundColor: cursor.color }}
-                >
-                  {cursor.name}
+                
+                {/* Avatar bubble and name label container */}
+                <div className="absolute top-6 left-2 flex items-center gap-1.5">
+                  {/* Avatar bubble */}
+                  <div
+                    className="w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold text-white shadow-md border-2 border-white"
+                    style={{ backgroundColor: cursor.color }}
+                    title={cursor.name}
+                  >
+                    {getInitials(cursor.name)}
+                  </div>
+                  
+                  {/* User name label */}
+                  <div
+                    className="px-2 py-1 rounded text-xs font-medium text-white shadow-lg whitespace-nowrap"
+                    style={{ backgroundColor: cursor.color }}
+                  >
+                    {cursor.name}
+                  </div>
                 </div>
               </div>
             );

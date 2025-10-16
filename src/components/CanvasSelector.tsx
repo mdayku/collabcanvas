@@ -16,7 +16,7 @@ export function CanvasSelector({ onCanvasSelect, onCreateNew, onSkip }: CanvasSe
   const [showCreateForm, setShowCreateForm] = useState(false);
   const [selectedForDelete, setSelectedForDelete] = useState<Set<string>>(new Set());
   const [showBulkDelete, setShowBulkDelete] = useState(false);
-  const { colors, halloweenMode, actualTheme } = useTheme();
+  const { colors, theme, actualTheme } = useTheme();
 
   useEffect(() => {
     loadCanvases();
@@ -134,7 +134,7 @@ export function CanvasSelector({ onCanvasSelect, onCreateNew, onSkip }: CanvasSe
     <div 
       className="fixed inset-0 z-50 flex items-center justify-center p-4"
       style={{ 
-        backgroundColor: halloweenMode 
+        backgroundColor: theme === 'halloween'
           ? 'rgba(26, 15, 26, 0.9)' // Dark purple overlay for Halloween 
           : actualTheme === 'dark' 
           ? 'rgba(17, 24, 39, 0.8)' // Dark gray for dark mode
