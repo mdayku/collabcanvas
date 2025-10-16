@@ -328,37 +328,55 @@ export async function generateImageWithDALLE(prompt: string, frameWidth?: number
               console.warn('[DALL-E] ⚠️ Vercel proxy failed:', proxyError);
             }
           } else if (isAWSAmplify) {
-            // For AWS Amplify, use a reliable CORS proxy service
-            try {
-              console.log('[DALL-E] 🌐 Using AWS-compatible CORS proxy...');
-              
-              // Use a more reliable proxy service for AWS
-              const corsProxyUrl = `https://api.allorigins.win/raw?url=${encodeURIComponent(imageUrl)}`;
-              const response = await fetch(corsProxyUrl, {
-                headers: { 'Accept': 'image/*' }
-              });
+            // For AWS Amplify, try multiple CORS proxy services
+            const corsProxies = [
+              `https://api.codetabs.com/v1/proxy?quest=${encodeURIComponent(imageUrl)}`,
+              `https://thingproxy.freeboard.io/fetch/${encodeURIComponent(imageUrl)}`,
+              `https://api.allorigins.win/raw?url=${encodeURIComponent(imageUrl)}`
+            ];
+            
+            for (let i = 0; i < corsProxies.length; i++) {
+              try {
+                console.log(`[DALL-E] 🌐 Trying AWS proxy ${i + 1}/${corsProxies.length}...`);
+                
+                const controller = new AbortController();
+                const timeoutId = setTimeout(() => controller.abort(), 8000); // 8 second timeout
+                
+                const response = await fetch(corsProxies[i], {
+                  signal: controller.signal,
+                  headers: { 'Accept': 'image/*' }
+                });
+                clearTimeout(timeoutId);
 
-              if (!response.ok) {
-                throw new Error(`CORS proxy failed: ${response.status}`);
+                if (!response.ok) {
+                  throw new Error(`Proxy ${i + 1} failed: ${response.status}`);
+                }
+
+                const blob = await response.blob();
+                
+                if (!blob.type.startsWith('image/')) {
+                  throw new Error(`Proxy ${i + 1} returned ${blob.type} instead of image (${blob.size} bytes)`);
+                }
+
+                const dataUrl = await new Promise<string>((resolve) => {
+                  const reader = new FileReader();
+                  reader.onload = () => resolve(reader.result as string);
+                  reader.readAsDataURL(blob);
+                });
+                
+                if (!dataUrl.startsWith('data:image/')) {
+                  throw new Error(`Proxy ${i + 1} produced invalid data URL`);
+                }
+
+                console.log(`[DALL-E] ✅ Image converted via AWS proxy ${i + 1} (${blob.type}, ${blob.size} bytes)`);
+                return dataUrl;
+                
+              } catch (proxyError) {
+                console.warn(`[DALL-E] ⚠️ AWS proxy ${i + 1} failed:`, proxyError);
+                if (i === corsProxies.length - 1) {
+                  console.warn('[DALL-E] All AWS proxies failed');
+                }
               }
-
-              const blob = await response.blob();
-              
-              if (!blob.type.startsWith('image/')) {
-                throw new Error(`Invalid content type: ${blob.type}`);
-              }
-
-              const dataUrl = await new Promise<string>((resolve) => {
-                const reader = new FileReader();
-                reader.onload = () => resolve(reader.result as string);
-                reader.readAsDataURL(blob);
-              });
-
-              console.log(`[DALL-E] ✅ Image converted via AWS proxy (${blob.type}, ${blob.size} bytes)`);
-              return dataUrl;
-              
-            } catch (proxyError) {
-              console.warn('[DALL-E] ⚠️ AWS proxy failed:', proxyError);
             }
           }
           
