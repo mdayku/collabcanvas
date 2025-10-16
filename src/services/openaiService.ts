@@ -345,10 +345,13 @@ export async function generateImageWithDALLE(prompt: string, frameWidth?: number
       }
     }
     
+    // If we reach here, all proxies failed but we should still return the original URL
+    return imageUrl;
+    
   } catch (error) {
     console.error('[DALL-E] Image generation failed:', error);
     console.log('[DALL-E] Error type:', typeof error);
-    console.log('[DALL-E] Error message:', error?.message || 'No message');
+    console.log('[DALL-E] Error message:', (error as any)?.message || 'No message');
     console.log('[DALL-E] Full error object:', JSON.stringify(error, null, 2));
     
     // 🎭 TEMPORARY: Disabled mock to test real API key
@@ -362,7 +365,7 @@ export async function generateImageWithDALLE(prompt: string, frameWidth?: number
     
     // Check for billing errors in multiple ways
     const errorStr = JSON.stringify(error).toLowerCase();
-    const messageStr = (error?.message || '').toLowerCase();
+    const messageStr = ((error as any)?.message || '').toLowerCase();
     
     if (errorStr.includes('billing') || messageStr.includes('billing') || 
         errorStr.includes('hard limit') || messageStr.includes('hard limit')) {
