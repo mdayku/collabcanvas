@@ -1,6 +1,6 @@
 import React, { createContext, useContext, useEffect, useState } from 'react';
 
-export type Theme = 'light' | 'dark' | 'system';
+export type Theme = 'light' | 'dark' | 'system' | 'halloween';
 
 export interface ThemeColors {
   // Main backgrounds
@@ -114,8 +114,6 @@ interface ThemeContextType {
   setShowGrid: (show: boolean) => void;
   snapToGrid: boolean;
   setSnapToGrid: (snap: boolean) => void;
-  halloweenMode: boolean;
-  setHalloweenMode: (enabled: boolean) => void;
 }
 
 const ThemeContext = createContext<ThemeContextType | undefined>(undefined);
@@ -141,11 +139,6 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
     return saved === 'true';
   });
   
-  const [halloweenMode, setHalloweenModeState] = useState(() => {
-    const saved = localStorage.getItem('collabcanvas-halloween-mode');
-    return saved === 'true';
-  });
-  
   const [systemTheme, setSystemTheme] = useState<'light' | 'dark'>('light');
 
   // Detect system theme preference
@@ -162,8 +155,8 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   // Resolve actual theme
-  const actualTheme: 'light' | 'dark' = theme === 'system' ? systemTheme : theme;
-  const colors = halloweenMode ? halloweenTheme : (actualTheme === 'dark' ? darkTheme : lightTheme);
+  const actualTheme: 'light' | 'dark' = theme === 'system' ? systemTheme : (theme === 'halloween' ? 'dark' : theme);
+  const colors = theme === 'halloween' ? halloweenTheme : (actualTheme === 'dark' ? darkTheme : lightTheme);
 
   // Apply theme to document
   useEffect(() => {
@@ -192,11 +185,6 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
     localStorage.setItem('collabcanvas-snap-to-grid', snap.toString());
   };
 
-  const setHalloweenMode = (enabled: boolean) => {
-    setHalloweenModeState(enabled);
-    localStorage.setItem('collabcanvas-halloween-mode', enabled.toString());
-  };
-
   return (
     <ThemeContext.Provider
       value={{
@@ -210,8 +198,6 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
         setShowGrid: handleSetShowGrid,
         snapToGrid,
         setSnapToGrid: handleSetSnapToGrid,
-        halloweenMode,
-        setHalloweenMode,
       }}
     >
       {children}

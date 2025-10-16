@@ -953,9 +953,9 @@ export const useCanvas = create<CanvasState>()(immer((set, get) => ({
 function getShapeDefaults(type: ShapeType): Partial<ShapeBase> {
   switch (type) {
     case 'rect':
-      return { x: 100, y: 100, w: 120, h: 80 };
+      return { x: 100, y: 100, w: 120, h: 80, strokeWidth: 2 };
     case 'circle':
-      return { x: 100, y: 100, w: 100, h: 100 };
+      return { x: 100, y: 100, w: 100, h: 100, strokeWidth: 2 };
     case 'text':
       return { 
         x: 100, 
@@ -969,10 +969,11 @@ function getShapeDefaults(type: ShapeType): Partial<ShapeBase> {
         fontStyle: 'normal',
         fontWeight: 'normal',
         textDecoration: 'none',
-        color: '#111111' // Always dark text for canvas visibility, regardless of theme
+        color: '#111111', // Always dark text for canvas visibility
+        strokeWidth: 0 // Text doesn't need stroke
       };
     case 'image':
-      return { x: 100, y: 100, w: 200, h: 150 };
+      return { x: 100, y: 100, w: 200, h: 150, strokeWidth: 2 };
     case 'line':
       return { 
         x: 100, 
@@ -982,7 +983,7 @@ function getShapeDefaults(type: ShapeType): Partial<ShapeBase> {
         x2: 220, 
         y2: 120, 
         stroke: '#111111', 
-        strokeWidth: 3 
+        strokeWidth: 3 // Lines need thicker stroke for visibility
       };
     case 'arrow':
       return { 
@@ -993,7 +994,7 @@ function getShapeDefaults(type: ShapeType): Partial<ShapeBase> {
         x2: 220, 
         y2: 120, 
         stroke: '#111111', 
-        strokeWidth: 3, 
+        strokeWidth: 3, // Arrows need thicker stroke for visibility
         arrowHead: 'end' 
       };
     case 'frame':
@@ -1006,8 +1007,29 @@ function getShapeDefaults(type: ShapeType): Partial<ShapeBase> {
         stroke: '#6c757d',
         strokeWidth: 2
       };
+    // Explicit defaults for all shape types (consistent sizes)
+    case 'triangle':
+      return { x: 100, y: 100, w: 100, h: 100, strokeWidth: 2 };
+    case 'star':
+      return { x: 100, y: 100, w: 100, h: 100, strokeWidth: 2 };
+    case 'heart':
+      return { x: 100, y: 100, w: 90, h: 100, strokeWidth: 2 }; // Slightly taller for better proportions
+    case 'pentagon':
+      return { x: 100, y: 100, w: 100, h: 100, strokeWidth: 2 };
+    case 'hexagon':
+      return { x: 100, y: 100, w: 100, h: 100, strokeWidth: 2 };
+    case 'octagon':
+      return { x: 100, y: 100, w: 100, h: 100, strokeWidth: 2 };
+    case 'oval':
+      return { x: 100, y: 100, w: 120, h: 80, strokeWidth: 2 }; // Horizontal ellipse like rect
+    case 'trapezoid':
+      return { x: 100, y: 100, w: 120, h: 80, strokeWidth: 2 };
+    case 'rhombus':
+      return { x: 100, y: 100, w: 100, h: 100, strokeWidth: 2 };
+    case 'parallelogram':
+      return { x: 100, y: 100, w: 120, h: 80, strokeWidth: 2 };
     default:
-      return { x: 100, y: 100, w: 100, h: 100 };
+      return { x: 100, y: 100, w: 100, h: 100, strokeWidth: 2 };
   }
 }
 
