@@ -6,7 +6,7 @@ import { callGroq, isGroqConfigured } from "../services/groqService";
 
 
 export const tools = {
-  createShape: (type: "rect"|"circle"|"text", x:number, y:number, w:number, h:number, color?:string, text?:string) => {
+  createShape: (type: "rect"|"circle"|"text"|"triangle"|"star"|"heart"|"pentagon"|"hexagon"|"octagon"|"oval"|"trapezoid"|"rhombus"|"parallelogram"|"line"|"arrow"|"frame", x:number, y:number, w:number, h:number, color?:string, text?:string) => {
     // Save history before AI creates shapes
     useCanvas.getState().pushHistory();
     const s: ShapeBase = { id: crypto.randomUUID(), type, x, y, w, h, color, text, rotation: 0, updated_at: Date.now(), updated_by: useCanvas.getState().me.id };
@@ -22,6 +22,78 @@ export const tools = {
   moveShape: (id:string, x:number, y:number) => up(id, { x, y }),
   resizeShape: (id:string, w:number, h:number) => up(id, { w, h }),
   rotateShape: (id:string, deg:number) => up(id, { rotation: deg }),
+  changeColor: (id:string, color:string) => up(id, { color }),
+  changeStroke: (id:string, stroke:string, strokeWidth?:number) => {
+    const updates: Partial<ShapeBase> = { stroke };
+    if (strokeWidth !== undefined) updates.strokeWidth = strokeWidth;
+    return up(id, updates);
+  },
+  deleteShape: (id:string) => {
+    useCanvas.getState().pushHistory();
+    const shapes = useCanvas.getState().shapes;
+    if (shapes[id]) {
+      useCanvas.getState().remove([id]);
+      broadcastRemove([id]);
+      // Delete from database
+      supabase.from("shapes").delete().eq("id", id);
+    }
+  },
+  duplicateShape: (id:string) => {
+    const original = useCanvas.getState().shapes[id];
+    if (!original) return null;
+    
+    useCanvas.getState().pushHistory();
+    const duplicate: ShapeBase = {
+      ...original,
+      id: crypto.randomUUID(),
+      x: original.x + 20,
+      y: original.y + 20,
+      updated_at: Date.now(),
+      updated_by: useCanvas.getState().me.id
+    };
+    
+    useCanvas.getState().upsert(duplicate);
+    broadcastUpsert(duplicate);
+    persist(duplicate);
+    useCanvas.getState().select([duplicate.id]);
+    
+    return duplicate.id;
+  },
+  groupShapes: (ids:string[]) => {
+    useCanvas.getState().pushHistory();
+    const groupId = useCanvas.getState().groupShapes(ids);
+    return groupId;
+  },
+  ungroupShapes: (groupId:string) => {
+    useCanvas.getState().pushHistory();
+    useCanvas.getState().ungroupShapes(groupId);
+  },
+  alignShapes: (ids:string[], alignment: 'left'|'right'|'center'|'top'|'middle'|'bottom') => {
+    if (ids.length < 2) return;
+    useCanvas.getState().pushHistory();
+    
+    const shapes = ids.map(id => useCanvas.getState().shapes[id]).filter(Boolean);
+    
+    if (alignment === 'left') {
+      const minX = Math.min(...shapes.map(s => s.x));
+      shapes.forEach(s => up(s.id, { x: minX }));
+    } else if (alignment === 'right') {
+      const maxX = Math.max(...shapes.map(s => s.x + (s.w || 0)));
+      shapes.forEach(s => up(s.id, { x: maxX - (s.w || 0) }));
+    } else if (alignment === 'center') {
+      const avgX = shapes.reduce((sum, s) => sum + s.x + (s.w || 0) / 2, 0) / shapes.length;
+      shapes.forEach(s => up(s.id, { x: avgX - (s.w || 0) / 2 }));
+    } else if (alignment === 'top') {
+      const minY = Math.min(...shapes.map(s => s.y));
+      shapes.forEach(s => up(s.id, { y: minY }));
+    } else if (alignment === 'middle') {
+      const avgY = shapes.reduce((sum, s) => sum + s.y + (s.h || 0) / 2, 0) / shapes.length;
+      shapes.forEach(s => up(s.id, { y: avgY - (s.h || 0) / 2 }));
+    } else if (alignment === 'bottom') {
+      const maxY = Math.max(...shapes.map(s => s.y + (s.h || 0)));
+      shapes.forEach(s => up(s.id, { y: maxY - (s.h || 0) }));
+    }
+  },
   createText: (text:string, x:number, y:number, fontSize:number, color?:string) => {
     // Calculate dynamic dimensions similar to the Canvas component
     const charWidth = fontSize * 0.6;
@@ -388,15 +460,120 @@ export async function interpret(text: string) {
       const id = tools.createShape("circle", 200, 200, 120, 120, parseColor(t));
       return { ok: true, tool_calls: [{ name:"createShape", args:{ type:"circle", id }}] };
     }
-    if (/\b(rect|rectangle)\b/.test(t)) {
+    if (/\b(rect|rectangle|square)\b/.test(t)) {
       const { w, h } = parseSize(t) ?? { w: 200, h: 120 };
       const id = tools.createShape("rect", 300, 220, w, h, parseColor(t));
       return { ok: true, tool_calls: [{ name:"createShape", args:{ type:"rect", id }}] };
+    }
+    if (/\b(star)\b/.test(t)) {
+      const id = tools.createShape("star", 250, 200, 100, 100, parseColor(t));
+      return { ok: true, tool_calls: [{ name:"createShape", args:{ type:"star", id }}] };
+    }
+    if (/\b(heart)\b/.test(t)) {
+      const id = tools.createShape("heart", 250, 200, 100, 100, parseColor(t));
+      return { ok: true, tool_calls: [{ name:"createShape", args:{ type:"heart", id }}] };
+    }
+    if (/\b(triangle)\b/.test(t)) {
+      const id = tools.createShape("triangle", 250, 200, 100, 100, parseColor(t));
+      return { ok: true, tool_calls: [{ name:"createShape", args:{ type:"triangle", id }}] };
+    }
+    if (/\b(pentagon)\b/.test(t)) {
+      const id = tools.createShape("pentagon", 250, 200, 100, 100, parseColor(t));
+      return { ok: true, tool_calls: [{ name:"createShape", args:{ type:"pentagon", id }}] };
+    }
+    if (/\b(hexagon)\b/.test(t)) {
+      const id = tools.createShape("hexagon", 250, 200, 100, 100, parseColor(t));
+      return { ok: true, tool_calls: [{ name:"createShape", args:{ type:"hexagon", id }}] };
+    }
+    if (/\b(octagon)\b/.test(t)) {
+      const id = tools.createShape("octagon", 250, 200, 100, 100, parseColor(t));
+      return { ok: true, tool_calls: [{ name:"createShape", args:{ type:"octagon", id }}] };
+    }
+    if (/\b(oval|ellipse)\b/.test(t)) {
+      const id = tools.createShape("oval", 250, 200, 150, 100, parseColor(t));
+      return { ok: true, tool_calls: [{ name:"createShape", args:{ type:"oval", id }}] };
     }
     if (/\b(text|label)\b/.test(t)) {
       const content = parseText(t) ?? "Hello World";
       const id = tools.createText(content, 180, 180, 24, parseColor(t));
       return { ok: true, tool_calls: [{ name:"createText", args:{ text: content, id }}] };
+    }
+  }
+
+  // COLOR CHANGES
+  if (/\b(change|make|set)\b/.test(t) && /\b(color|fill|background)\b/.test(t)) {
+    const target = resolve();
+    if (!target) return { error: "No target to color. Select a shape or mention it (e.g., 'make the circle red')" };
+    const color = parseColor(t);
+    if (color) {
+      tools.changeColor(target.id, color);
+      return { ok: true, tool_calls: [{ name:"changeColor", args:{ id: target.id, color }}] };
+    }
+  }
+
+  // STROKE CHANGES
+  if (/\b(change|add|set)\b/.test(t) && /\b(border|stroke|outline)\b/.test(t)) {
+    const target = resolve();
+    if (!target) return { error: "No target for border. Select a shape or mention it" };
+    const color = parseColor(t);
+    const widthMatch = t.match(/(\d+)\s*px/);
+    const width = widthMatch ? parseInt(widthMatch[1]) : undefined;
+    if (color) {
+      tools.changeStroke(target.id, color, width);
+      return { ok: true, tool_calls: [{ name:"changeStroke", args:{ id: target.id, stroke: color, strokeWidth: width }}] };
+    }
+  }
+
+  // DELETE
+  if (/\b(delete|remove|erase|clear)\b/.test(t) && !/\ball\b/.test(t)) {
+    const target = resolve();
+    if (!target) {
+      // Try to delete selected shapes
+      const selectedIds = useCanvas.getState().selectedIds;
+      if (selectedIds.length > 0) {
+        selectedIds.forEach(id => tools.deleteShape(id));
+        return { ok: true, tool_calls: [{ name:"deleteShape", args:{ ids: selectedIds }}] };
+      }
+      return { error: "No target to delete. Select a shape or mention it (e.g., 'delete the red circle')" };
+    }
+    tools.deleteShape(target.id);
+    return { ok: true, tool_calls: [{ name:"deleteShape", args:{ id: target.id }}] };
+  }
+
+  // DUPLICATE
+  if (/\b(duplicate|copy|clone)\b/.test(t)) {
+    const target = resolve();
+    if (!target) {
+      // Try to duplicate selected shapes
+      const selectedIds = useCanvas.getState().selectedIds;
+      if (selectedIds.length > 0) {
+        const newIds = selectedIds.map(id => tools.duplicateShape(id)).filter(Boolean);
+        return { ok: true, tool_calls: [{ name:"duplicateShape", args:{ ids: newIds }}] };
+      }
+      return { error: "No target to duplicate. Select a shape or mention it" };
+    }
+    const newId = tools.duplicateShape(target.id);
+    return { ok: true, tool_calls: [{ name:"duplicateShape", args:{ id: newId }}] };
+  }
+
+  // ALIGN
+  if (/\b(align)\b/.test(t)) {
+    const selectedIds = useCanvas.getState().selectedIds;
+    if (selectedIds.length < 2) {
+      return { error: "Select at least 2 shapes to align" };
+    }
+    
+    let alignment: 'left'|'right'|'center'|'top'|'middle'|'bottom' | null = null;
+    if (/\b(left)\b/.test(t)) alignment = 'left';
+    else if (/\b(right)\b/.test(t)) alignment = 'right';
+    else if (/\b(center|horizontal)\b/.test(t)) alignment = 'center';
+    else if (/\b(top)\b/.test(t)) alignment = 'top';
+    else if (/\b(middle|vertical)\b/.test(t)) alignment = 'middle';
+    else if (/\b(bottom)\b/.test(t)) alignment = 'bottom';
+    
+    if (alignment) {
+      tools.alignShapes(selectedIds, alignment);
+      return { ok: true, tool_calls: [{ name:"alignShapes", args:{ ids: selectedIds, alignment }}] };
     }
   }
 
@@ -954,6 +1131,10 @@ async function interpretLegacy(text: string) {
 async function broadcastUpsert(shapes: ShapeBase | ShapeBase[]) {
   const channel = supabase.channel(`room:${useCanvas.getState().roomId}`);
   await channel.send({ type: "broadcast", event: "shape:upsert", payload: shapes });
+}
+async function broadcastRemove(ids: string[]) {
+  const channel = supabase.channel(`room:${useCanvas.getState().roomId}`);
+  await channel.send({ type: "broadcast", event: "shape:remove", payload: { ids } });
 }
 async function persist(shapes: ShapeBase | ShapeBase[]) {
   const list = Array.isArray(shapes) ? shapes : [shapes];

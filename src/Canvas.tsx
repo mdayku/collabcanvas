@@ -1786,7 +1786,6 @@ export default function Canvas({ onSignOut }: CanvasProps) {
     });
 
     channel.on("presence", { event: "join" }, ({ key }) => {
-      console.log('User joined:', key);
       // Update online users list when someone joins
       const presenceState = channel.presenceState();
       const users = Object.keys(presenceState);
@@ -1794,7 +1793,6 @@ export default function Canvas({ onSignOut }: CanvasProps) {
     });
 
     channel.on("presence", { event: "leave" }, ({ key }) => {
-      console.log('User left:', key);
       useCanvas.getState().removeCursor(key);
       // Also update online users list to remove the user who left
       const presenceState = channel.presenceState();
@@ -2754,47 +2752,71 @@ export default function Canvas({ onSignOut }: CanvasProps) {
         )}
         {s.type === "line" && (
           <>
-            {/* Invisible hit area for easier selection */}
-            <Line
-              points={[0, 0, s.x2! - s.x, s.y2! - s.y]}
-              stroke="transparent"
-              strokeWidth={Math.max(10, (s.strokeWidth || 1) + 8)} // At least 10px hit area
-              lineCap="round"
-              lineJoin="round"
-            />
-            {/* Actual visible line */}
-            <LineShape
-              x1={0}
-              y1={0}
-              x2={s.x2! - s.x}
-              y2={s.y2! - s.y}
-              stroke={s.stroke || "#000"}
-              strokeWidth={s.strokeWidth || 1}
-              dash={s.dashPattern}
-            />
+            {/* Validate line coordinates to prevent NaN warnings */}
+            {(() => {
+              const x2 = typeof s.x2 === 'number' && !isNaN(s.x2) ? s.x2 : s.x + 100;
+              const y2 = typeof s.y2 === 'number' && !isNaN(s.y2) ? s.y2 : s.y;
+              const dx = x2 - s.x;
+              const dy = y2 - s.y;
+              
+              return (
+                <>
+                  {/* Invisible hit area for easier selection */}
+                  <Line
+                    points={[0, 0, dx, dy]}
+                    stroke="transparent"
+                    strokeWidth={Math.max(10, (s.strokeWidth || 1) + 8)} // At least 10px hit area
+                    lineCap="round"
+                    lineJoin="round"
+                  />
+                  {/* Actual visible line */}
+                  <LineShape
+                    x1={0}
+                    y1={0}
+                    x2={dx}
+                    y2={dy}
+                    stroke={s.stroke || "#000"}
+                    strokeWidth={s.strokeWidth || 1}
+                    dash={s.dashPattern}
+                  />
+                </>
+              );
+            })()}
           </>
         )}
         {s.type === "arrow" && (
           <>
-            {/* Invisible hit area for easier selection */}
-            <Line
-              points={[0, 0, s.x2! - s.x, s.y2! - s.y]}
-              stroke="transparent"
-              strokeWidth={Math.max(10, (s.strokeWidth || 1) + 8)} // At least 10px hit area
-              lineCap="round"
-              lineJoin="round"
-            />
-            {/* Actual visible arrow */}
-            <ArrowShape
-              x1={0}
-              y1={0}
-              x2={s.x2! - s.x}
-              y2={s.y2! - s.y}
-              stroke={s.stroke || "#000"}
-              strokeWidth={s.strokeWidth || 1}
-              dash={s.dashPattern}
-              arrowHead={s.arrowHead || "end"}
-            />
+            {/* Validate arrow coordinates to prevent NaN warnings */}
+            {(() => {
+              const x2 = typeof s.x2 === 'number' && !isNaN(s.x2) ? s.x2 : s.x + 100;
+              const y2 = typeof s.y2 === 'number' && !isNaN(s.y2) ? s.y2 : s.y;
+              const dx = x2 - s.x;
+              const dy = y2 - s.y;
+              
+              return (
+                <>
+                  {/* Invisible hit area for easier selection */}
+                  <Line
+                    points={[0, 0, dx, dy]}
+                    stroke="transparent"
+                    strokeWidth={Math.max(10, (s.strokeWidth || 1) + 8)} // At least 10px hit area
+                    lineCap="round"
+                    lineJoin="round"
+                  />
+                  {/* Actual visible arrow */}
+                  <ArrowShape
+                    x1={0}
+                    y1={0}
+                    x2={dx}
+                    y2={dy}
+                    stroke={s.stroke || "#000"}
+                    strokeWidth={s.strokeWidth || 1}
+                    dash={s.dashPattern}
+                    arrowHead={s.arrowHead || "end"}
+                  />
+                </>
+              );
+            })()}
           </>
         )}
         {s.type === "frame" && (

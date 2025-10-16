@@ -118,73 +118,42 @@ export default function App() {
         return;
       }
       
-      // Get user profile from database if not provided
+      // Get user profile - use immediate fallback, fetch real profile in background
       let profile = providedProfile;
       if (!profile && authUser) {
-        console.log('Fetching user profile...');
+        // Create immediate fallback profile - DON'T BLOCK APP STARTUP!
+        profile = {
+          id: authUser.id,
+          display_name: authUser.email?.split('@')[0] || 'User',
+          avatar_color: '#3b82f6'
+        };
         
-        try {
-          // Add timeout protection to prevent hanging
-          const profilePromise = supabase
-            .from('user_profiles')
-            .select('*')
-            .eq('id', authUser.id)
-            .single();
-            
-          const timeoutPromise = new Promise((_, reject) => 
-            setTimeout(() => {
-              console.log('Profile fetch timeout triggered');
-              reject(new Error('Profile fetch timeout'));
-            }, 5000)
-          );
-          
-          console.log('Starting profile fetch with timeout...');
-          const { data, error } = await Promise.race([profilePromise, timeoutPromise]) as any;
-          console.log('Profile fetch completed:', { data, error });
-          
-          if (error) {
-            console.warn('Profile fetch error (will create fallback):', error);
-            
-            // Check if this is a table doesn't exist error
-            if (error.code === 'PGRST116' || error.message?.includes('relation') || error.message?.includes('does not exist')) {
-              console.error('🚨 DATABASE SETUP REQUIRED! The user_profiles table does not exist.');
-              console.log('📋 Please run this SQL in your Supabase SQL Editor:');
-              console.log('https://supabase.com/dashboard → SQL Editor → paste supabase.sql contents');
-            }
-            
-            // Try to create profile in database
-            const fallbackProfile = {
-              id: authUser.id,
-              display_name: authUser.email?.split('@')[0] || 'User',
-              avatar_color: '#3b82f6'
-            };
-            
-            console.log('Attempting to create profile:', fallbackProfile);
-            const { error: insertError } = await supabase
+        // Fetch/create profile in background (non-blocking)
+        (async () => {
+          try {
+            const { data, error } = await supabase
               .from('user_profiles')
-              .insert([fallbackProfile]);
+              .select('*')
+              .eq('id', authUser.id)
+              .single();
               
-            if (insertError) {
-              console.warn('Failed to create profile in DB, using memory only:', insertError);
-            } else {
-              console.log('Successfully created profile in database');
+            if (data) {
+              // Profile exists in DB, update user state
+              console.log('✅ Profile synced from database:', data.display_name);
+              useCanvas.setState((s) => {
+                s.me.name = data.display_name;
+                s.me.color = data.avatar_color;
+              });
+            } else if (error && error.code !== 'PGRST116') {
+              // Profile doesn't exist (but table does), create it
+              console.log('Creating profile in database...');
+              await supabase.from('user_profiles').insert([profile]);
+              console.log('✅ Profile created in database');
             }
-            
-            profile = fallbackProfile;
-          } else {
-            profile = data;
-            console.log('Successfully fetched profile:', profile);
+          } catch (err) {
+            // Silently continue with fallback if background fetch fails
           }
-        } catch (err) {
-          console.error('Profile fetch failed with timeout/error:', err);
-          // Create fallback profile
-          profile = {
-            id: authUser.id,
-            display_name: authUser.email?.split('@')[0] || 'User',
-            avatar_color: '#3b82f6'
-          };
-          console.log('Using fallback profile:', profile);
-        }
+        })();
       }
 
       console.log('Using profile:', profile);
