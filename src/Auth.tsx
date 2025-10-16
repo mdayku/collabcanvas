@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { supabase } from "./lib/supabaseClient";
 import { randomColor } from "./state/store";
 import { useTheme } from "./contexts/ThemeContext";
@@ -11,11 +11,41 @@ interface AuthProps {
 export default function Auth({ onAuthSuccess }: AuthProps) {
   const { colors } = useTheme();
   const [isSignUp, setIsSignUp] = useState(false);
+  const [isForgotPassword, setIsForgotPassword] = useState(false);
+  const [isResettingPassword, setIsResettingPassword] = useState(false);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [newPassword, setNewPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
   const [displayName, setDisplayName] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  const [resetSent, setResetSent] = useState(false);
+  const [passwordUpdated, setPasswordUpdated] = useState(false);
+
+  // Check if we're in password reset mode from Supabase auth event
+  useEffect(() => {
+    // Check URL params first
+    const params = new URLSearchParams(window.location.search);
+    if (params.get('reset') === 'true') {
+      setIsResettingPassword(true);
+    }
+
+    // Listen for Supabase auth events (password recovery)
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+      console.log('Auth event:', event);
+      
+      if (event === 'PASSWORD_RECOVERY') {
+        console.log('Password recovery detected!');
+        setIsResettingPassword(true);
+      }
+    });
+
+    // Cleanup subscription
+    return () => {
+      subscription.unsubscribe();
+    };
+  }, []);
 
   const handleDemoLogin = async (demoUser: { email: string; name: string; color: string }) => {
     try {
@@ -210,6 +240,72 @@ export default function Auth({ onAuthSuccess }: AuthProps) {
     }
   };
 
+  const handleForgotPassword = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setLoading(true);
+    setError("");
+    setResetSent(false);
+
+    try {
+      const { error } = await supabase.auth.resetPasswordForEmail(email, {
+        redirectTo: `${window.location.origin}/?reset=true&app=collabcanvas`,
+      });
+
+      if (error) throw error;
+
+      setResetSent(true);
+      setError("");
+    } catch (error: any) {
+      setError(error.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleUpdatePassword = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setLoading(true);
+    setError("");
+    setPasswordUpdated(false);
+
+    // Validate passwords match
+    if (newPassword !== confirmPassword) {
+      setError("Passwords don't match");
+      setLoading(false);
+      return;
+    }
+
+    if (newPassword.length < 6) {
+      setError("Password must be at least 6 characters");
+      setLoading(false);
+      return;
+    }
+
+    try {
+      const { error } = await supabase.auth.updateUser({
+        password: newPassword
+      });
+
+      if (error) throw error;
+
+      setPasswordUpdated(true);
+      setError("");
+      
+      // Clear URL params
+      window.history.replaceState({}, document.title, window.location.pathname);
+      
+      // Auto-redirect to login after 3 seconds
+      setTimeout(() => {
+        setIsResettingPassword(false);
+        setPasswordUpdated(false);
+      }, 3000);
+    } catch (error: any) {
+      setError(error.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
   return (
     <div 
       className="min-h-screen flex items-center justify-center p-4"
@@ -230,18 +326,25 @@ export default function Auth({ onAuthSuccess }: AuthProps) {
             CollabCanvas
           </h1>
           <p style={{ color: colors.textSecondary }}>
-            {isSignUp ? "Create your account" : "Sign in to your account"}
+            {isResettingPassword
+              ? "Set your new password"
+              : isForgotPassword 
+              ? "Reset your password" 
+              : isSignUp 
+              ? "Create your account" 
+              : "Sign in to your account"}
           </p>
         </div>
 
-        {/* Demo Login Section */}
-        <div className="mb-6">
-          <h3 
-            className="text-sm font-medium mb-3"
-            style={{ color: colors.text }}
-          >
-            🚀 Quick Demo
-          </h3>
+        {/* Demo Login Section - Hide in forgot password and reset mode */}
+        {!isForgotPassword && !isResettingPassword && (
+          <div className="mb-6">
+            <h3 
+              className="text-sm font-medium mb-3"
+              style={{ color: colors.text }}
+            >
+              🚀 Quick Demo
+            </h3>
           
           
           <div className="grid gap-2">
@@ -301,28 +404,214 @@ export default function Auth({ onAuthSuccess }: AuthProps) {
             💡 Demo accounts are real Supabase accounts with shared credentials
           </p>
         </div>
+        )}
 
-        <div className="relative mb-4">
-          <div className="absolute inset-0 flex items-center">
-            <div 
-              className="w-full border-t" 
-              style={{ borderColor: colors.border }}
-            />
+        {!isForgotPassword && !isResettingPassword && (
+          <div className="relative mb-4">
+            <div className="absolute inset-0 flex items-center">
+              <div 
+                className="w-full border-t" 
+                style={{ borderColor: colors.border }}
+              />
+            </div>
+            <div className="relative flex justify-center text-sm">
+              <span 
+                className="px-2"
+                style={{ 
+                  backgroundColor: colors.bgPrimary, 
+                  color: colors.textSecondary 
+                }}
+              >
+                Or sign in with your account
+              </span>
+            </div>
           </div>
-          <div className="relative flex justify-center text-sm">
-            <span 
-              className="px-2"
-              style={{ 
-                backgroundColor: colors.bgPrimary, 
-                color: colors.textSecondary 
-              }}
-            >
-              Or sign in with your account
-            </span>
-          </div>
-        </div>
+        )}
 
-        <form onSubmit={handleSubmit} className="space-y-4">
+        {/* Password Reset Form (from email link) */}
+        {isResettingPassword ? (
+          <form onSubmit={handleUpdatePassword} className="space-y-4">
+            {passwordUpdated ? (
+              <div 
+                className="text-sm p-4 rounded-md border"
+                style={{ 
+                  color: '#059669',
+                  backgroundColor: colors.bgSecondary,
+                  borderColor: '#6ee7b7'
+                }}
+              >
+                <div className="font-medium mb-1">✅ Password Updated!</div>
+                <div>Your password has been successfully reset. Redirecting to login...</div>
+              </div>
+            ) : (
+              <>
+                <div>
+                  <label 
+                    htmlFor="new-password" 
+                    className="block text-sm font-medium mb-1"
+                    style={{ color: colors.text }}
+                  >
+                    New Password
+                  </label>
+                  <input
+                    id="new-password"
+                    type="password"
+                    value={newPassword}
+                    onChange={(e) => setNewPassword(e.target.value)}
+                    required
+                    minLength={6}
+                    className="w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    style={{
+                      backgroundColor: colors.bgSecondary,
+                      borderColor: colors.border,
+                      color: colors.text
+                    }}
+                    placeholder="••••••••"
+                  />
+                </div>
+
+                <div>
+                  <label 
+                    htmlFor="confirm-password" 
+                    className="block text-sm font-medium mb-1"
+                    style={{ color: colors.text }}
+                  >
+                    Confirm New Password
+                  </label>
+                  <input
+                    id="confirm-password"
+                    type="password"
+                    value={confirmPassword}
+                    onChange={(e) => setConfirmPassword(e.target.value)}
+                    required
+                    minLength={6}
+                    className="w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    style={{
+                      backgroundColor: colors.bgSecondary,
+                      borderColor: colors.border,
+                      color: colors.text
+                    }}
+                    placeholder="••••••••"
+                  />
+                </div>
+
+                {error && (
+                  <div 
+                    className="text-sm p-3 rounded-md border"
+                    style={{ 
+                      color: '#dc2626',
+                      backgroundColor: colors.bgSecondary,
+                      borderColor: '#fca5a5'
+                    }}
+                  >
+                    {error}
+                  </div>
+                )}
+
+                <button
+                  type="submit"
+                  disabled={loading}
+                  className="w-full font-medium py-2 px-4 rounded-md transition-colors duration-200 disabled:opacity-50"
+                  style={{
+                    backgroundColor: loading ? colors.buttonBg : '#3b82f6',
+                    color: 'white'
+                  }}
+                  onMouseEnter={(e) => {
+                    if (!loading) {
+                      e.currentTarget.style.backgroundColor = '#2563eb';
+                    }
+                  }}
+                  onMouseLeave={(e) => {
+                    if (!loading) {
+                      e.currentTarget.style.backgroundColor = '#3b82f6';
+                    }
+                  }}
+                >
+                  {loading ? "Updating..." : "Update Password"}
+                </button>
+              </>
+            )}
+          </form>
+        ) : isForgotPassword ? (
+          <form onSubmit={handleForgotPassword} className="space-y-4">
+            {resetSent ? (
+              <div 
+                className="text-sm p-4 rounded-md border"
+                style={{ 
+                  color: '#059669',
+                  backgroundColor: colors.bgSecondary,
+                  borderColor: '#6ee7b7'
+                }}
+              >
+                <div className="font-medium mb-1">✅ Check your email!</div>
+                <div>We've sent a password reset link to <strong>{email}</strong></div>
+              </div>
+            ) : (
+              <>
+                <div>
+                  <label 
+                    htmlFor="reset-email" 
+                    className="block text-sm font-medium mb-1"
+                    style={{ color: colors.text }}
+                  >
+                    Email Address
+                  </label>
+                  <input
+                    id="reset-email"
+                    type="email"
+                    value={email}
+                    onChange={(e) => setEmail(e.target.value)}
+                    required
+                    className="w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    style={{
+                      backgroundColor: colors.bgSecondary,
+                      borderColor: colors.border,
+                      color: colors.text
+                    }}
+                    placeholder="you@example.com"
+                  />
+                </div>
+
+                {error && (
+                  <div 
+                    className="text-sm p-3 rounded-md border"
+                    style={{ 
+                      color: '#dc2626',
+                      backgroundColor: colors.bgSecondary,
+                      borderColor: '#fca5a5'
+                    }}
+                  >
+                    {error}
+                  </div>
+                )}
+
+                <button
+                  type="submit"
+                  disabled={loading}
+                  className="w-full font-medium py-2 px-4 rounded-md transition-colors duration-200 disabled:opacity-50"
+                  style={{
+                    backgroundColor: loading ? colors.buttonBg : '#3b82f6',
+                    color: 'white'
+                  }}
+                  onMouseEnter={(e) => {
+                    if (!loading) {
+                      e.currentTarget.style.backgroundColor = '#2563eb';
+                    }
+                  }}
+                  onMouseLeave={(e) => {
+                    if (!loading) {
+                      e.currentTarget.style.backgroundColor = '#3b82f6';
+                    }
+                  }}
+                >
+                  {loading ? "Sending..." : "Send Reset Link"}
+                </button>
+              </>
+            )}
+          </form>
+        ) : (
+          /* Regular Login/Signup Form */
+          <form onSubmit={handleSubmit} className="space-y-4">
           {isSignUp && (
             <div>
               <label 
@@ -395,6 +684,27 @@ export default function Auth({ onAuthSuccess }: AuthProps) {
               }}
               placeholder="••••••••"
             />
+            {!isSignUp && (
+              <div className="text-right">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsForgotPassword(true);
+                    setError("");
+                  }}
+                  className="text-sm transition-colors"
+                  style={{ color: '#3b82f6' }}
+                  onMouseEnter={(e) => {
+                    e.currentTarget.style.color = '#2563eb';
+                  }}
+                  onMouseLeave={(e) => {
+                    e.currentTarget.style.color = '#3b82f6';
+                  }}
+                >
+                  Forgot password?
+                </button>
+              </div>
+            )}
           </div>
 
           {error && (
@@ -432,25 +742,47 @@ export default function Auth({ onAuthSuccess }: AuthProps) {
             {loading ? "Loading..." : (isSignUp ? "Sign Up" : "Sign In")}
           </button>
         </form>
+        )}
 
         <div className="mt-6 text-center">
-          <button
-            type="button"
-            onClick={() => setIsSignUp(!isSignUp)}
-            className="text-sm font-medium transition-colors"
-            style={{ color: '#3b82f6' }}
-            onMouseEnter={(e) => {
-              e.currentTarget.style.color = '#2563eb';
-            }}
-            onMouseLeave={(e) => {
-              e.currentTarget.style.color = '#3b82f6';
-            }}
-          >
-            {isSignUp 
-              ? "Already have an account? Sign in" 
-              : "Don't have an account? Sign up"
-            }
-          </button>
+          {isForgotPassword ? (
+            <button
+              type="button"
+              onClick={() => {
+                setIsForgotPassword(false);
+                setResetSent(false);
+                setError("");
+              }}
+              className="text-sm font-medium transition-colors"
+              style={{ color: '#3b82f6' }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.color = '#2563eb';
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.color = '#3b82f6';
+              }}
+            >
+              ← Back to Sign In
+            </button>
+          ) : (
+            <button
+              type="button"
+              onClick={() => setIsSignUp(!isSignUp)}
+              className="text-sm font-medium transition-colors"
+              style={{ color: '#3b82f6' }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.color = '#2563eb';
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.color = '#3b82f6';
+              }}
+            >
+              {isSignUp 
+                ? "Already have an account? Sign in" 
+                : "Don't have an account? Sign up"
+              }
+            </button>
+          )}
         </div>
 
         <div className="mt-4 text-xs text-center">
