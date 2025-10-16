@@ -293,60 +293,37 @@ export async function generateImageWithDALLE(prompt: string, frameWidth?: number
 
     console.log('[DALL-E] Image generated successfully:', imageUrl);
     
-    // Convert DALL-E image to data URL using multiple CORS proxy attempts
-    const proxyServices = [
-      `https://cors-anywhere.herokuapp.com/${imageUrl}`,
-      `https://api.codetabs.com/v1/proxy?quest=${encodeURIComponent(imageUrl)}`,
-      `https://api.allorigins.win/raw?url=${encodeURIComponent(imageUrl)}`
-    ];
-    
-    for (let i = 0; i < proxyServices.length; i++) {
-      try {
-        console.log(`[DALL-E] Trying CORS proxy ${i + 1}/${proxyServices.length}...`);
-        const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 5000); // 5 second timeout
-        
-        const response = await fetch(proxyServices[i], { 
-          signal: controller.signal,
-          headers: { 'Accept': 'image/*' }
-        });
-        clearTimeout(timeoutId);
-        
-        if (!response.ok) {
-          throw new Error(`Proxy ${i + 1} failed: ${response.status}`);
-        }
-        
-        const blob = await response.blob();
-        
-        // Validate that we actually got image data
-        if (!blob.type.startsWith('image/')) {
-          throw new Error(`Proxy ${i + 1} returned ${blob.type} instead of image (${blob.size} bytes)`);
-        }
-        
-        const dataUrl = await new Promise<string>((resolve) => {
-          const reader = new FileReader();
-          reader.onload = () => resolve(reader.result as string);
-          reader.readAsDataURL(blob);
-        });
-        
-        // Double-check the data URL format
-        if (!dataUrl.startsWith('data:image/')) {
-          throw new Error(`Proxy ${i + 1} produced invalid data URL: ${dataUrl.substring(0, 50)}...`);
-        }
-        
-        console.log(`[DALL-E] ✅ Image converted via proxy ${i + 1} (${blob.type}, ${blob.size} bytes)`);
-        return dataUrl;
-      } catch (proxyError) {
-        console.warn(`[DALL-E] ⚠️ Proxy ${i + 1} failed:`, proxyError);
-        if (i === proxyServices.length - 1) {
-          console.warn('[DALL-E] All proxies failed, returning original URL');
-          return imageUrl; // Final fallback
-        }
-      }
-    }
-    
-    // If we reach here, all proxies failed but we should still return the original URL
-    return imageUrl;
+          // Convert DALL-E image to data URL using our server-side proxy
+          try {
+            console.log('[DALL-E] 🚀 Using server-side image proxy...');
+            
+            const proxyResponse = await fetch('/api/image-proxy', {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+              },
+              body: JSON.stringify({ imageUrl })
+            });
+
+            if (!proxyResponse.ok) {
+              const error = await proxyResponse.json();
+              throw new Error(`Proxy failed: ${error.error || proxyResponse.statusText}`);
+            }
+
+            const { dataUrl, contentType, size } = await proxyResponse.json();
+            
+            if (!dataUrl || !dataUrl.startsWith('data:image/')) {
+              throw new Error('Invalid data URL returned from proxy');
+            }
+
+            console.log(`[DALL-E] ✅ Image converted via server-side proxy (${contentType}, ${size} bytes)`);
+            return dataUrl;
+            
+          } catch (proxyError) {
+            console.warn('[DALL-E] ⚠️ Server-side proxy failed:', proxyError);
+            console.warn('[DALL-E] Falling back to original URL');
+            return imageUrl; // Fallback to original URL
+          }
     
   } catch (error) {
     console.error('[DALL-E] Image generation failed:', error);
