@@ -293,37 +293,78 @@ export async function generateImageWithDALLE(prompt: string, frameWidth?: number
 
     console.log('[DALL-E] Image generated successfully:', imageUrl);
     
-          // Convert DALL-E image to data URL using our server-side proxy
-          try {
-            console.log('[DALL-E] 🚀 Using server-side image proxy...');
-            
-            const proxyResponse = await fetch('/api/image-proxy', {
-              method: 'POST',
-              headers: {
-                'Content-Type': 'application/json',
-              },
-              body: JSON.stringify({ imageUrl })
-            });
+          // Platform detection for different proxy strategies
+          const isVercel = window.location.hostname.includes('vercel.app') || window.location.hostname.includes('localhost');
+          const isAWSAmplify = window.location.hostname.includes('amplifyapp.com');
+          
+          if (isVercel) {
+            // Use server-side proxy on Vercel (works perfectly)
+            try {
+              console.log('[DALL-E] 🚀 Using Vercel server-side proxy...');
+              
+              const proxyResponse = await fetch('/api/image-proxy', {
+                method: 'POST',
+                headers: {
+                  'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({ imageUrl })
+              });
 
-            if (!proxyResponse.ok) {
-              const error = await proxyResponse.json();
-              throw new Error(`Proxy failed: ${error.error || proxyResponse.statusText}`);
+              if (!proxyResponse.ok) {
+                const error = await proxyResponse.json();
+                throw new Error(`Proxy failed: ${error.error || proxyResponse.statusText}`);
+              }
+
+              const { dataUrl, contentType, size } = await proxyResponse.json();
+              
+              if (!dataUrl || !dataUrl.startsWith('data:image/')) {
+                throw new Error('Invalid data URL returned from proxy');
+              }
+
+              console.log(`[DALL-E] ✅ Image converted via Vercel proxy (${contentType}, ${size} bytes)`);
+              return dataUrl;
+              
+            } catch (proxyError) {
+              console.warn('[DALL-E] ⚠️ Vercel proxy failed:', proxyError);
             }
+          } else if (isAWSAmplify) {
+            // For AWS Amplify, use a reliable CORS proxy service
+            try {
+              console.log('[DALL-E] 🌐 Using AWS-compatible CORS proxy...');
+              
+              // Use a more reliable proxy service for AWS
+              const corsProxyUrl = `https://api.allorigins.win/raw?url=${encodeURIComponent(imageUrl)}`;
+              const response = await fetch(corsProxyUrl, {
+                headers: { 'Accept': 'image/*' }
+              });
 
-            const { dataUrl, contentType, size } = await proxyResponse.json();
-            
-            if (!dataUrl || !dataUrl.startsWith('data:image/')) {
-              throw new Error('Invalid data URL returned from proxy');
+              if (!response.ok) {
+                throw new Error(`CORS proxy failed: ${response.status}`);
+              }
+
+              const blob = await response.blob();
+              
+              if (!blob.type.startsWith('image/')) {
+                throw new Error(`Invalid content type: ${blob.type}`);
+              }
+
+              const dataUrl = await new Promise<string>((resolve) => {
+                const reader = new FileReader();
+                reader.onload = () => resolve(reader.result as string);
+                reader.readAsDataURL(blob);
+              });
+
+              console.log(`[DALL-E] ✅ Image converted via AWS proxy (${blob.type}, ${blob.size} bytes)`);
+              return dataUrl;
+              
+            } catch (proxyError) {
+              console.warn('[DALL-E] ⚠️ AWS proxy failed:', proxyError);
             }
-
-            console.log(`[DALL-E] ✅ Image converted via server-side proxy (${contentType}, ${size} bytes)`);
-            return dataUrl;
-            
-          } catch (proxyError) {
-            console.warn('[DALL-E] ⚠️ Server-side proxy failed:', proxyError);
-            console.warn('[DALL-E] Falling back to original URL');
-            return imageUrl; // Fallback to original URL
           }
+          
+          // Final fallback: return original URL (will have CORS issues but better than nothing)
+          console.warn('[DALL-E] Using original URL as final fallback (may have CORS issues)');
+          return imageUrl;
     
   } catch (error) {
     console.error('[DALL-E] Image generation failed:', error);
