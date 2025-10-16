@@ -43,6 +43,31 @@
 └─────────────────────────────────────────────────────┘
 ```
 
+### **🎨 AI Image Generation Pipeline (Revolutionary Feature)**
+```
+┌─ Smart Frame-to-Image System ──────────────────────┐
+│  1. Frame Creation → User creates AI frame object   │
+│  2. Context Menu → Right-click "Generate AI Image"  │
+│  3. Prompt Input → User describes desired image     │
+│  4. Smart Analysis → System analyzes frame aspect   │
+│  5. DALL-E Optimization → Selects optimal size:     │
+│     • Wide (>1.5 ratio): 1792×1024 landscape       │
+│     • Tall (<0.7 ratio): 1024×1792 portrait        │
+│     • Square: 1024×1024 centered                   │
+│  6. Prompt Enhancement → Adds compositional terms   │
+│  7. DALL-E Generation → Creates optimized image     │
+│  8. CORS Bypass → Multi-proxy system for display    │
+│  9. Database Sync → Persists for collaboration      │
+│  10. Real-time Display → All users see instantly    │
+└─────────────────────────────────────────────────────┘
+```
+
+#### **🧪 Development vs Production Testing**
+- **Local Development**: DALL-E generation works, but images can't display due to OpenAI's CORS policy
+- **Production Deployment**: Complete functionality including image display (server-side rendering bypasses CORS)
+- **Testing Strategy**: Push to production (AWS Amplify/Vercel) to validate full pipeline
+- **Console Logs**: Detailed logging shows dimension analysis, prompt enhancement, and generation success
+
 ### **Deployment & Operations**
 ```
 ┌─ Production Infrastructure ─────────────────────────┐

@@ -994,6 +994,16 @@ function getShapeDefaults(type: ShapeType): Partial<ShapeBase> {
         strokeWidth: 3, 
         arrowHead: 'end' 
       };
+    case 'frame':
+      return { 
+        x: 100, 
+        y: 100, 
+        w: 200, 
+        h: 150,
+        color: 'transparent', // No fill color for frames
+        stroke: '#6c757d',
+        strokeWidth: 2
+      };
     default:
       return { x: 100, y: 100, w: 100, h: 100 };
   }

@@ -625,3 +625,114 @@ flowchart TB
     PERFORMANCE --> RELIABILITY  
     RELIABILITY --> SCALABILITY
 ```
+
+## 🎨 AI Image Generation Pipeline (Revolutionary Feature)
+```mermaid
+flowchart TD
+    subgraph UserFlow["User Interaction"]
+        A[👤 User Creates Frame<br/>Assets → 🖼️ AI Image Frame] 
+        B[📝 Right-click Frame<br/>"🎨 Generate AI Image"]
+        C[💬 User Enters Prompt<br/>"red sports car"]
+    end
+
+    subgraph SmartAnalysis["Intelligent Processing"]
+        D[📐 Analyze Frame Dimensions<br/>Calculate Aspect Ratio<br/>Width ÷ Height]
+        E{🧠 Aspect Ratio Decision}
+        F[🖼️ Wide Frame<br/>ratio > 1.5<br/>→ Landscape Mode]
+        G[📱 Tall Frame<br/>ratio < 0.7<br/>→ Portrait Mode]
+        H[⬜ Square Frame<br/>0.7 ≤ ratio ≤ 1.5<br/>→ Square Mode]
+    end
+
+    subgraph PromptEnhancement["Smart Prompt System"]
+        I[🎨 Enhance Prompt<br/>Add Compositional Terms]
+        J["🖼️ Landscape:<br/>'wide panoramic composition,<br/>landscape orientation'"]
+        K["📱 Portrait:<br/>'tall vertical composition,<br/>portrait orientation'"]
+        L["⬜ Square:<br/>'square composition,<br/>centered subject'"]
+    end
+
+    subgraph DALLEGeneration["DALL-E 3 Integration"]
+        M[🎯 Select Optimal Size<br/>Based on Analysis]
+        N[🖼️ 1792×1024<br/>Landscape]
+        O[📱 1024×1792<br/>Portrait]
+        P[⬜ 1024×1024<br/>Square]
+        Q[🚀 Call DALL-E API<br/>Enhanced Prompt + Size]
+        R[🎨 Generate AI Image<br/>High-Quality Result]
+    end
+
+    subgraph CORSHandling["Production Display System"]
+        S[🌐 Multi-Proxy CORS Bypass<br/>3-Tier Fallback System]
+        T[🔄 Proxy 1: cors-anywhere<br/>403 Forbidden → Try Next]
+        U[🔄 Proxy 2: codetabs<br/>XML Response → Try Next]
+        V[🔄 Proxy 3: allorigins<br/>Timeout → Fallback]
+        W[📱 Data URL Conversion<br/>Base64 Image Display]
+    end
+
+    subgraph Collaboration["Real-time Sync"]
+        X[💾 Database Persistence<br/>Save Image URL + Metadata]
+        Y[📡 Broadcast to All Users<br/>Real-time Image Display]
+        Z[👥 Collaborative Viewing<br/>Instant Team Sync]
+    end
+
+    %% Flow connections
+    A --> B --> C --> D
+    D --> E
+    E -->|> 1.5| F
+    E -->|< 0.7| G
+    E -->|0.7-1.5| H
+    
+    F --> J --> M --> N
+    G --> K --> M --> O
+    H --> L --> M --> P
+    
+    N --> Q
+    O --> Q
+    P --> Q
+    Q --> R
+    
+    R --> S
+    S --> T --> U --> V --> W
+    W --> X --> Y --> Z
+
+    %% Styling
+    classDef userAction fill:#e1f5fe,stroke:#01579b,stroke-width:2px
+    classDef smartSystem fill:#f3e5f5,stroke:#4a148c,stroke-width:2px
+    classDef dalleSystem fill:#fff3e0,stroke:#e65100,stroke-width:2px
+    classDef corsSystem fill:#e8f5e8,stroke:#1b5e20,stroke-width:2px
+    classDef collaboration fill:#fff8e1,stroke:#f57f17,stroke-width:2px
+
+    class A,B,C userAction
+    class D,E,F,G,H,I,J,K,L smartSystem
+    class M,N,O,P,Q,R dalleSystem
+    class S,T,U,V,W corsSystem
+    class X,Y,Z collaboration
+```
+
+### 🔧 Technical Implementation Details
+
+**Core Files:**
+- `src/services/openaiService.ts` - Smart dimension analysis & DALL-E integration
+- `src/Canvas.tsx` - Frame rendering, context menu, user interaction  
+- `src/types.ts` - Frame shape type with AI properties
+
+**Database Schema:**
+```sql
+-- Added to shapes table
+ALTER TABLE shapes ADD COLUMN IF NOT EXISTS ai_prompt TEXT;
+ALTER TABLE shapes ADD COLUMN IF NOT EXISTS generated_image_url TEXT;  
+ALTER TABLE shapes ADD COLUMN IF NOT EXISTS is_generating BOOLEAN DEFAULT FALSE;
+```
+
+**Smart Dimension Logic:**
+```typescript
+const aspectRatio = frameWidth / frameHeight;
+if (aspectRatio > 1.5) {
+  dalleSize = "1792x1024";  // Landscape
+  enhancedPrompt += ", wide panoramic composition, landscape orientation";
+} else if (aspectRatio < 0.7) {
+  dalleSize = "1024x1792";  // Portrait  
+  enhancedPrompt += ", tall vertical composition, portrait orientation";
+} else {
+  dalleSize = "1024x1024";  // Square
+  enhancedPrompt += ", square composition, centered subject";
+}
+```

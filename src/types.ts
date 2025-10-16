@@ -1,4 +1,4 @@
-export type ShapeType = "rect" | "circle" | "text" | "image" | "triangle" | "star" | "heart" | "pentagon" | "hexagon" | "octagon" | "trapezoid" | "rhombus" | "parallelogram" | "oval" | "line" | "arrow";
+export type ShapeType = "rect" | "circle" | "text" | "image" | "triangle" | "star" | "heart" | "pentagon" | "hexagon" | "octagon" | "trapezoid" | "rhombus" | "parallelogram" | "oval" | "line" | "arrow" | "frame";
 
 export type ShapeBase = {
   id: string;
@@ -28,6 +28,10 @@ export type ShapeBase = {
   arrowHead?: 'start' | 'end' | 'both' | 'none'; // arrow head configuration
   dashPattern?: number[]; // dash pattern for lines [dash, gap, dash, gap...]
   groupId?: string; // group identifier for grouped shapes
+  // AI Frame properties
+  aiPrompt?: string; // the prompt used to generate AI image (for frame type)
+  generatedImageUrl?: string; // URL of the generated AI image (for frame type)
+  isGenerating?: boolean; // whether AI image generation is in progress
   updated_at: number;
   updated_by: string;
 };

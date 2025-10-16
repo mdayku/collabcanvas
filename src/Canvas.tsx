@@ -5,7 +5,7 @@ import { useCanvas } from "./state/store";
 import type { ShapeBase, ShapeType } from "./types";
 import { supabase } from "./lib/supabaseClient";
 import { interpretWithResponse } from "./ai/agent";
-import { isOpenAIConfigured } from "./services/openaiService";
+import { isOpenAIConfigured, generateImageWithDALLE } from "./services/openaiService";
 import { isGroqConfigured } from "./services/groqService";
 import { SaveStatusIndicator } from "./components/SaveStatusIndicator";
 import { useTheme } from "./contexts/ThemeContext";
@@ -2533,6 +2533,70 @@ export default function Canvas({ onSignOut }: CanvasProps) {
             />
           </>
         )}
+        {s.type === "frame" && (
+          <>
+            {/* Background for the frame */}
+            <Rect 
+              x={0}
+              y={0}
+              width={s.w}
+              height={s.h}
+              fill={s.generatedImageUrl ? "transparent" : (s.color || "#f8f9fa")}
+              stroke={s.stroke || "#6c757d"}
+              strokeWidth={s.strokeWidth || 2}
+              dash={s.generatedImageUrl ? undefined : [8, 4]} // Dashed border when empty
+              cornerRadius={4}
+            />
+            {/* Show generated image if available */}
+            {s.generatedImageUrl && (
+              <ImageShape
+                imageUrl={s.generatedImageUrl}
+                width={s.w}
+                height={s.h}
+                stroke={s.stroke}
+                strokeWidth={s.strokeWidth}
+              />
+            )}
+            {/* Loading indicator when generating */}
+            {s.isGenerating && (
+              <>
+                <Rect 
+                  x={0}
+                  y={0}
+                  width={s.w}
+                  height={s.h}
+                  fill="rgba(0,0,0,0.1)"
+                  cornerRadius={4}
+                />
+                <KText
+                  x={0}
+                  y={0}
+                  text="Generating AI Image..."
+                  fontSize={16}
+                  fill="#666"
+                  align="center"
+                  verticalAlign="middle"
+                  width={s.w}
+                  height={s.h}
+                />
+              </>
+            )}
+            {/* Placeholder text when empty */}
+            {!s.generatedImageUrl && !s.isGenerating && (
+              <KText
+                x={0}
+                y={0}
+                text="Right-click to generate AI image"
+                fontSize={14}
+                fill="#6c757d"
+                align="center"
+                verticalAlign="middle"
+                width={s.w}
+                height={s.h}
+              />
+            )}
+          </>
+        )}
       </Group>
     );
   }), [shapes, selectedIds]);
@@ -2751,6 +2815,7 @@ function CategorizedToolbar({ centerOnNewShape, stageRef }: {
   const addRect = () => addShape("rect", colors, snapToGrid, centerOnNewShape, stageRef);
   const addCircle = () => addShape("circle", colors, snapToGrid, centerOnNewShape, stageRef);
   const addText = () => addShape("text", colors, snapToGrid, centerOnNewShape, stageRef);
+  const addFrame = () => addShape("frame", colors, snapToGrid, centerOnNewShape, stageRef);
   const addTriangle = () => addShape("triangle", colors, snapToGrid, centerOnNewShape, stageRef);
   const addStar = () => addShape("star", colors, snapToGrid, centerOnNewShape, stageRef);
   const addHeart = () => addShape("heart", colors, snapToGrid, centerOnNewShape, stageRef);
@@ -2947,6 +3012,7 @@ function CategorizedToolbar({ centerOnNewShape, stageRef }: {
       emoji: '📦',
       tools: [
         { name: '📝', action: addText, available: true, tooltip: 'Text Box' },
+        { name: '🖼️', action: addFrame, available: true, tooltip: 'AI Image Frame' },
         // More coming soon
       ]
     }
@@ -3274,6 +3340,26 @@ function addShape(type: ShapeType, colors: any, snapToGrid: boolean = false, cen
       stroke: "#111111", // Always dark stroke for canvas visibility, regardless of theme
       strokeWidth: 3,
       arrowHead: type === "arrow" ? "end" : "none",
+      text: "", 
+      updated_at: Date.now(), 
+      updated_by: me.id 
+    };
+  } else if (type === "frame") {
+    // AI Image Frame - transparent background with dashed border
+    const w = 200;
+    const h = 150;
+    const position = findBlankArea(shapes, w, h);
+    
+    s = { 
+      id: crypto.randomUUID(), 
+      type, 
+      x: applySnap(position.x), 
+      y: applySnap(position.y), 
+      w, 
+      h, 
+      color: "transparent", // No fill color for frames
+      stroke: "#6c757d", // Gray dashed border
+      strokeWidth: 2,
       text: "", 
       updated_at: Date.now(), 
       updated_by: me.id 
@@ -4062,6 +4148,85 @@ function ContextMenu({ x, y, shapeIds, onClose }: {
     onClose();
   };
 
+  const handleGenerateAIImage = async (frameShape: any) => {
+    console.log('[FRAME] handleGenerateAIImage called with:', frameShape);
+    
+    if (frameShape.type !== 'frame') {
+      console.error('[FRAME] Not a frame shape:', frameShape.type);
+      return;
+    }
+    
+    // Check if OpenAI is configured
+    if (!isOpenAIConfigured()) {
+      console.error('[FRAME] OpenAI API key not configured');
+      alert('OpenAI API key is not configured. Please add VITE_OPENAI_API_KEY to your environment variables.');
+      return;
+    }
+    
+    const prompt = window.prompt('Enter a prompt to generate an AI image:', frameShape.aiPrompt || 'A beautiful landscape with mountains and a lake');
+    if (!prompt) {
+      console.log('[FRAME] User cancelled prompt');
+      return;
+    }
+    
+    console.log('[FRAME] Starting AI generation with prompt:', prompt);
+    
+    // Update frame to show loading state
+    const loadingFrame = {
+      ...frameShape,
+      isGenerating: true,
+      aiPrompt: prompt,
+      updated_at: Date.now(),
+      updated_by: useCanvas.getState().me.id
+    };
+    
+    console.log('[FRAME] Setting loading state:', loadingFrame);
+    useCanvas.getState().upsert(loadingFrame);
+    broadcastUpsert(loadingFrame);
+    
+    try {
+      console.log('[FRAME] Calling generateImageWithDALLE...');
+      console.log('[FRAME] Frame dimensions:', frameShape.w, '×', frameShape.h);
+      const imageUrl = await generateImageWithDALLE(prompt, frameShape.w, frameShape.h);
+      console.log('[FRAME] AI generation successful, image URL:', imageUrl);
+      
+      // Update frame with generated image
+      const updatedFrame = {
+        ...frameShape,
+        isGenerating: false,
+        aiPrompt: prompt,
+        generatedImageUrl: imageUrl,
+        updated_at: Date.now(),
+        updated_by: useCanvas.getState().me.id
+      };
+      
+      console.log('[FRAME] Updating frame with generated image');
+      useCanvas.getState().upsert(updatedFrame);
+      broadcastUpsert(updatedFrame);
+      
+    } catch (error) {
+      console.error('[FRAME] AI image generation failed:', error);
+      console.error('[FRAME] Error details:', {
+        message: error instanceof Error ? error.message : 'Unknown error',
+        stack: error instanceof Error ? error.stack : undefined
+      });
+      
+      // Reset loading state on error
+      const errorFrame = {
+        ...frameShape,
+        isGenerating: false,
+        updated_at: Date.now(),
+        updated_by: useCanvas.getState().me.id
+      };
+      
+      useCanvas.getState().upsert(errorFrame);
+      broadcastUpsert(errorFrame);
+      
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
+      alert(`AI image generation failed: ${errorMessage}`);
+    }
+  };
+
   const handleDelete = () => {
     // Save history before deleting so it can be undone with all properties intact
     useCanvas.getState().pushHistory();
@@ -4582,6 +4747,22 @@ function ContextMenu({ x, y, shapeIds, onClose }: {
                 </button>
               );
             })()}
+            
+            {/* Generate AI Image - only for frame shapes */}
+            {(!isMultiSelection && shape?.type === 'frame') && (
+              <button
+                onClick={() => {
+                  handleGenerateAIImage(shape);
+                  onClose();
+                }}
+                className="w-full text-left text-sm px-2 py-1 rounded"
+                style={{ color: colors.primary }}
+                onMouseEnter={(e) => e.currentTarget.style.backgroundColor = colors.buttonHover}
+                onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
+              >
+                🎨 Generate AI Image
+              </button>
+            )}
             
             {/* Delete */}
             <button
