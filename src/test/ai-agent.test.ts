@@ -239,6 +239,48 @@ describe('AI Agent', () => {
       expect(result).toBeDefined();
       expect(result.ok).toBe(true);
     });
+
+    it('creates trapezoids', async () => {
+      const result = await interpret('create a trapezoid');
+      expect(result).toBeDefined();
+      expect(result.ok).toBe(true);
+    });
+
+    it('creates rhombus', async () => {
+      const result = await interpret('add a rhombus');
+      expect(result).toBeDefined();
+      expect(result.ok).toBe(true);
+    });
+
+    it('creates rhombus with diamond keyword', async () => {
+      const result = await interpret('make a diamond');
+      expect(result).toBeDefined();
+      expect(result.ok).toBe(true);
+    });
+
+    it('creates parallelograms', async () => {
+      const result = await interpret('create a parallelogram');
+      expect(result).toBeDefined();
+      expect(result.ok).toBe(true);
+    });
+
+    it('creates lines', async () => {
+      const result = await interpret('add a line');
+      expect(result).toBeDefined();
+      expect(result.ok).toBe(true);
+    });
+
+    it('creates arrows', async () => {
+      const result = await interpret('create an arrow');
+      expect(result).toBeDefined();
+      expect(result.ok).toBe(true);
+    });
+
+    it('creates AI image frames', async () => {
+      const result = await interpret('create an ai image frame');
+      expect(result).toBeDefined();
+      expect(result.ok).toBe(true);
+    });
   });
 
   describe('Color & Style Operations', () => {

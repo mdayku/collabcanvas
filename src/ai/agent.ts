@@ -493,6 +493,30 @@ export async function interpret(text: string) {
       const id = tools.createShape("oval", 250, 200, 150, 100, parseColor(t));
       return { ok: true, tool_calls: [{ name:"createShape", args:{ type:"oval", id }}] };
     }
+    if (/\b(trapezoid)\b/.test(t)) {
+      const id = tools.createShape("trapezoid", 250, 200, 100, 100, parseColor(t));
+      return { ok: true, tool_calls: [{ name:"createShape", args:{ type:"trapezoid", id }}] };
+    }
+    if (/\b(rhombus|diamond)\b/.test(t)) {
+      const id = tools.createShape("rhombus", 250, 200, 100, 100, parseColor(t));
+      return { ok: true, tool_calls: [{ name:"createShape", args:{ type:"rhombus", id }}] };
+    }
+    if (/\b(parallelogram)\b/.test(t)) {
+      const id = tools.createShape("parallelogram", 250, 200, 100, 100, parseColor(t));
+      return { ok: true, tool_calls: [{ name:"createShape", args:{ type:"parallelogram", id }}] };
+    }
+    if (/\b(line)\b/.test(t) && !/\btext\b/.test(t)) {
+      const id = tools.createShape("line", 250, 200, 120, 2, parseColor(t));
+      return { ok: true, tool_calls: [{ name:"createShape", args:{ type:"line", id }}] };
+    }
+    if (/\b(arrow)\b/.test(t)) {
+      const id = tools.createShape("arrow", 250, 200, 120, 2, parseColor(t));
+      return { ok: true, tool_calls: [{ name:"createShape", args:{ type:"arrow", id }}] };
+    }
+    if (/\b(frame)\b/.test(t) && /\b(ai|image|picture)\b/.test(t)) {
+      const id = tools.createShape("frame", 250, 200, 200, 150, parseColor(t));
+      return { ok: true, tool_calls: [{ name:"createShape", args:{ type:"frame", id }}] };
+    }
     if (/\b(text|label)\b/.test(t)) {
       const content = parseText(t) ?? "Hello World";
       const id = tools.createText(content, 180, 180, 24, parseColor(t));
