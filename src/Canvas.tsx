@@ -1472,7 +1472,7 @@ interface ContextMenuData {
 }
 
 export default function Canvas({ onSignOut }: CanvasProps) {
-  const { shapes, selectedIds, me, cursors, showCanvasSelector, hideCanvasSelectorDialog } = useCanvas();
+  const { shapes, selectedIds, me, cursors, showCanvasSelector, hideCanvasSelectorDialog, roomId } = useCanvas();
   const { colors, showGrid, snapToGrid } = useTheme();
   const [contextMenu, setContextMenu] = useState<ContextMenuData | null>(null);
   const [_scale, setScale] = useState(1);
@@ -1527,11 +1527,11 @@ export default function Canvas({ onSignOut }: CanvasProps) {
     roomChannel = channel;
 
     channel.on("broadcast", { event: "shape:upsert" }, ({ payload }) => {
-      console.log('📡 Received shape:upsert broadcast:', payload);
+      // Removed verbose logging for performance
       useCanvas.getState().upsert(payload as ShapeBase | ShapeBase[]);
     });
     channel.on("broadcast", { event: "shape:remove" }, ({ payload }) => {
-      console.log('📡 Received shape:remove broadcast:', payload);
+      // Removed verbose logging for performance
       useCanvas.getState().remove(payload as string[]);
     });
 
@@ -1541,8 +1541,10 @@ export default function Canvas({ onSignOut }: CanvasProps) {
       useCanvas.getState().setOnlineUsers(users);
       
       // Update cursors from presence data
+      const currentRoomId = useCanvas.getState().roomId;
+      const currentUserId = useCanvas.getState().me.id; // Get fresh user ID to avoid stale closure
       Object.entries(presenceState).forEach(([userId, presence]) => {
-        if (userId !== me.id && presence.length > 0) {
+        if (userId !== currentUserId && presence.length > 0) {
           const presenceData = presence[0] as any;
           if (presenceData.x !== undefined && presenceData.y !== undefined) {
             useCanvas.getState().updateCursor({
@@ -1551,6 +1553,7 @@ export default function Canvas({ onSignOut }: CanvasProps) {
               x: presenceData.x,
               y: presenceData.y,
               color: presenceData.color || '#666',
+              roomId: presenceData.roomId || currentRoomId, // Use presence roomId or fallback to current
               last: presenceData.last || Date.now()
             });
           }
@@ -1560,11 +1563,19 @@ export default function Canvas({ onSignOut }: CanvasProps) {
 
     channel.on("presence", { event: "join" }, ({ key }) => {
       console.log('User joined:', key);
+      // Update online users list when someone joins
+      const presenceState = channel.presenceState();
+      const users = Object.keys(presenceState);
+      useCanvas.getState().setOnlineUsers(users);
     });
 
     channel.on("presence", { event: "leave" }, ({ key }) => {
       console.log('User left:', key);
       useCanvas.getState().removeCursor(key);
+      // Also update online users list to remove the user who left
+      const presenceState = channel.presenceState();
+      const users = Object.keys(presenceState);
+      useCanvas.getState().setOnlineUsers(users);
     });
 
     channel.subscribe(async (status) => {
@@ -1574,13 +1585,14 @@ export default function Canvas({ onSignOut }: CanvasProps) {
         // Wait for channel to fully stabilize before tracking presence
         setTimeout(async () => {
           try {
-            const { me } = useCanvas.getState();
+            const { me, roomId } = useCanvas.getState();
             await channel.track({ 
               id: me.id, 
               name: me.name || "Guest", 
               x: 0, 
               y: 0, 
               color: me.color, 
+              roomId: roomId, // Include roomId for isolation
               last: Date.now() 
             });
           } catch (error) {
@@ -1602,10 +1614,13 @@ export default function Canvas({ onSignOut }: CanvasProps) {
     setStatus('online'); // Assume online for now
 
     return () => { 
+      console.log('🧹 Cleaning up channel and cursors for room:', roomId);
       channel.unsubscribe(); 
       roomChannel = null;
+      // Clear cursors when leaving room
+      useCanvas.setState({ cursors: {} });
     };
-  }, []);
+  }, [roomId]); // Re-run when roomId changes to properly clean up old channel
 
   // Global mouse event listeners to handle panning outside canvas bounds
   useEffect(() => {
@@ -1672,15 +1687,39 @@ export default function Canvas({ onSignOut }: CanvasProps) {
     stage.batchDraw();
   };
 
-  // Cursor broadcast
+  // Cursor broadcast with canvas-relative coordinates (throttled for performance)
   useEffect(() => {
     let raf:number|undefined;
+    let lastUpdate = 0;
+    const THROTTLE_MS = 33; // ~30 FPS (was 60 FPS with just RAF)
+    
     const handler = (e:MouseEvent) => {
       if (raf) cancelAnimationFrame(raf as number);
       raf = requestAnimationFrame(() => {
+        const now = Date.now();
+        if (now - lastUpdate < THROTTLE_MS) return; // Throttle to 30 FPS
+        lastUpdate = now;
+        
         const channel = supabase.channel(`room:${useCanvas.getState().roomId}`);
-        const { me } = useCanvas.getState();
-        channel.track({ id: me.id, name: me.name || "Guest", x: e.clientX, y: e.clientY, color: me.color, last: Date.now() });
+        const { me, roomId } = useCanvas.getState();
+        
+        // Get canvas-relative coordinates
+        const canvasContainer = canvasContainerRef.current;
+        if (!canvasContainer) return;
+        
+        const rect = canvasContainer.getBoundingClientRect();
+        const canvasX = e.clientX - rect.left;
+        const canvasY = e.clientY - rect.top;
+        
+        channel.track({ 
+          id: me.id, 
+          name: me.name || "Guest", 
+          x: canvasX, 
+          y: canvasY, 
+          color: me.color, 
+          roomId: roomId, // Include roomId for isolation
+          last: Date.now() 
+        });
       });
     };
     window.addEventListener("mousemove", handler);
@@ -2118,10 +2157,10 @@ export default function Canvas({ onSignOut }: CanvasProps) {
     const deltaX = snappedX - currentShape.x;
     const deltaY = snappedY - currentShape.y;
     
-    // Update the dragged shape
+    // Update the dragged shape and broadcast final position
     const updatedShape = { ...currentShape, x: snappedX, y: snappedY, updated_at: Date.now(), updated_by: me.id } as ShapeBase;
     useCanvas.getState().upsert(updatedShape);
-    broadcastUpsert(updatedShape);
+    broadcastUpsert(updatedShape); // Broadcast final position after drag
     // Auto-save handles persistence
     
     // If shape belongs to a group, move all other shapes in the group
@@ -2328,6 +2367,7 @@ export default function Canvas({ onSignOut }: CanvasProps) {
         id={s.id}
         x={s.x}
         y={s.y}
+        rotation={s.rotation || 0}
         onTap={onClick} 
         onClick={onClick} 
         onContextMenu={onRightClick}
@@ -2737,8 +2777,10 @@ export default function Canvas({ onSignOut }: CanvasProps) {
           />
         )}
         
-        {/* Multiplayer cursors */}
-        {Object.values(cursors).filter(cursor => cursor.id !== me.id).map((cursor) => (
+        {/* Multiplayer cursors - filtered by current room */}
+        {Object.values(cursors)
+          .filter(cursor => cursor.id !== me.id && cursor.roomId === roomId)
+          .map((cursor) => (
           <div
             key={cursor.id}
             className="absolute pointer-events-none z-40 transition-all duration-75"

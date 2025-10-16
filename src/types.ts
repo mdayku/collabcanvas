@@ -42,7 +42,8 @@ export type Cursor = {
   x: number; 
   y: number; 
   color: string; 
-  last: number 
+  last: number;
+  roomId: string; // Track which canvas/room this cursor belongs to
 };
 
 // Helper types for shape creation

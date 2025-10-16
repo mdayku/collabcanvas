@@ -3,6 +3,7 @@ import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import Auth from '../Auth';
 import { supabase } from '../lib/supabaseClient';
+import { ThemeProvider } from '../contexts/ThemeContext';
 
 // Mock the store
 vi.mock('../state/store', () => ({
@@ -16,8 +17,15 @@ describe('Auth Component', () => {
     vi.clearAllMocks();
   });
 
+  // Helper to render Auth with ThemeProvider
+  const renderAuth = (props = {}) => render(
+    <ThemeProvider>
+      <Auth onAuthSuccess={mockOnAuthSuccess} {...props} />
+    </ThemeProvider>
+  );
+
   it('renders login form by default', () => {
-    render(<Auth onAuthSuccess={mockOnAuthSuccess} />);
+    renderAuth();
     
     expect(screen.getByText('Sign in to your account')).toBeInTheDocument();
     expect(screen.getByLabelText(/email/i)).toBeInTheDocument();
@@ -27,7 +35,7 @@ describe('Auth Component', () => {
 
   it('switches to signup form when clicking signup link', async () => {
     const user = userEvent.setup();
-    render(<Auth onAuthSuccess={mockOnAuthSuccess} />);
+    renderAuth();
     
     const signupLink = screen.getByText("Don't have an account? Sign up");
     await user.click(signupLink);
@@ -63,7 +71,7 @@ describe('Auth Component', () => {
       }),
     } as any);
 
-    render(<Auth onAuthSuccess={mockOnAuthSuccess} />);
+    renderAuth();
     
     await user.type(screen.getByLabelText(/email/i), 'test@example.com');
     await user.type(screen.getByLabelText(/password/i), 'password123');
@@ -90,7 +98,7 @@ describe('Auth Component', () => {
       error: { message: 'Invalid login credentials' } as any,
     });
 
-    render(<Auth onAuthSuccess={mockOnAuthSuccess} />);
+    renderAuth();
     
     await user.type(screen.getByLabelText(/email/i), 'test@example.com');
     await user.type(screen.getByLabelText(/password/i), 'wrongpassword');
@@ -103,7 +111,7 @@ describe('Auth Component', () => {
 
   it('has password minimum length requirement', async () => {
     const user = userEvent.setup();
-    render(<Auth onAuthSuccess={mockOnAuthSuccess} />);
+    renderAuth();
     
     const passwordInput = screen.getByLabelText(/password/i);
     await user.type(passwordInput, '123'); // Less than 6 characters

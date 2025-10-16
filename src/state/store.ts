@@ -404,6 +404,8 @@ export const useCanvas = create<CanvasState>()(immer((set, get) => ({
   // Canvas management functions
   setCurrentCanvas: (canvas) => set((s) => { 
     s.currentCanvas = canvas;
+    // Clear cursors when switching canvases to prevent cross-canvas cursor pollution
+    s.cursors = {};
     if (canvas) {
       s.roomId = canvas.room_id;
       // Save as last active canvas

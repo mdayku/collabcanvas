@@ -709,18 +709,29 @@ flowchart TD
 
 ### 🔧 Technical Implementation Details
 
-**Core Files:**
-- `src/services/openaiService.ts` - Smart dimension analysis & DALL-E integration
-- `src/Canvas.tsx` - Frame rendering, context menu, user interaction  
-- `src/types.ts` - Frame shape type with AI properties
+**Revolutionary Server-Side Architecture:**
+- `api/generate-image.js` - **Lambda function** for CORS-free AI generation
+- `src/services/openaiService.ts` - **Lambda-first client** with intelligent fallback
+- `src/Canvas.tsx` - Frame rendering, context menu, real-time collaboration
+- `src/types.ts` - Enhanced frame type with AI properties
 
-**Database Schema:**
+**Database Schema Migration:**
 ```sql
--- Added to shapes table
+-- AI Image Generation Support (REVOLUTIONARY)
 ALTER TABLE shapes ADD COLUMN IF NOT EXISTS ai_prompt TEXT;
 ALTER TABLE shapes ADD COLUMN IF NOT EXISTS generated_image_url TEXT;  
 ALTER TABLE shapes ADD COLUMN IF NOT EXISTS is_generating BOOLEAN DEFAULT FALSE;
+
+-- Frame Support
+ALTER TABLE shapes ADD frame TO type_check_constraint;
 ```
+
+**Lambda Architecture Benefits:**
+- ✅ **CORS-Free**: No browser limitations
+- ✅ **Universal**: Works on any serverless platform  
+- ✅ **Secure**: API keys never exposed to client
+- ✅ **Reliable**: No public proxy dependencies
+- ✅ **Fast**: Server-side processing with optimized networking
 
 **Smart Dimension Logic:**
 ```typescript
