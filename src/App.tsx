@@ -49,6 +49,16 @@ export default function App() {
           return; // Demo user found, skip Supabase auth
         }
 
+        // Check if this is a password reset link (Supabase uses hash fragment)
+        const hashParams = new URLSearchParams(window.location.hash.substring(1));
+        const isPasswordReset = hashParams.get('type') === 'recovery';
+        
+        if (isPasswordReset) {
+          console.log('Password reset link detected - showing auth form instead of canvas');
+          setLoading(false);
+          return; // Don't auto-login, let Auth.tsx handle the password reset
+        }
+
         const { data: { session }, error } = await supabase.auth.getSession();
         
         if (session?.user && !error) {
@@ -70,6 +80,21 @@ export default function App() {
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       async (event, session) => {
         console.log('Auth state change:', event, session?.user?.email);
+        
+        // Don't auto-login if this is a password recovery flow
+        if (event === 'PASSWORD_RECOVERY') {
+          console.log('PASSWORD_RECOVERY event - staying on auth page');
+          setLoading(false);
+          return;
+        }
+        
+        // Check if URL indicates password reset (even for SIGNED_IN events)
+        const hashParams = new URLSearchParams(window.location.hash.substring(1));
+        if (hashParams.get('type') === 'recovery') {
+          console.log('Recovery link detected - not auto-logging in');
+          setLoading(false);
+          return;
+        }
         
         if (event === 'SIGNED_IN' && session?.user) {
           await handleAuthSuccess(session.user, null);
