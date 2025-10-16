@@ -1,7 +1,7 @@
 import type { ShapeBase } from "../types";
 import { useCanvas } from "../state/store";
 import { supabase } from "../lib/supabaseClient";
-import { callOpenAI, isOpenAIConfigured, type AIResponse as OpenAIResponse } from "../services/openaiService";
+import { callOpenAI, isOpenAIConfigured } from "../services/openaiService";
 import { callGroq, isGroqConfigured } from "../services/groqService";
 
 
@@ -163,38 +163,12 @@ export async function interpretWithResponse(text: string, language: string = 'en
   
   // Skip serverless AI - using browser-based APIs directly
 
-  // Try Groq browser client if configured (free and fast!)
-  console.log('[DEBUG] Checking Groq configuration...');
-  if (isGroqConfigured()) {
-    try {
-      console.log('[AI] Using browser Groq for:', text);
-      const groqResponse = await callGroq(text, language);
-      
-      // Actions are now handled by rule-based parser, not LLM fallback
-      
-      // Convert Groq response to our AIResponse format
-      return {
-        type: groqResponse.intent === 'error' ? 'error' :
-              groqResponse.intent === 'clarify' ? 'clarification_needed' : 'success',
-        message: groqResponse.message,
-        result: groqResponse.actions,
-        suggestions: groqResponse.suggestions || []
-      };
-      
-    } catch (error) {
-      console.error('[AI] Browser Groq failed, trying OpenAI:', error);
-      // Fall through to OpenAI
-    }
-  }
-
-  // Try OpenAI browser client as backup if configured
+  // PRIORITY 1: Try OpenAI browser client first (primary AI service)
   console.log('[DEBUG] Checking OpenAI configuration...');
   if (isOpenAIConfigured()) {
     try {
-      console.log('[AI] Using browser OpenAI for:', text);
+      console.log('[AI] ⭐ Using browser OpenAI (primary) for:', text);
       const openaiResponse = await callOpenAI(text, language);
-      
-      // Actions are now handled by rule-based parser, not LLM fallback
       
       // Convert OpenAI response to our AIResponse format
       return {
@@ -206,9 +180,47 @@ export async function interpretWithResponse(text: string, language: string = 'en
       };
       
     } catch (error) {
-      console.error('[AI] Browser OpenAI failed, falling back to rule-based system:', error);
+      console.error('[AI] ⚠️ OpenAI failed, trying Groq fallback:', error);
+      
+      // User-friendly error message
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      if (errorMessage.includes('API key') || errorMessage.includes('401')) {
+        console.error('[AI] API key issue detected');
+      }
+      // Fall through to Groq
+    }
+  } else {
+    console.log('[AI] ⚠️ OpenAI not configured, skipping to Groq...');
+  }
+
+  // PRIORITY 2: Try Groq browser client as fallback (fast and free!)
+  console.log('[DEBUG] Checking Groq configuration...');
+  if (isGroqConfigured()) {
+    try {
+      console.log('[AI] 🔄 Using browser Groq (fallback) for:', text);
+      const groqResponse = await callGroq(text, language);
+      
+      // Convert Groq response to our AIResponse format
+      return {
+        type: groqResponse.intent === 'error' ? 'error' :
+              groqResponse.intent === 'clarify' ? 'clarification_needed' : 'success',
+        message: groqResponse.message,
+        result: groqResponse.actions,
+        suggestions: groqResponse.suggestions || []
+      };
+      
+    } catch (error) {
+      console.error('[AI] ⚠️ Groq failed, falling back to rule-based system:', error);
+      
+      // User-friendly error message
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      if (errorMessage.includes('API key') || errorMessage.includes('401')) {
+        console.error('[AI] Groq API key issue detected');
+      }
       // Fall through to rule-based system
     }
+  } else {
+    console.log('[AI] ⚠️ Groq not configured, skipping to legacy fallback...');
   }
 
   console.log('[AI] All AI services failed, using legacy rule-based fallback');
@@ -587,7 +599,7 @@ function extractHint(t:string): Hint {
 function arrangeRow(ids:string[], gap=12) {
   const s = useCanvas.getState();
   let x = 80, y = 200;
-  ids.forEach((id,i) => {
+  ids.forEach((id) => {
     const sh = s.shapes[id]; if (!sh) return;
     up(id, { x: x, y }); 
     x += (sh.w + gap);

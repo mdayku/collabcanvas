@@ -3909,14 +3909,30 @@ function FloatingAIWidget() {
       
       // Check if the response indicates an error or lack of understanding
       if (response.type === 'error') {
-        setErrorMessage(response.message || "I couldn't understand that command. Try being more specific or check the help menu for examples.");
+        const errorMsg = response.message || "I couldn't understand that command. Try being more specific or check the help menu for examples.";
+        setErrorMessage(errorMsg);
+        // Show toast notification for better visibility
+        showToast(errorMsg, 'error');
+      } else if (response.type === 'clarification_needed') {
+        setErrorMessage(response.message);
+        // Show toast for clarification requests
+        showToast(response.message || "Could you be more specific?", 'warning');
       } else {
+        // Success! Show positive feedback
+        if (response.message && !response.message.includes('✅')) {
+          showToast(`✅ ${response.message}`, 'success');
+        }
         // Clear the input after successful submission
         setPrompt('');
       }
     } catch (error) {
       console.error('AI Error:', error);
-      setErrorMessage("Something went wrong while processing your request. Please try again or use a simpler command.");
+      const errorMsg = error instanceof Error 
+        ? `AI Error: ${error.message}. Please check your API keys or try a simpler command.`
+        : "Something went wrong while processing your request. Please try again or use a simpler command.";
+      
+      setErrorMessage(errorMsg);
+      showToast(errorMsg, 'error');
     } finally {
       setIsWorking(false);
     }
