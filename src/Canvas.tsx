@@ -11,6 +11,7 @@ import { SaveStatusIndicator } from "./components/SaveStatusIndicator";
 import { useTheme } from "./contexts/ThemeContext";
 import { CanvasSelector } from "./components/CanvasSelector";
 import { AuthStatus } from "./components/AuthStatus";
+import * as OfflineQueue from "./services/offlineQueue";
 
 // ================================================================================
 // TOAST NOTIFICATION SYSTEM
@@ -145,12 +146,13 @@ function useFps() {
 // const CANVAS_W = 2400, CANVAS_H = 1600;
 
 // TopRibbon Component with File Menu
-function TopRibbon({ onSignOut, stageRef, setShowHelpPopup, centerOnNewShape, setCenterOnNewShape }: { 
+function TopRibbon({ onSignOut, stageRef, setShowHelpPopup, centerOnNewShape, setCenterOnNewShape, offlineQueueState }: { 
   onSignOut: () => void; 
   stageRef: React.RefObject<any>; 
   setShowHelpPopup: (show: boolean) => void;
   centerOnNewShape: boolean;
   setCenterOnNewShape: (value: boolean) => void;
+  offlineQueueState: OfflineQueue.OfflineQueueState;
 }) {
   const [showFileMenu, setShowFileMenu] = useState(false);
   const [showViewMenu, setShowViewMenu] = useState(false);
@@ -1031,6 +1033,43 @@ function TopRibbon({ onSignOut, stageRef, setShowHelpPopup, centerOnNewShape, se
             </div>
             <SaveStatusIndicator />
             
+            {/* Offline Status Indicator */}
+            {!offlineQueueState.isOnline && (
+              <div 
+                className="ml-3 px-3 py-1 text-sm rounded flex items-center gap-2"
+                style={{
+                  backgroundColor: '#FEF3C7',
+                  color: '#92400E',
+                  border: '1px solid #FCD34D'
+                }}
+                title={`Offline - ${offlineQueueState.queuedOperations.length} operations queued`}
+              >
+                <span>📴</span>
+                <span className="font-medium">Offline</span>
+                {offlineQueueState.queuedOperations.length > 0 && (
+                  <span className="text-xs bg-amber-600 text-white px-1.5 py-0.5 rounded">
+                    {offlineQueueState.queuedOperations.length}
+                  </span>
+                )}
+              </div>
+            )}
+            
+            {/* Syncing Indicator */}
+            {offlineQueueState.isSyncing && (
+              <div 
+                className="ml-3 px-3 py-1 text-sm rounded flex items-center gap-2"
+                style={{
+                  backgroundColor: '#DBEAFE',
+                  color: '#1E40AF',
+                  border: '1px solid #93C5FD'
+                }}
+                title="Syncing queued operations..."
+              >
+                <span className="animate-spin">🔄</span>
+                <span className="font-medium">Syncing...</span>
+              </div>
+            )}
+            
             {/* Sign Out Button */}
             <button
               onClick={onSignOut}
@@ -1621,6 +1660,11 @@ export default function Canvas({ onSignOut }: CanvasProps) {
   const [showHelpPopup, setShowHelpPopup] = useState(false);
   const [status, setStatus] = useState<'connecting'|'online'|'reconnecting'|'offline'>('connecting');
   const [canvasSize, setCanvasSize] = useState({ width: 800, height: 600 });
+  
+  // Offline queue state
+  const [offlineQueueState, setOfflineQueueState] = useState<OfflineQueue.OfflineQueueState>(
+    OfflineQueue.getState()
+  );
   const trRef = useRef<any>(null);
   const layerRef = useRef<any>(null);
   const canvasContainerRef = useRef<HTMLDivElement>(null);
@@ -1654,6 +1698,48 @@ export default function Canvas({ onSignOut }: CanvasProps) {
     };
     
     initCanvas();
+  }, []); // Only run once on mount
+
+  // Initialize offline queue system
+  useEffect(() => {
+    console.log('🔌 Initializing offline queue system...');
+    OfflineQueue.initOfflineQueue();
+    
+    // Subscribe to offline queue state changes
+    const unsubscribe = OfflineQueue.onStateChange((newState) => {
+      setOfflineQueueState(newState);
+      
+      // Update connection status based on offline queue state
+      if (newState.isOnline && !newState.isSyncing) {
+        setStatus('online');
+      } else if (!newState.isOnline) {
+        setStatus('offline');
+      } else if (newState.isSyncing) {
+        setStatus('reconnecting');
+      }
+      
+      // Show toast notifications for offline/online transitions
+      if (!newState.isOnline && offlineQueueState.isOnline) {
+        showToast('📴 You are offline. Changes will be queued and synced when reconnected.', 'warning');
+      } else if (newState.isOnline && !offlineQueueState.isOnline) {
+        showToast('🟢 Connection restored! Syncing queued changes...', 'success');
+        
+        // Trigger sync with broadcast functions
+        OfflineQueue.syncQueue(async (type, payload) => {
+          if (type === 'upsert') {
+            await broadcastUpsert(payload as ShapeBase | ShapeBase[]);
+          } else if (type === 'remove') {
+            await broadcastRemove(payload as string[]);
+          }
+        });
+      }
+    });
+    
+    return () => {
+      console.log('🔌 Cleaning up offline queue system...');
+      unsubscribe();
+      OfflineQueue.cleanupOfflineQueue();
+    };
   }, []); // Only run once on mount
 
   // ================================================================================
@@ -2962,6 +3048,7 @@ export default function Canvas({ onSignOut }: CanvasProps) {
         setShowHelpPopup={setShowHelpPopup}
         centerOnNewShape={centerOnNewShape}
         setCenterOnNewShape={setCenterOnNewShape}
+        offlineQueueState={offlineQueueState}
       />
       <TabBar />
       <div className="flex-1 flex min-h-0">
@@ -5514,11 +5601,46 @@ function LanguageDropdown({ selectedLanguage, onLanguageChange }: {
 // Broadcasting + persistence helpers with improvements
 async function broadcastUpsert(shapes: ShapeBase | ShapeBase[]) {
   if (!roomChannel) return;
+  
+  const queueState = OfflineQueue.getState();
+  const shapesArray = Array.isArray(shapes) ? shapes : [shapes];
+  const currentState = useCanvas.getState();
+  
+  // If offline, queue the operation instead of broadcasting
+  if (!queueState.isOnline) {
+    console.log('📦 Queueing upsert (offline):', shapesArray.length, 'shapes');
+    OfflineQueue.queueOperation(
+      'upsert',
+      shapesArray,
+      currentState.currentCanvas?.id || '',
+      currentState.me.id
+    );
+    return;
+  }
+  
+  // Online: broadcast normally
   await roomChannel.send({ type: "broadcast", event: "shape:upsert", payload: shapes });
 }
 
 async function broadcastRemove(ids: string[]) {
   if (!roomChannel) return;
+  
+  const queueState = OfflineQueue.getState();
+  const currentState = useCanvas.getState();
+  
+  // If offline, queue the operation instead of broadcasting
+  if (!queueState.isOnline) {
+    console.log('📦 Queueing remove (offline):', ids.length, 'shapes');
+    OfflineQueue.queueOperation(
+      'remove',
+      ids,
+      currentState.currentCanvas?.id || '',
+      currentState.me.id
+    );
+    return;
+  }
+  
+  // Online: broadcast normally
   await roomChannel.send({ type: "broadcast", event: "shape:remove", payload: ids });
 }
 
