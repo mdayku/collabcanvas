@@ -231,49 +231,76 @@ export function isOpenAIConfigured(): boolean {
 
 // Generate AI image using DALL-E with smart dimensions
 export async function generateImageWithDALLE(prompt: string, frameWidth?: number, frameHeight?: number): Promise<string> {
-  // Debug: Confirm API key is loaded
-  const apiKey = import.meta.env.VITE_OPENAI_API_KEY;
-  console.log('[DALL-E] 🔑 API Key loaded:', apiKey ? `${apiKey.substring(0, 15)}...` : 'NONE');
-  
-  const client = initializeOpenAI();
-  if (!client) {
-    throw new Error('OpenAI API key not configured. Please add VITE_OPENAI_API_KEY to your environment variables.');
-  }
+  console.log('[DALL-E] 🚀 Starting AI image generation...');
+  console.log('[DALL-E] Prompt:', prompt);
+  console.log('[DALL-E] Frame dimensions:', frameWidth, '×', frameHeight);
 
-  // 🎯 Smart Dimension System
-  let dalleSize: "1024x1024" | "1792x1024" | "1024x1792" = "1024x1024";
-  let enhancedPrompt = prompt;
-  
-  if (frameWidth && frameHeight) {
-    const aspectRatio = frameWidth / frameHeight;
-    console.log(`[DALL-E] 📐 Frame dimensions: ${frameWidth}×${frameHeight} (ratio: ${aspectRatio.toFixed(2)})`);
-    
-    // Choose optimal DALL-E size based on frame aspect ratio
-    if (aspectRatio > 1.5) {
-      // Wide frame → Landscape
-      dalleSize = "1792x1024";
-      enhancedPrompt = prompt + ", wide panoramic composition, landscape orientation";
-      console.log('[DALL-E] 🖼️ Wide frame detected → Using landscape 1792×1024');
-    } else if (aspectRatio < 0.7) {
-      // Tall frame → Portrait  
-      dalleSize = "1024x1792";
-      enhancedPrompt = prompt + ", tall vertical composition, portrait orientation";
-      console.log('[DALL-E] 📱 Tall frame detected → Using portrait 1024×1792');
-    } else {
-      // Square-ish → Square
-      dalleSize = "1024x1024";
-      enhancedPrompt = prompt + ", square composition, centered subject";
-      console.log('[DALL-E] ⬜ Square frame detected → Using square 1024×1024');
-    }
-  } else {
-    console.log('[DALL-E] ⬜ No frame dimensions provided → Using default square 1024×1024');
-  }
-
+  // 🎯 Try Lambda-first approach (server-side generation with no CORS issues)
   try {
-    console.log('[DALL-E] 🎨 Enhanced prompt:', enhancedPrompt);
-    console.log('[DALL-E] 📏 DALL-E size:', dalleSize);
+    console.log('[DALL-E] 🚀 Using server-side Lambda generation...');
     
-    const response = await client.images.generate({
+    const lambdaResponse = await fetch('/api/generate-image', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ 
+        prompt, 
+        frameWidth, 
+        frameHeight 
+      })
+    });
+
+    if (!lambdaResponse.ok) {
+      const error = await lambdaResponse.json();
+      throw new Error(`Lambda generation failed: ${error.error || lambdaResponse.statusText}`);
+    }
+
+    const { dataUrl, contentType, size, dalleSize: usedSize } = await lambdaResponse.json();
+    
+    if (!dataUrl || !dataUrl.startsWith('data:image/')) {
+      throw new Error('Invalid data URL returned from Lambda');
+    }
+
+    console.log(`[DALL-E] ✅ Image generated via Lambda (${contentType}, ${size} bytes)`);
+    console.log(`[DALL-E] 📏 Used DALL-E size: ${usedSize}`);
+    return dataUrl;
+    
+  } catch (lambdaError) {
+    console.error('[DALL-E] ⚠️ Lambda generation failed:', lambdaError);
+    
+    // 🔄 Fallback to client-side generation if Lambda fails
+    console.log('[DALL-E] 🔄 Falling back to client-side generation...');
+    
+    const client = initializeOpenAI();
+    if (!client) {
+      throw new Error('Both Lambda and client-side generation failed. OpenAI API key not configured.');
+    }
+
+    // 🎯 Smart Dimension System (fallback)
+    let dalleSize: "1024x1024" | "1792x1024" | "1024x1792" = "1024x1024";
+    let enhancedPrompt = prompt;
+    
+    if (frameWidth && frameHeight) {
+      const aspectRatio = frameWidth / frameHeight;
+      console.log(`[DALL-E] 📐 Frame dimensions: ${frameWidth}×${frameHeight} (ratio: ${aspectRatio.toFixed(2)})`);
+      
+      if (aspectRatio > 1.5) {
+        dalleSize = "1792x1024";
+        enhancedPrompt = prompt + ", wide panoramic composition, landscape orientation";
+        console.log('[DALL-E] 🖼️ Wide frame → Using landscape 1792×1024');
+      } else if (aspectRatio < 0.7) {
+        dalleSize = "1024x1792";
+        enhancedPrompt = prompt + ", tall vertical composition, portrait orientation";
+        console.log('[DALL-E] 📱 Tall frame → Using portrait 1024×1792');
+      } else {
+        dalleSize = "1024x1024";
+        enhancedPrompt = prompt + ", square composition, centered subject";
+        console.log('[DALL-E] ⬜ Square frame → Using square 1024×1024');
+      }
+    }
+
+    const fallbackResponse = await client.images.generate({
       model: "dall-e-3",
       prompt: enhancedPrompt,
       n: 1,
@@ -282,144 +309,16 @@ export async function generateImageWithDALLE(prompt: string, frameWidth?: number
       response_format: "url"
     });
 
-    if (!response.data || response.data.length === 0) {
-      throw new Error('No image generated by DALL-E');
+    if (!fallbackResponse.data || fallbackResponse.data.length === 0) {
+      throw new Error('Fallback client-side generation failed');
     }
 
-    const imageUrl = response.data[0].url;
-    if (!imageUrl) {
-      throw new Error('DALL-E did not return a valid image URL');
+    const fallbackImageUrl = fallbackResponse.data[0].url;
+    if (!fallbackImageUrl) {
+      throw new Error('Fallback generation did not return a valid image URL');
     }
 
-    console.log('[DALL-E] Image generated successfully:', imageUrl);
-    
-          // Platform detection for different proxy strategies
-          const isVercel = window.location.hostname.includes('vercel.app') || window.location.hostname.includes('localhost');
-          const isAWSAmplify = window.location.hostname.includes('amplifyapp.com');
-          
-          if (isVercel) {
-            // Use server-side proxy on Vercel (works perfectly)
-            try {
-              console.log('[DALL-E] 🚀 Using Vercel server-side proxy...');
-              
-              const proxyResponse = await fetch('/api/image-proxy', {
-                method: 'POST',
-                headers: {
-                  'Content-Type': 'application/json',
-                },
-                body: JSON.stringify({ imageUrl })
-              });
-
-              if (!proxyResponse.ok) {
-                const error = await proxyResponse.json();
-                throw new Error(`Proxy failed: ${error.error || proxyResponse.statusText}`);
-              }
-
-              const { dataUrl, contentType, size } = await proxyResponse.json();
-              
-              if (!dataUrl || !dataUrl.startsWith('data:image/')) {
-                throw new Error('Invalid data URL returned from proxy');
-              }
-
-              console.log(`[DALL-E] ✅ Image converted via Vercel proxy (${contentType}, ${size} bytes)`);
-              return dataUrl;
-              
-            } catch (proxyError) {
-              console.warn('[DALL-E] ⚠️ Vercel proxy failed:', proxyError);
-            }
-          } else if (isAWSAmplify) {
-            // For AWS Amplify, try multiple CORS proxy services
-            const corsProxies = [
-              `https://api.codetabs.com/v1/proxy?quest=${encodeURIComponent(imageUrl)}`,
-              `https://thingproxy.freeboard.io/fetch/${encodeURIComponent(imageUrl)}`,
-              `https://api.allorigins.win/raw?url=${encodeURIComponent(imageUrl)}`
-            ];
-            
-            for (let i = 0; i < corsProxies.length; i++) {
-              try {
-                console.log(`[DALL-E] 🌐 Trying AWS proxy ${i + 1}/${corsProxies.length}...`);
-                
-                const controller = new AbortController();
-                const timeoutId = setTimeout(() => controller.abort(), 8000); // 8 second timeout
-                
-                const response = await fetch(corsProxies[i], {
-                  signal: controller.signal,
-                  headers: { 'Accept': 'image/*' }
-                });
-                clearTimeout(timeoutId);
-
-                if (!response.ok) {
-                  throw new Error(`Proxy ${i + 1} failed: ${response.status}`);
-                }
-
-                const blob = await response.blob();
-                
-                if (!blob.type.startsWith('image/')) {
-                  throw new Error(`Proxy ${i + 1} returned ${blob.type} instead of image (${blob.size} bytes)`);
-                }
-
-                const dataUrl = await new Promise<string>((resolve) => {
-                  const reader = new FileReader();
-                  reader.onload = () => resolve(reader.result as string);
-                  reader.readAsDataURL(blob);
-                });
-                
-                if (!dataUrl.startsWith('data:image/')) {
-                  throw new Error(`Proxy ${i + 1} produced invalid data URL`);
-                }
-
-                console.log(`[DALL-E] ✅ Image converted via AWS proxy ${i + 1} (${blob.type}, ${blob.size} bytes)`);
-                return dataUrl;
-                
-              } catch (proxyError) {
-                console.warn(`[DALL-E] ⚠️ AWS proxy ${i + 1} failed:`, proxyError);
-                if (i === corsProxies.length - 1) {
-                  console.warn('[DALL-E] All AWS proxies failed');
-                }
-              }
-            }
-          }
-          
-          // Final fallback: return original URL (will have CORS issues but better than nothing)
-          console.warn('[DALL-E] Using original URL as final fallback (may have CORS issues)');
-          return imageUrl;
-    
-  } catch (error) {
-    console.error('[DALL-E] Image generation failed:', error);
-    console.log('[DALL-E] Error type:', typeof error);
-    console.log('[DALL-E] Error message:', (error as any)?.message || 'No message');
-    console.log('[DALL-E] Full error object:', JSON.stringify(error, null, 2));
-    
-    // 🎭 TEMPORARY: Disabled mock to test real API key
-    // console.log('[DALL-E] 🎭 ANY ERROR DETECTED! Using mock image for testing...');
-    // const mockUrl = 'https://picsum.photos/400/300?random=' + Date.now();
-    // console.log('[DALL-E] 🖼️ Mock URL generated:', mockUrl);
-    // return mockUrl;
-    
-    // TODO: Remove the above mock fallback when real API key is working
-    // Keep the specific error handling below for production use
-    
-    // Check for billing errors in multiple ways
-    const errorStr = JSON.stringify(error).toLowerCase();
-    const messageStr = ((error as any)?.message || '').toLowerCase();
-    
-    if (errorStr.includes('billing') || messageStr.includes('billing') || 
-        errorStr.includes('hard limit') || messageStr.includes('hard limit')) {
-      console.log('[DALL-E] 🎭 BILLING ERROR DETECTED! Using mock image for testing...');
-      // Return a mock image URL for testing purposes
-      const mockUrl = 'https://picsum.photos/400/300?random=' + Date.now();
-      console.log('[DALL-E] 🖼️ Mock URL generated:', mockUrl);
-      return mockUrl;
-    }
-    
-    if (error instanceof Error) {
-      if (error.message.includes('rate limit')) {
-        throw new Error('DALL-E API rate limit exceeded. Please try again in a moment.');
-      } else if (error.message.includes('content policy')) {
-        throw new Error('Image prompt violates OpenAI content policy. Please try a different prompt.');
-      }
-    }
-    
-    throw error;
+    console.log('[DALL-E] ⚠️ Using fallback URL (will have CORS issues)');
+    return fallbackImageUrl;
   }
 }
