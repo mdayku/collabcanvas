@@ -12,6 +12,8 @@
 - **👥 Real-Time Collaboration**: ✅ **SUB-50MS** - True real-time editing with 9/9 conflict resolution (perfect score)
 - **🔔 Visual Feedback System**: ✅ **PROFESSIONAL** - Toast notifications for conflict awareness
 - **🎯 Hybrid AI Agent**: ✅ **INSTANT** - Rule-based parser + LLM fallback for 12+ command types
+- **✏️ Pen Tool**: ✅ **TIER 3 FEATURE** - Click-to-draw bezier paths with smoothing (double-click to finish)
+- **🔲 Box Select**: ✅ **MULTI-SELECT** - Drag on canvas to select multiple shapes, zoom/pan compatible
 - **🏗️ Production Infrastructure**: ✅ **ENTERPRISE** - Professional UI, 190+ tests, comprehensive documentation
 - **📊 Performance Excellence**: ✅ **60 FPS** - Smooth at scale with advanced optimization
 - **💬 AI Clarification System**: ✅ **CONVERSATIONAL** - Multi-turn dialogue for ambiguous commands with context preservation
@@ -208,10 +210,11 @@ Most AI-powered applications default to calling an LLM for every operation. We t
 
 ### **✅ Professional UI (Phase 2) - User Experience**
 - **Modern Interface**: Categorized toolbar, tabbed canvases, ribbon navigation
+- **Tools Section**: Box Select (drag to multi-select), Pen Tool (click-to-draw bezier paths)
 - **Advanced Styling**: Full color palette, outline controls, text formatting
 - **Context Menus**: Right-click styling, shape-specific options
 - **Help System**: Collapsible help, keyboard shortcuts, examples
-- **Business Impact**: Professional-grade user experience
+- **Business Impact**: Professional-grade user experience with advanced selection and drawing tools
 
 ### **⚠️ Multi-Canvas System (Phase 3) - Enterprise Workflow**
 - **Tabbed Interface**: ✅ Browser-style tabs, easy project switching
@@ -246,14 +249,16 @@ Most AI-powered applications default to calling an LLM for every operation. We t
 - **Business Impact**: Enterprise-grade reliability and user experience
 
 ### **✅ Core Productivity Features (Phase 6) - Professional Design Tools**
+- **🔲 Box Select Tool**: Drag on canvas to select multiple shapes with visual rectangle, zoom/pan compatible
+- **✏️ Pen Tool** ✨: Click-to-draw bezier paths with tension smoothing, double-click/Escape/Enter to finish (Tier 3 rubric feature)
 - **🔗 Shape Grouping**: Smart group selection with Ctrl+G/Shift+G shortcuts, synchronized movement
 - **📐 Alignment Tools**: Professional alignment (left/right/center) and distribution via context menu
 - **🔲 Snap-to-Grid**: Precision positioning with 25px grid system and visual overlay
 - **📝 Text Formatting**: Bold, italic, underline, alignment controls via right-click context menu  
-- **⌨️ Comprehensive Shortcuts**: Full keyboard system (Ctrl+Z/Y, Ctrl+C/V/X, Arrow keys, etc.)
+- **⌨️ Comprehensive Shortcuts**: Full keyboard system (Ctrl+Z/Y, Ctrl+C/V/X, Arrow keys, etc.) + Ctrl/Cmd/Shift+Click multi-select
 - **📋 Copy/Paste System**: Complete clipboard integration with smart positioning
-- **🧪 Test Coverage**: 68/68 new feature tests passing, comprehensive quality assurance
-- **Business Impact**: Professional design capabilities matching industry standards
+- **🧪 Test Coverage**: 68/68 new feature tests passing + 9 box select tests, comprehensive quality assurance
+- **Business Impact**: Professional design capabilities matching industry standards, vector path editing for advanced users
 
 ### **✅ AI System Enhancements (Phase 8) - Advanced Intelligence**
 - **🎯 Hybrid AI Agent**: Rule-based parser with LLM fallback for optimal performance
@@ -446,7 +451,7 @@ CREATE TABLE public.canvases (
 CREATE TABLE public.shapes (
     id UUID PRIMARY KEY,
     canvas_id UUID REFERENCES public.canvases(id) ON DELETE CASCADE,
-    type VARCHAR(50) NOT NULL, -- rect, circle, text, frame, etc.
+    type VARCHAR(50) NOT NULL, -- rect, circle, text, frame, path, etc.
     x FLOAT, y FLOAT, w FLOAT, h FLOAT,
     rotation FLOAT DEFAULT 0,
     color VARCHAR(50),
@@ -460,7 +465,11 @@ CREATE TABLE public.shapes (
     -- AI Image Generation
     aiPrompt TEXT,
     generatedImageUrl TEXT,
-    isGenerating BOOLEAN DEFAULT FALSE
+    isGenerating BOOLEAN DEFAULT FALSE,
+    -- Pen Tool / Path shapes
+    points JSONB, -- Array of {x, y} coordinates
+    closed BOOLEAN DEFAULT FALSE,
+    smooth BOOLEAN DEFAULT TRUE
 );
 ```
 

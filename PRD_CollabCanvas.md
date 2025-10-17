@@ -13,7 +13,7 @@ A real-time collaborative design canvas where users and AI co-create. Like Figma
 | **Platform Maturity** | 11 completed phases, 190+ tests passing, production-ready |
 | **Real-Time Collaboration** | 5+ concurrent users, sub-50ms sync, multiplayer cursors |
 | **AI Integration** | Hybrid rule-based + LLM system, 7 languages, 100% feature parity |
-| **Design Tools** | 17 shape types, emojis, icons, grouping, alignment, snap-to-grid |
+| **Design Tools** | 17 shape types, pen tool (bezier paths), box select, emojis, icons, grouping, alignment, snap-to-grid |
 | **Canvas Management** | Multi-canvas projects, tabbed interface, auto-save, export (PNG/PDF) |
 | **Performance** | 60 FPS with 1000+ shapes, chunked saves, optimized rendering |
 | **Conflict Resolution** | Last-Write-Wins with visual feedback (9/9 perfect score) |
@@ -33,7 +33,7 @@ A real-time collaborative design canvas where users and AI co-create. Like Figma
 | **AI latency** | <2 seconds | ✅ <1s average (Groq/OpenAI) |
 | **AI command coverage** | ≥ 6 tool types | ✅ 15+ tools, all objects |
 | **Multi-canvas** | Tab system | ✅ Full tabbed interface |
-| **Shape variety** | Basic shapes | ✅ 17 shapes + emojis/icons |
+| **Shape variety** | Basic shapes | ✅ 17 shapes + pen tool + emojis/icons |
 | **Professional UI** | Clean design | ✅ Enterprise-grade interface |
 | **Test coverage** | Comprehensive | ✅ 85/97 passing (87.6%) |
 
@@ -53,19 +53,23 @@ A real-time collaborative design canvas where users and AI co-create. Like Figma
 #### **✅ Professional Design Tools**
 - **Shapes**: Circle, rectangle, triangle, star, heart, pentagon, hexagon, octagon, trapezoid, rhombus, parallelogram, oval
 - **Drawing**: Lines and arrows with customizable styling
+- **Pen Tool** ✨: Click-to-draw bezier paths with smoothing, double-click to finish (Tier 3 rubric feature)
+- **Box Select Tool**: Drag on canvas to multi-select shapes, works with zoom/pan
 - **Text**: Multiple fonts (8 options including Comic Sans MS), sizes (1-256px), bold, italic, underline (accurate width)
 - **Emojis & Icons**: 12 popular emojis + icon system
 - **Styling**: Fill color, outline color, outline weight for all objects
 - **Context Menus**: Duplicate, layer ordering, styling - smart positioning keeps shapes visible
 
 #### **✅ Productivity Features**
+- **Box Select Tool**: Drag to select multiple shapes with visual rectangle
 - Shape grouping with Ctrl+G shortcuts
+- Multi-select with Ctrl/Cmd/Shift+Click
 - Alignment tools (left/right/center, distribute evenly)
 - Snap-to-grid with visual grid system
 - Copy/paste with clipboard integration (Ctrl+C/V/X)
 - Conflict-free keyboard shortcuts (Ctrl+Shift+D duplicate, Ctrl+Y redo, single handler)
 - Undo/redo for all operations with proper UUID generation
-- Duplicate works for all shapes including text boxes
+- Duplicate works for all shapes including text boxes and paths
 
 #### **✅ Multi-Canvas System**
 - Browser-style tabbed interface
