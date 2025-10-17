@@ -68,6 +68,8 @@ export const tools = {
   groupShapes: (ids:string[]) => {
     useCanvas.getState().pushHistory();
     const groupId = useCanvas.getState().groupShapes(ids);
+    // Auto-select all shapes in the group after grouping (important for templates)
+    useCanvas.getState().select(ids);
     return groupId;
   },
   ungroupShapes: (groupId:string) => {
@@ -358,15 +360,8 @@ export async function interpretWithResponse(text: string, language: string = 'en
     }
     if ('error' in ruleResult && ruleResult.error) {
       console.log('[AI] Rule-based parser error:', ruleResult.error);
-      return {
-        type: 'clarification_needed',
-        message: ruleResult.error,
-        suggestions: [
-          "Try selecting a shape first",
-          "Be more specific (e.g., 'rotate the blue rectangle 45°')",
-          "Create some shapes to work with"
-        ]
-      };
+      // DON'T return error immediately - let LLM try to understand the command
+      // Fall through to LLM for better natural language understanding
     }
   }
   
@@ -962,6 +957,36 @@ export async function interpret(text: string) {
       }
       else if (/\b(arrows?)\b/.test(t)) {
         selectedIds = shapes.filter(s => s.type === 'arrow').map(s => s.id);
+      }
+      // Select by template name: "select the hero", "select login form", "select nav bar"
+      else if (/\b(hero|login|nav|navigation|card|contact|profile|mobile header)\b/.test(t)) {
+        const templateKeywords = {
+          hero: (s: ShapeBase) => s.type === 'rect' && s.w === 800 && s.h === 400 && s.color === '#0ea5e9',
+          login: (s: ShapeBase) => s.type === 'rect' && s.w === 300 && (s.h === 45 || s.h === 40) && (s.color === '#f9fafb' || s.color === '#3b82f6'),
+          nav: (s: ShapeBase) => s.type === 'rect' && s.w === 580 && s.h === 40 && s.color === '#f8f9fa',
+          navigation: (s: ShapeBase) => s.type === 'rect' && s.w === 580 && s.h === 40 && s.color === '#f8f9fa',
+          card: (s: ShapeBase) => s.type === 'rect' && (s.w === 280 || s.w === 200) && (s.h === 320 || s.h === 250),
+          contact: (s: ShapeBase) => s.type === 'rect' && s.w === 300 && (s.h === 40 || s.h === 120) && (s.color === '#ffffff' || s.color === '#10b981'),
+          profile: (s: ShapeBase) => s.type === 'rect' && s.w === 320 && (s.h === 400 || s.h === 120) && (s.color === '#ffffff' || s.color === '#8b5cf6'),
+          mobile: (s: ShapeBase) => s.type === 'rect' && s.w === 375 && s.h === 60 && s.color === '#1e293b'
+        };
+        
+        // Find template keyword in command
+        for (const [keyword, matcher] of Object.entries(templateKeywords)) {
+          if (t.includes(keyword)) {
+            // Find main shape (first shape that matches template)
+            const mainShape = shapes.find(matcher);
+            if (mainShape) {
+              // Select all nearby shapes (within 500px) as part of the template group
+              const threshold = 500;
+              selectedIds = shapes.filter(s => 
+                Math.abs(s.x - mainShape.x) < threshold && 
+                Math.abs(s.y - mainShape.y) < threshold
+              ).map(s => s.id);
+              break;
+            }
+          }
+        }
       }
       // Select by color: "select the blue circle", "select all red shapes"
       else if (color || type) {
@@ -1574,50 +1599,62 @@ async function interpretLegacy(text: string) {
       ids.push(textId);
     });
     
+    // Group all elements together
+    tools.groupShapes(ids);
+    
     return ids;
   }
   
   if (t.includes("card layout") || (t.includes("card") && (t.includes("title") || t.includes("image") || t.includes("description")))) {
     const baseX = 300, baseY = 150;
     const cardWidth = 280, cardHeight = 320;
+    const padding = 20;
+    const contentWidth = cardWidth - (padding * 2);
+    
+    const allIds: string[] = [];
     
     // Create card container
     const container = tools.createShape("rect", baseX, baseY, cardWidth, cardHeight, "#ffffff");
+    allIds.push(container);
     
     // Create image placeholder
-    const image = tools.createShape("rect", baseX + 20, baseY + 20, cardWidth - 40, 160, "#e5e7eb");
+    const image = tools.createShape("rect", baseX + padding, baseY + padding, contentWidth, 160, "#e5e7eb");
+    allIds.push(image);
     
-    // Create title
-    const title = tools.createText("Card Title", baseX + 20, baseY + 200, 20, "#111");
+    // Create title (manually constrained to card width)
+    const titleId = tools.createShape("text", baseX + padding, baseY + 200, contentWidth, 25, "#111", "Card Title");
+    useCanvas.getState().pushHistory();
+    const titleShape = useCanvas.getState().shapes[titleId];
+    if (titleShape) {
+      const updated = { ...titleShape, fontSize: 20 };
+      useCanvas.getState().upsert(updated);
+      broadcastUpsert(updated);
+      persist(updated);
+    }
+    allIds.push(titleId);
     
-    // Create description
-    const description = tools.createText("This is a card description with some sample text content.", baseX + 20, baseY + 240, 14, "#666");
+    // Create description (manually constrained to card width, taller for wrapping)
+    const descId = tools.createShape("text", baseX + padding, baseY + 235, contentWidth, 60, "#666", "This is a card description with some sample text content.");
+    useCanvas.getState().pushHistory();
+    const descShape = useCanvas.getState().shapes[descId];
+    if (descShape) {
+      const updated = { ...descShape, fontSize: 14 };
+      useCanvas.getState().upsert(updated);
+      broadcastUpsert(updated);
+      persist(updated);
+    }
+    allIds.push(descId);
     
-    return [container, image, title, description];
+    // Group all elements together
+    tools.groupShapes(allIds);
+    
+    return allIds;
   }
   
-  // CARD LAYOUT
-  if (t.includes("card layout") || (t.includes("card") && t.includes("grid"))) {
-    const cardWidth = 200, cardHeight = 250;
-    const gapX = 240;
-    const totalWidth = (cardWidth * 3) + (gapX * 2);
-    const pos = findTemplatePosition(totalWidth, cardHeight);
-    const startX = pos.x, startY = pos.y;
-    const cards = [];
-    
-    for (let i = 0; i < 3; i++) {
-      const x = startX + (i * gapX);
-      const card = tools.createShape("rect", x, startY, cardWidth, cardHeight, "#ffffff");
-      const header = tools.createShape("rect", x, startY, cardWidth, 60, "#3b82f6");
-      
-      // Create text boxes with proper width to contain text
-      const titleBox = tools.createText(`Card ${i + 1}`, x + 10, startY + 15, 18, "#ffffff");
-      const descBox = tools.createText("Description text", x + 10, startY + 75, 14, "#666666");
-      
-      cards.push(card, header, titleBox, descBox);
-    }
-    return cards;
-  }
+  // CARD GRID (Note: disabled in favor of single card - was causing duplicate detection)
+  // if (t.includes("card layout") || (t.includes("card") && t.includes("grid"))) {
+  //   ... removed for now ...
+  // }
 
   // MOBILE HEADER
   if (t.includes("mobile header") || (t.includes("mobile") && (t.includes("nav") || t.includes("header")))) {
@@ -1625,12 +1662,24 @@ async function interpretLegacy(text: string) {
     const pos = findTemplatePosition(headerWidth, headerHeight);
     const x = pos.x, y = pos.y;
     
-    const bg = tools.createShape("rect", x, y, headerWidth, headerHeight, "#1e293b");
-    tools.createText("☰", x + 20, y + 16, 24, "#ffffff");
-    tools.createText("App Name", x + headerWidth/2 - 50, y + 18, 20, "#ffffff");
-    tools.createText("⋮", x + headerWidth - 40, y + 16, 24, "#ffffff");
+    const allIds: string[] = [];
     
-    return [bg];
+    const bg = tools.createShape("rect", x, y, headerWidth, headerHeight, "#1e293b");
+    allIds.push(bg);
+    
+    const menuIcon = tools.createText("☰", x + 20, y + 16, 24, "#ffffff");
+    allIds.push(menuIcon);
+    
+    const appName = tools.createText("App Name", x + headerWidth/2 - 50, y + 18, 20, "#ffffff");
+    allIds.push(appName);
+    
+    const moreIcon = tools.createText("⋮", x + headerWidth - 40, y + 16, 24, "#ffffff");
+    allIds.push(moreIcon);
+    
+    // Group all elements together
+    tools.groupShapes(allIds);
+    
+    return allIds;
   }
 
   // HERO SECTION
@@ -1639,13 +1688,27 @@ async function interpretLegacy(text: string) {
     const pos = findTemplatePosition(width, height);
     const x = pos.x, y = pos.y;
     
-    const bg = tools.createShape("rect", x, y, width, height, "#0ea5e9");
-    tools.createText("Welcome to Our Platform", x + width/2 - 160, y + 100, 32, "#ffffff");
-    tools.createText("Build something amazing today", x + width/2 - 140, y + 150, 18, "#e0f2fe");
-    const button = tools.createShape("rect", x + width/2 - 80, y + 220, 160, 50, "#ffffff");
-    tools.createText("Get Started", x + width/2 - 50, y + 235, 18, "#0ea5e9");
+    const allIds: string[] = [];
     
-    return [bg, button];
+    const bg = tools.createShape("rect", x, y, width, height, "#0ea5e9");
+    allIds.push(bg);
+    
+    const title = tools.createText("Welcome to Our Platform", x + width/2 - 160, y + 100, 32, "#ffffff");
+    allIds.push(title);
+    
+    const subtitle = tools.createText("Build something amazing today", x + width/2 - 140, y + 150, 18, "#e0f2fe");
+    allIds.push(subtitle);
+    
+    const button = tools.createShape("rect", x + width/2 - 80, y + 220, 160, 50, "#ffffff");
+    allIds.push(button);
+    
+    const buttonText = tools.createText("Get Started", x + width/2 - 50, y + 235, 18, "#0ea5e9");
+    allIds.push(buttonText);
+    
+    // Group all elements together
+    tools.groupShapes(allIds);
+    
+    return allIds;
   }
 
   // CONTACT FORM
@@ -1655,17 +1718,30 @@ async function interpretLegacy(text: string) {
     const pos = findTemplatePosition(W, totalHeight);
     const baseX = pos.x, baseY = pos.y;
     
+    const allIds: string[] = [];
+    
     const name = tools.createShape("rect", baseX, baseY, W, H, "#ffffff");
+    allIds.push(name);
     const email = tools.createShape("rect", baseX, baseY + gap, W, H, "#ffffff");
+    allIds.push(email);
     const message = tools.createShape("rect", baseX, baseY + gap * 2, W, 120, "#ffffff");
+    allIds.push(message);
     const submit = tools.createShape("rect", baseX, baseY + gap * 3 + 60, W, H, "#10b981");
+    allIds.push(submit);
     
-    tools.createText("Name", baseX - 80, baseY - 26, 16, "#444");
-    tools.createText("Email", baseX - 80, baseY + gap - 26, 16, "#444");
-    tools.createText("Message", baseX - 100, baseY + gap * 2 - 26, 16, "#444");
-    tools.createText("Send Message", baseX + W/2 - 70, baseY + gap * 3 + 70, 18, "#fff");
+    const nameLabel = tools.createText("Name", baseX - 80, baseY - 26, 16, "#444");
+    allIds.push(nameLabel);
+    const emailLabel = tools.createText("Email", baseX - 80, baseY + gap - 26, 16, "#444");
+    allIds.push(emailLabel);
+    const messageLabel = tools.createText("Message", baseX - 100, baseY + gap * 2 - 26, 16, "#444");
+    allIds.push(messageLabel);
+    const submitText = tools.createText("Send Message", baseX + W/2 - 70, baseY + gap * 3 + 70, 18, "#fff");
+    allIds.push(submitText);
     
-    return [name, email, message, submit];
+    // Group all elements together
+    tools.groupShapes(allIds);
+    
+    return allIds;
   }
 
   // USER PROFILE
@@ -1674,21 +1750,36 @@ async function interpretLegacy(text: string) {
     const pos = findTemplatePosition(cardWidth, cardHeight);
     const x = pos.x, y = pos.y;
     
-    const bg = tools.createShape("rect", x, y, cardWidth, cardHeight, "#ffffff");
-    const header = tools.createShape("rect", x, y, cardWidth, 120, "#8b5cf6");
-    const avatar = tools.createShape("circle", x + cardWidth/2 - 50, y + 70, 100, 100, "#e0e7ff");
+    const allIds: string[] = [];
     
-    tools.createText("John Doe", x + cardWidth/2 - 50, y + 180, 24, "#1f2937");
-    tools.createText("Product Designer", x + cardWidth/2 - 70, y + 210, 16, "#6b7280");
-    tools.createText("john@example.com", x + cardWidth/2 - 80, y + 240, 14, "#9ca3af");
+    const bg = tools.createShape("rect", x, y, cardWidth, cardHeight, "#ffffff");
+    allIds.push(bg);
+    const header = tools.createShape("rect", x, y, cardWidth, 120, "#8b5cf6");
+    allIds.push(header);
+    const avatar = tools.createShape("circle", x + cardWidth/2 - 50, y + 70, 100, 100, "#e0e7ff");
+    allIds.push(avatar);
+    
+    const name = tools.createText("John Doe", x + cardWidth/2 - 50, y + 180, 24, "#1f2937");
+    allIds.push(name);
+    const title = tools.createText("Product Designer", x + cardWidth/2 - 70, y + 210, 16, "#6b7280");
+    allIds.push(title);
+    const email = tools.createText("john@example.com", x + cardWidth/2 - 80, y + 240, 14, "#9ca3af");
+    allIds.push(email);
     
     const editBtn = tools.createShape("rect", x + 30, y + 320, 120, 40, "#3b82f6");
+    allIds.push(editBtn);
     const msgBtn = tools.createShape("rect", x + 170, y + 320, 120, 40, "#e5e7eb");
+    allIds.push(msgBtn);
     
-    tools.createText("Edit Profile", x + 45, y + 332, 14, "#ffffff");
-    tools.createText("Message", x + 200, y + 332, 14, "#1f2937");
+    const editText = tools.createText("Edit Profile", x + 45, y + 332, 14, "#ffffff");
+    allIds.push(editText);
+    const msgText = tools.createText("Message", x + 200, y + 332, 14, "#1f2937");
+    allIds.push(msgText);
     
-    return [bg, header, avatar, editBtn, msgBtn];
+    // Group all elements together
+    tools.groupShapes(allIds);
+    
+    return allIds;
   }
 
   if (t.includes("login form")) {

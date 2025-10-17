@@ -472,10 +472,30 @@ export const useCanvas = create<CanvasState>()(immer((set, get) => ({
         // CRITICAL: Don't clear shapes until we know we have new ones to load
         const newShapes: Record<string, ShapeBase> = {};
         
-        // Convert shapes array to shapes object
+        // Helper: Validate UUID format (8-4-4-4-12 hex pattern)
+        const isValidUUID = (id: string): boolean => {
+          const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+          return uuidRegex.test(id);
+        };
+        
+        // Convert shapes array to shapes object, fixing any invalid UUIDs
+        const invalidIdShapes: ShapeBase[] = [];
         shapes.forEach(shape => {
-          newShapes[shape.id] = shape;
+          if (!isValidUUID(shape.id)) {
+            console.warn(`⚠️ Invalid UUID detected: "${shape.id}" - will regenerate`);
+            invalidIdShapes.push(shape);
+            // Generate new valid UUID
+            const newShape = { ...shape, id: crypto.randomUUID() };
+            newShapes[newShape.id] = newShape;
+          } else {
+            newShapes[shape.id] = shape;
+          }
         });
+        
+        // Log migration if any shapes were fixed
+        if (invalidIdShapes.length > 0) {
+          console.log(`🔧 Migrated ${invalidIdShapes.length} shapes with invalid UUIDs to valid format`);
+        }
         
         // Only now replace the shapes object
         s.shapes = newShapes;

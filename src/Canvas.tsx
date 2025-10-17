@@ -1280,7 +1280,7 @@ function HelpPopup({ isOpen, onClose }: { isOpen: boolean; onClose: () => void }
                         <div>• <kbd className="px-1 rounded text-xs" style={{ backgroundColor: colors.buttonHover, color: colors.text }}>Ctrl+C</kbd> Copy selected</div>
                         <div>• <kbd className="px-1 rounded text-xs" style={{ backgroundColor: colors.buttonHover, color: colors.text }}>Ctrl+X</kbd> Cut selected</div>
                         <div>• <kbd className="px-1 rounded text-xs" style={{ backgroundColor: colors.buttonHover, color: colors.text }}>Ctrl+V</kbd> Paste</div>
-                        <div>• <kbd className="px-1 rounded text-xs" style={{ backgroundColor: colors.buttonHover, color: colors.text }}>Ctrl+D</kbd> Duplicate selected</div>
+                        <div>• <kbd className="px-1 rounded text-xs" style={{ backgroundColor: colors.buttonHover, color: colors.text }}>Ctrl+Shift+D</kbd> Duplicate selected</div>
                         <div>• <kbd className="px-1 rounded text-xs" style={{ backgroundColor: colors.buttonHover, color: colors.text }}>Ctrl+G</kbd> Group selected shapes</div>
                         <div>• <kbd className="px-1 rounded text-xs" style={{ backgroundColor: colors.buttonHover, color: colors.text }}>Ctrl+Shift+G</kbd> Ungroup shapes</div>
                         <div>• <kbd className="px-1 rounded text-xs" style={{ backgroundColor: colors.buttonHover, color: colors.text }}>Delete</kbd> Remove selected</div>
@@ -1291,7 +1291,7 @@ function HelpPopup({ isOpen, onClose }: { isOpen: boolean; onClose: () => void }
                       <div className="font-medium mb-2" style={{ color: colors.text }}>History:</div>
                       <div className="space-y-1">
                         <div>• <kbd className="px-1 rounded text-xs" style={{ backgroundColor: colors.buttonHover, color: colors.text }}>Ctrl+Z</kbd> Undo last action</div>
-                        <div>• <kbd className="px-1 rounded text-xs" style={{ backgroundColor: colors.buttonHover, color: colors.text }}>Ctrl+R</kbd> Redo last undo</div>
+                        <div>• <kbd className="px-1 rounded text-xs" style={{ backgroundColor: colors.buttonHover, color: colors.text }}>Ctrl+Y</kbd> Redo last undo</div>
                       </div>
                     </div>
                     
@@ -1877,84 +1877,7 @@ export default function Canvas({ onSignOut }: CanvasProps) {
     return () => cancelAnimationFrame(animationId);
   }, [showPerf, shapes, cursors]);
   
-  // #8: Accessibility - Keyboard navigation
-  useEffect(() => {
-    const handleKeyDown = async (e: KeyboardEvent) => {
-      // Ignore if typing in input
-      if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
-      
-      const selected = selectedIds.map(id => shapes[id]).filter(Boolean);
-      if (selected.length === 0) return;
-      
-      const moveDistance = e.shiftKey ? 10 : 1;
-      
-      // Arrow keys: Move selected shapes
-      if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(e.key)) {
-        e.preventDefault();
-        useCanvas.getState().pushHistory();
-        
-        selected.forEach(shape => {
-          const updates: Partial<ShapeBase> = { updated_at: Date.now(), updated_by: me.id };
-          
-          switch (e.key) {
-            case 'ArrowUp': updates.y = shape.y - moveDistance; break;
-            case 'ArrowDown': updates.y = shape.y + moveDistance; break;
-            case 'ArrowLeft': updates.x = shape.x - moveDistance; break;
-            case 'ArrowRight': updates.x = shape.x + moveDistance; break;
-          }
-          
-          const updatedShape = { ...shape, ...updates };
-          useCanvas.getState().upsert(updatedShape);
-          broadcastUpsert(updatedShape);
-        });
-      }
-      
-      // Delete key: Remove selected shapes
-      if (e.key === 'Delete' || e.key === 'Backspace') {
-        e.preventDefault();
-        useCanvas.getState().pushHistory();
-        const idsToRemove = selected.map(s => s.id);
-        useCanvas.getState().remove(idsToRemove);
-        await broadcastRemove(idsToRemove);
-        useCanvas.getState().select([]);
-      }
-      
-      // Ctrl+D / Cmd+D: Duplicate
-      if ((e.ctrlKey || e.metaKey) && e.key === 'd') {
-        e.preventDefault();
-        useCanvas.getState().pushHistory();
-        selected.forEach(shape => {
-          const newShape = { 
-            ...shape, 
-            id: crypto.randomUUID(), 
-            x: shape.x + 20, 
-            y: shape.y + 20,
-            updated_at: Date.now(),
-            updated_by: me.id
-          };
-          useCanvas.getState().upsert(newShape);
-          broadcastUpsert(newShape);
-        });
-      }
-      
-      // Ctrl+G / Cmd+G: Group shapes
-      if ((e.ctrlKey || e.metaKey) && e.key === 'g' && selected.length > 1) {
-        e.preventDefault();
-        useCanvas.getState().pushHistory();
-        useCanvas.getState().groupShapes(selectedIds);
-      }
-      
-      // Escape: Deselect
-      if (e.key === 'Escape') {
-        useCanvas.getState().select([]);
-        setContextMenu(null);
-        setShowHelpPopup(false);
-      }
-    };
-    
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [selectedIds, shapes, me.id]);
+  // Note: Keyboard shortcuts are now handled by the comprehensive handler below (line ~2392)
   
   // #7: Mobile touch support - Pinch to zoom and two-finger pan
   useEffect(() => {
@@ -2414,15 +2337,15 @@ export default function Canvas({ onSignOut }: CanvasProps) {
         return;
       }
       
-      // Redo with Ctrl+R
-      if (e.ctrlKey && e.key === 'r') {
+      // Redo with Ctrl+Y (changed from Ctrl+R to avoid browser reload conflict)
+      if (e.ctrlKey && e.key === 'y') {
         useCanvas.getState().redo();
         e.preventDefault();
         return;
       }
       
-      // Duplicate selected shapes with Ctrl+D
-      if (e.ctrlKey && e.key === 'd') {
+      // Duplicate selected shapes with Ctrl+Shift+D (Shift modifier avoids browser bookmark conflict)
+      if (e.ctrlKey && e.shiftKey && e.key === 'D') {
         const selectedIds = useCanvas.getState().selectedIds;
         if (selectedIds.length > 0) {
           // Save history before duplicating
@@ -2644,7 +2567,7 @@ export default function Canvas({ onSignOut }: CanvasProps) {
             
             const newShape = {
               ...originalShape,
-              id: Math.random().toString(36).substring(2),
+              id: crypto.randomUUID(), // Use proper UUID format
               x: applySnap(originalShape.x + offsetX),
               y: applySnap(originalShape.y + offsetY),
               // Also offset end points for lines/arrows
@@ -2992,12 +2915,14 @@ export default function Canvas({ onSignOut }: CanvasProps) {
       return (a.zIndex ?? 0) - (b.zIndex ?? 0);
     })
     .map((s: ShapeBase) => {
-    // For text shapes, calculate dynamic dimensions
+    // For text shapes, use explicit dimensions if set, otherwise calculate dynamic dimensions
     let textWidth = s.w;
     let textHeight = s.h;
     let fontSize = s.fontSize || Math.max(16, Math.min(24, s.h * 0.6));
     
-    if (s.type === 'text' && s.text) {
+    // Only recalculate dimensions for text if width/height seem auto-generated (very small or default)
+    // This preserves manually set dimensions (like in card templates)
+    if (s.type === 'text' && s.text && (!s.w || s.w < 80 || !s.h || s.h < 20)) {
       const dims = getTextDimensions(s.text, fontSize);
       textWidth = dims.width;
       textHeight = dims.height;
@@ -3072,9 +2997,50 @@ export default function Canvas({ onSignOut }: CanvasProps) {
         }
       }
       
+      // Smart positioning: offset menu to avoid covering shape
+      const menuWidth = 220; // Approximate menu width
+      const menuHeight = 400; // Approximate menu height
+      const shapePadding = 30; // Extra space around shape
+      
+      // Get shape bounds to avoid covering it
+      const shapeBounds = {
+        left: s.x,
+        right: s.x + s.w,
+        top: s.y,
+        bottom: s.y + s.h
+      };
+      
+      // Viewport dimensions
+      const viewportWidth = window.innerWidth;
+      const viewportHeight = window.innerHeight;
+      
+      // Try positioning to the right of the shape first
+      let menuX = shapeBounds.right + shapePadding;
+      let menuY = shapeBounds.top;
+      
+      // If menu goes off right edge, try left side of shape
+      if (menuX + menuWidth > viewportWidth) {
+        menuX = shapeBounds.left - menuWidth - shapePadding;
+      }
+      
+      // If still off left edge, position based on cursor
+      if (menuX < 10) {
+        menuX = Math.min(pointer.x + 20, viewportWidth - menuWidth - 10);
+      }
+      
+      // Vertical positioning: try to keep shape visible
+      // If menu would extend below viewport, shift up
+      if (menuY + menuHeight > viewportHeight) {
+        menuY = Math.max(10, viewportHeight - menuHeight - 10);
+      }
+      
+      // Ensure menu is fully visible
+      menuX = Math.max(10, Math.min(menuX, viewportWidth - menuWidth - 10));
+      menuY = Math.max(10, menuY);
+      
       setContextMenu({
-        x: pointer.x,
-        y: pointer.y,
+        x: menuX,
+        y: menuY,
         shapeIds: contextShapeIds
       });
     };
@@ -3121,7 +3087,9 @@ export default function Canvas({ onSignOut }: CanvasProps) {
               y={0}
               text={s.text || "Text"}
               fontSize={fontSize} 
-              fontFamily={`${s.fontStyle === 'italic' ? 'italic ' : ''}${s.fontWeight === 'bold' ? 'bold ' : ''}${s.fontFamily || "Arial"}`}
+              fontFamily={s.fontFamily || "Arial"}
+              fontStyle={s.fontStyle || "normal"}
+              fontWeight={s.fontWeight || "normal"}
               fill={s.color || "#111"} 
               stroke={s.stroke}
               strokeWidth={s.strokeWidth || 0}
@@ -3137,13 +3105,22 @@ export default function Canvas({ onSignOut }: CanvasProps) {
             />
             
             {/* Underline decoration (since Konva Text doesn't support textDecoration directly) */}
-            {s.textDecoration === 'underline' && (
-              <Line 
-                points={[0, textHeight - 2, textWidth, textHeight - 2]}
-                stroke={s.color || "#111"}
-                strokeWidth={Math.max(1, fontSize * 0.05)}
-              />
-            )}
+            {s.textDecoration === 'underline' && (() => {
+              // Calculate actual text width more accurately
+              const text = s.text || "Text";
+              const lines = text.split('\n');
+              const longestLine = lines.reduce((a, b) => a.length > b.length ? a : b, '');
+              // Better approximation: 0.55 * fontSize per character (closer to actual rendering)
+              const actualTextWidth = Math.min(textWidth, longestLine.length * fontSize * 0.55);
+              
+              return (
+                <Line 
+                  points={[0, textHeight - 2, actualTextWidth, textHeight - 2]}
+                  stroke={s.color || "#111"}
+                  strokeWidth={Math.max(1, fontSize * 0.05)}
+                />
+              );
+            })()}
           </>
         )}
         {s.type === "image" && s.imageUrl && (
@@ -3900,10 +3877,10 @@ function CategorizedToolbar({ centerOnNewShape, stageRef }: {
       name: 'Components',
       emoji: '🧩',
       tools: savedComponents.map(component => ({
-        name: component.name.slice(0, 2), // Show first 2 chars as icon
+        name: component.name.length > 10 ? component.name.slice(0, 9) + '…' : component.name, // Show up to 10 chars with ellipsis
         action: () => handleInsertComponent(component),
         available: true,
-        tooltip: component.name,
+        tooltip: component.name, // Full name in tooltip
       }))
     },
     {
@@ -4446,9 +4423,7 @@ function FloatingAIWidget() {
   // Handle command type change
   const handleCommandTypeChange = (type: string) => {
     setSelectedCommandType(type);
-    if (type !== 'Custom' && commandTypes[type as keyof typeof commandTypes]) {
-      setPrompt(commandTypes[type as keyof typeof commandTypes].placeholder);
-    }
+    // Don't set prompt value - just show placeholder text (ghost text)
   };
 
   // Speech recognition language mapping
@@ -5109,7 +5084,7 @@ function ContextMenu({ x, y, shapeIds, onClose }: {
       // Create duplicate with smart positioning (offset by 20px right and down)
       const duplicateShape = {
         ...currentShape,
-        id: Math.random().toString(36).substring(2),
+        id: crypto.randomUUID(), // Use proper UUID format
         x: currentShape.x + 20,
         y: currentShape.y + 20,
         // For lines/arrows, also offset the end points
@@ -5645,63 +5620,68 @@ function ContextMenu({ x, y, shapeIds, onClose }: {
               />
               <span className="text-xs w-6 text-center" style={{ color: colors.textMuted }}>{shape.strokeWidth || 1}</span>
             </div>
-            
-            {/* Divider */}
-            <hr className="my-2" style={{ borderColor: colors.border }} />
-            
-            {/* Layer Commands */}
-            <div className="space-y-1">
-              <div className="text-xs font-medium mb-1" style={{ color: colors.textMuted }}>Layer Order</div>
-              <button
-                onClick={() => { handleLayerCommand('front'); }}
-                className="w-full text-left text-sm px-2 py-1 rounded"
-                style={{ color: colors.text }}
-                onMouseEnter={(e) => e.currentTarget.style.backgroundColor = colors.buttonHover}
-                onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
-              >
-                🔝 Move to Front
-              </button>
-              <button
-                onClick={() => { handleLayerCommand('up'); }}
-                className="w-full text-left text-sm px-2 py-1 rounded"
-                style={{ color: colors.text }}
-                onMouseEnter={(e) => e.currentTarget.style.backgroundColor = colors.buttonHover}
-                onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
-              >
-                ⬆️ Move Up
-              </button>
-              <button
-                onClick={() => { handleLayerCommand('down'); }}
-                className="w-full text-left text-sm px-2 py-1 rounded"
-                style={{ color: colors.text }}
-                onMouseEnter={(e) => e.currentTarget.style.backgroundColor = colors.buttonHover}
-                onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
-              >
-                ⬇️ Move Down
-              </button>
-              <button
-                onClick={() => { handleLayerCommand('back'); }}
-                className="w-full text-left text-sm px-2 py-1 rounded"
-                style={{ color: colors.text }}
-                onMouseEnter={(e) => e.currentTarget.style.backgroundColor = colors.buttonHover}
-                onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
-              >
-                🔻 Move to Back
-              </button>
-            </div>
-            
-            <hr className="my-2" style={{ borderColor: colors.border }} />
-            
-            {/* Duplicate */}
-            <button
-              onClick={handleDuplicate}
-              className="w-full text-left text-sm px-2 py-1 rounded"
-              style={{ color: colors.text }}
-              onMouseEnter={(e) => e.currentTarget.style.backgroundColor = colors.buttonHover}
-              onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
-            >
-              📄 Duplicate
-            </button>
+          </>
+        )}
+        
+        {/* Layer Commands - available for ALL shapes including text */}
+        <hr className="my-2" style={{ borderColor: colors.border }} />
+        
+        <div className="space-y-1">
+          <div className="text-xs font-medium mb-1" style={{ color: colors.textMuted }}>Layer Order</div>
+          <button
+            onClick={() => { handleLayerCommand('front'); }}
+            className="w-full text-left text-sm px-2 py-1 rounded"
+            style={{ color: colors.text }}
+            onMouseEnter={(e) => e.currentTarget.style.backgroundColor = colors.buttonHover}
+            onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
+          >
+            🔝 Move to Front
+          </button>
+          <button
+            onClick={() => { handleLayerCommand('up'); }}
+            className="w-full text-left text-sm px-2 py-1 rounded"
+            style={{ color: colors.text }}
+            onMouseEnter={(e) => e.currentTarget.style.backgroundColor = colors.buttonHover}
+            onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
+          >
+            ⬆️ Move Up
+          </button>
+          <button
+            onClick={() => { handleLayerCommand('down'); }}
+            className="w-full text-left text-sm px-2 py-1 rounded"
+            style={{ color: colors.text }}
+            onMouseEnter={(e) => e.currentTarget.style.backgroundColor = colors.buttonHover}
+            onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
+          >
+            ⬇️ Move Down
+          </button>
+          <button
+            onClick={() => { handleLayerCommand('back'); }}
+            className="w-full text-left text-sm px-2 py-1 rounded"
+            style={{ color: colors.text }}
+            onMouseEnter={(e) => e.currentTarget.style.backgroundColor = colors.buttonHover}
+            onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
+          >
+            🔻 Move to Back
+          </button>
+        </div>
+        
+        <hr className="my-2" style={{ borderColor: colors.border }} />
+        
+        {/* Duplicate - available for ALL shapes including text */}
+        <button
+          onClick={handleDuplicate}
+          className="w-full text-left text-sm px-2 py-1 rounded"
+          style={{ color: colors.text }}
+          onMouseEnter={(e) => e.currentTarget.style.backgroundColor = colors.buttonHover}
+          onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
+        >
+          📄 Duplicate
+        </button>
+        
+        {/* Continue with shape-specific controls that were inside the conditional */}
+        {shape.type !== 'text' && (
+          <>
             
             {/* Group - show when multiple shapes selected */}
             {isMultiSelection && (
