@@ -6,7 +6,7 @@ import { callGroq, isGroqConfigured } from "../services/groqService";
 
 
 export const tools = {
-  createShape: (type: "rect"|"circle"|"text"|"triangle"|"star"|"heart"|"pentagon"|"hexagon"|"octagon"|"oval"|"trapezoid"|"rhombus"|"parallelogram"|"line"|"arrow"|"frame"|"cylinder"|"document", x:number, y:number, w:number, h:number, color?:string, text?:string) => {
+  createShape: (type: "rect"|"circle"|"text"|"triangle"|"star"|"heart"|"pentagon"|"hexagon"|"octagon"|"oval"|"trapezoid"|"rhombus"|"parallelogram"|"line"|"arrow"|"frame"|"cylinder"|"document"|"roundedRect"|"stadium"|"note", x:number, y:number, w:number, h:number, color?:string, text?:string) => {
     // Save history before AI creates shapes
     useCanvas.getState().pushHistory();
     const s: ShapeBase = { id: crypto.randomUUID(), type, x, y, w, h, color, text, rotation: 0, updated_at: Date.now(), updated_by: useCanvas.getState().me.id };
@@ -640,10 +640,13 @@ export async function interpret(text: string) {
     // Check for icons
     else if (/icon/.test(t)) {
       objectType = 'icon';
-      // Detect specific icon
+      // Detect specific icon - includes new useful icons
       for (const [pattern, icon] of Object.entries({
         'settings?|gear': '⚙️', 'home': '🏠', 'email|mail': '📧', 'phone': '📞',
-        'lock': '🔒', 'search': '🔍', 'save': '💾', 'folder': '📁'
+        'lock': '🔒', 'search': '🔍', 'save': '💾', 'folder': '📁',
+        'plus.?minus': '±', 'multiply|times': '×', 'divide': '÷', 'equals?': '=',
+        'check.?mark|tick': '✓', 'signal|wifi': '📶', 'cloud': '☁️', 
+        'mic|microphone': '🎤', 'tool|wrench': '🔧'
       })) {
         if (new RegExp(pattern, 'i').test(t)) {
           iconChar = icon;
@@ -666,6 +669,8 @@ export async function interpret(text: string) {
         'octagon': 'octagon', 'oval': 'oval', 'trapezoid': 'trapezoid',
         'rhombus|diamond': 'rhombus', 'parallelogram': 'parallelogram',
         'cylinder': 'cylinder', 'document': 'document',
+        'rounded.?rect|rounded.?box': 'roundedRect', 'stadium|pill': 'stadium', 
+        'note|annotation': 'note',
         'rect|rectangle|square': 'rect'
       };
       
@@ -697,8 +702,12 @@ export async function interpret(text: string) {
           const id = tools.createShape("arrow", x, y, 50, 2, color);
           ids.push(id as string);
         } else {
-          // Regular shape
-          const size = shapeType === 'oval' ? [60, 40] : [50, 50];
+          // Regular shape with appropriate default sizes
+          const size = shapeType === 'oval' ? [60, 40] : 
+                       shapeType === 'stadium' ? [100, 40] :
+                       shapeType === 'roundedRect' ? [80, 60] :
+                       shapeType === 'note' ? [80, 70] :
+                       [50, 50];
           const id = tools.createShape(shapeType, x, y, size[0], size[1], color);
           ids.push(id as string);
         }
@@ -727,6 +736,11 @@ export async function interpret(text: string) {
 
   // CREATE basic shapes
   if (/create|make|add/.test(t)) {
+    // Check for rounded rectangle BEFORE regular rectangle
+    if (/\b(rounded\s*(rect|rectangle|box))\b/.test(t)) {
+      const id = tools.createShape("roundedRect", 250, 200, 120, 80, parseColor(t));
+      return { ok: true, tool_calls: [{ name:"createShape", args:{ type:"roundedRect", id }}] };
+    }
     if (/\b(circle)\b/.test(t))  {
       const id = tools.createShape("circle", 200, 200, 120, 120, parseColor(t));
       return { ok: true, tool_calls: [{ name:"createShape", args:{ type:"circle", id }}] };
@@ -784,6 +798,14 @@ export async function interpret(text: string) {
       const id = tools.createShape("document", 250, 200, 100, 130, parseColor(t));
       return { ok: true, tool_calls: [{ name:"createShape", args:{ type:"document", id }}] };
     }
+    if (/\b(stadium|pill)\b/.test(t)) {
+      const id = tools.createShape("stadium", 250, 200, 150, 60, parseColor(t));
+      return { ok: true, tool_calls: [{ name:"createShape", args:{ type:"stadium", id }}] };
+    }
+    if (/\b(note|annotation)\b/.test(t) && !/\btext\b/.test(t)) {
+      const id = tools.createShape("note", 250, 200, 120, 100, parseColor(t));
+      return { ok: true, tool_calls: [{ name:"createShape", args:{ type:"note", id }}] };
+    }
     if (/\b(line)\b/.test(t) && !/\btext\b/.test(t)) {
       const id = tools.createShape("line", 250, 200, 120, 2, parseColor(t));
       return { ok: true, tool_calls: [{ name:"createShape", args:{ type:"line", id }}] };
@@ -827,14 +849,24 @@ export async function interpret(text: string) {
     
     // ICONS - Support all icons from toolbar
     const iconMap: Record<string, string> = {
-      'settings?|gear|config': '⚙️',
+      'settings?|gear|config|wrench': '⚙️',
       'home|house': '🏠',
       'email|mail|message': '📧',
       'phone|call|telephone': '📞',
       'lock|secure|password': '🔒',
       'search|find|magnify': '🔍',
       'save|disk|floppy': '💾',
-      'folder|directory|file': '📁'
+      'folder|directory|file': '📁',
+      // New useful icons
+      'plus.?minus|plus.?or.?minus': '±',
+      'multiply|times|multiplication': '×',
+      'divide|division': '÷',
+      'equals?|equal.?sign': '=',
+      'check.?mark|checkmark|tick': '✓',
+      'signal|wifi|bars|antenna': '📶',
+      'cloud|storage': '☁️',
+      'mic|microphone|audio|voice': '🎤',
+      'tool|wrench|repair': '🔧'
     };
     
     for (const [pattern, icon] of Object.entries(iconMap)) {

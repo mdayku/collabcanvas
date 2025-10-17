@@ -1212,6 +1212,8 @@ function HelpPopup({ isOpen, onClose }: { isOpen: boolean; onClose: () => void }
                           <div>• "Create a blue 200x100 rectangle"</div>
                           <div>• "Add text saying 'Hello World'"</div>
                           <div>• "Make a red circle at 300, 200"</div>
+                          <div>• "Add a stadium shape" | "Create a note"</div>
+                          <div>• "Make a checkmark icon" | "Add a cloud icon"</div>
                           <div>• "Create a login form with buttons"</div>
                           <div>• "Build a navigation bar with 4 items"</div>
                         </div>

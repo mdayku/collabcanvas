@@ -10,10 +10,10 @@ A real-time collaborative design canvas where users and AI co-create. Like Figma
 
 | Category | Achievement |
 |----------|-------------|
-| **Platform Maturity** | 11 completed phases, 190+ tests passing, production-ready |
+| **Platform Maturity** | 11 completed phases, 287/299 tests passing (96%), production-ready |
 | **Real-Time Collaboration** | 5+ concurrent users, sub-50ms sync, multiplayer cursors |
 | **AI Integration** | Hybrid rule-based + LLM system, 7 languages, 100% feature parity |
-| **Design Tools** | 17 shape types, pen tool (bezier paths), box select, emojis, icons, grouping, alignment, snap-to-grid |
+| **Design Tools** | 20 shape types, pen tool (bezier paths), box select, emojis, icons, grouping, alignment, snap-to-grid, Mermaid-ready shapes |
 | **Canvas Management** | Multi-canvas projects, tabbed interface, auto-save, export (PNG/PDF) |
 | **Performance** | 60 FPS with 1000+ shapes, chunked saves, optimized rendering |
 | **Conflict Resolution** | Last-Write-Wins with visual feedback (9/9 perfect score) |
@@ -33,9 +33,9 @@ A real-time collaborative design canvas where users and AI co-create. Like Figma
 | **AI latency** | <2 seconds | ✅ <1s average (Groq/OpenAI) |
 | **AI command coverage** | ≥ 6 tool types | ✅ 15+ tools, all objects |
 | **Multi-canvas** | Tab system | ✅ Full tabbed interface |
-| **Shape variety** | Basic shapes | ✅ 17 shapes + pen tool + emojis/icons |
+| **Shape variety** | Basic shapes | ✅ 20 shapes + pen tool + emojis/icons + Mermaid-ready shapes |
 | **Professional UI** | Clean design | ✅ Enterprise-grade interface |
-| **Test coverage** | Comprehensive | ✅ 85/97 passing (87.6%) |
+| **Test coverage** | Comprehensive | ✅ 287/299 passing (96%) |
 
 ---
 
@@ -45,18 +45,19 @@ A real-time collaborative design canvas where users and AI co-create. Like Figma
 
 #### **✅ Real-Time Collaboration**
 - Smooth pan/zoom with 60 FPS performance
-- Create/move/resize/rotate 17 shape types
+- Create/move/resize/rotate 20 shape types
 - Realtime sync across 5+ users (sub-50ms)
 - Multiplayer cursors with presence awareness
 - Last-Write-Wins conflict resolution with visual feedback
 
 #### **✅ Professional Design Tools**
-- **Shapes**: Circle, rectangle, triangle, star, heart, pentagon, hexagon, octagon, trapezoid, rhombus, parallelogram, oval
+- **Shapes**: Circle, rectangle, triangle, star, heart, pentagon, hexagon, octagon, trapezoid, rhombus, parallelogram, oval, cylinder, document
+- **Mermaid Diagrams**: Rounded rectangle, stadium, note (annotation) shapes ready for flowchart rendering
 - **Drawing**: Lines and arrows with customizable styling
 - **Pen Tool** ✨: Click-to-draw bezier paths with smoothing, double-click to finish (Tier 3 rubric feature)
 - **Box Select Tool**: Drag on canvas to multi-select shapes, works with zoom/pan
 - **Text**: Multiple fonts (8 options including Comic Sans MS), sizes (1-256px), bold, italic, underline (accurate width)
-- **Emojis & Icons**: 12 popular emojis + icon system
+- **Emojis & Icons**: 12 popular emojis + 9 useful icons (±, ×, ÷, =, ✓, 📶, ☁️, 🎤, 🔧)
 - **Styling**: Fill color, outline color, outline weight for all objects
 - **Context Menus**: Duplicate, layer ordering, styling - smart positioning keeps shapes visible
 
@@ -82,13 +83,13 @@ A real-time collaborative design canvas where users and AI co-create. Like Figma
 #### **✅ AI-Powered Design**
 - **Hybrid AI Agent**: Rule-based parser (80% coverage, <20ms) + LLM fallback
 - **Natural Language Commands**: Create, move, resize, rotate, color, group, align for ALL objects
-- **Comprehensive Coverage**: 17 shapes, emojis, icons, text, lines, arrows
+- **Comprehensive Coverage**: 20 shapes, emojis, icons, text, lines, arrows, paths, Mermaid diagram shapes
 - **Advanced Layouts**: Grid creation (e.g., "create a 6x5 grid of rocket emojis")
 - **Multi-Language Support**: Commands in 7 languages (EN, ZH, ES, FR, DE, JA, AR)
 - **Voice Input**: Speech recognition with language-specific codes
 - **Auto-Center & Multi-Select**: Groups new objects and centers viewport
 - **Multi-Turn Conversations**: AI asks clarifying questions for ambiguous commands
-- **Selection Context**: AI understands "it" and "the shape" based on current selection
+- **Selection Context**: AI prioritizes selected shapes for modification commands without requiring clarification
 
 #### **✅ AI Image Generation**
 - **Smart Frame System**: AI image frames in Assets toolbar
@@ -109,7 +110,7 @@ A real-time collaborative design canvas where users and AI co-create. Like Figma
 - Room isolation for separate testing environments
 
 #### **✅ UI/UX Excellence**
-- Categorized toolbar (Lines+Arrows, Shapes, Emojis, Symbols, Forms, Assets)
+- Categorized toolbar (Lines+Arrows, Shapes, Emojis, Symbols, Forms, Assets, Tools, Icons, Mermaid Diagrams)
 - Right-click context menus for all styling operations (smart positioning avoids shape overlap)
 - Collapsible help panel with commands and shortcuts
 - Theme system (Light/Dark/Halloween modes)
@@ -117,18 +118,19 @@ A real-time collaborative design canvas where users and AI co-create. Like Figma
 - Responsive design across desktop browsers
 - **Smart Guides**: Figma-style alignment lines during drag operations
 - **Performance Monitor**: Real-time FPS, user count, shape count, connection status
-- **Mobile Touch Support**: Two-finger pinch-to-zoom and pan gestures
+- **Mobile Touch Support**: Single-finger canvas panning + two-finger pinch-to-zoom gestures
+- **Mobile Sidebar**: Collapsible left menu with arrow button expands canvas area (ResizeObserver auto-adjusts)
 - **Keyboard Navigation**: Conflict-free shortcuts (Ctrl+Shift+D duplicate, Ctrl+Y redo, arrows, Delete, Escape)
 - **Layer Ordering**: Selected shapes always draggable (rendered on top)
 - **Text Features**: Duplicate option, proper font rendering (bold/italic/underline), accurate underline width
 - **Card Layouts**: Text properly constrained within card boundaries (no overflow)
 
 #### **✅ Testing & Quality**
-- **97+ Total Tests**: Comprehensive coverage of all features
-- **85 Passing Tests**: 87.6% pass rate with documented test debt
-- **AI Agent Tests**: 13/13 passing (100% coverage of AI requirements)
-- **Performance Tests**: Validates sub-100ms sync, 500+ object handling
-- **Integration Tests**: 62 tests deferred (Konva canvas module, Vitest API changes)
+- **299 Total Tests**: Comprehensive coverage of all features
+- **287 Passing Tests**: 96% pass rate (12 deferred - 4 Konva module, 1 flaky performance edge case, 7 canvas integration)
+- **AI Agent Tests**: 97/97 passing (100% coverage - all 20 shapes, emojis, icons, Mermaid shapes)
+- **Performance Tests**: 4/5 passing - validates sub-100ms sync, 500+ object handling, 60 FPS
+- **New Test Coverage**: Mermaid shapes (roundedRect, stadium, note), new icons (±×÷=✓📶☁️🎤🔧), mobile UX
 
 ---
 

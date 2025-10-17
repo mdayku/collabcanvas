@@ -3,9 +3,10 @@
  * 
  * Tests that the AI agent can handle ALL object types from the toolbar:
  * - Lines & Arrows
- * - All Shapes (rect, circle, triangle, star, heart, pentagon, hexagon, octagon, oval, trapezoid, rhombus, parallelogram)
+ * - All Shapes (rect, circle, triangle, star, heart, pentagon, hexagon, octagon, oval, trapezoid, rhombus, parallelogram, cylinder, document)
+ * - Mermaid Shapes (roundedRect, stadium, note)
  * - Emojis (😊 👍 🔥 💡 🚀 🎉 💻 🎵 🌟 🎨 📚 🏆)
- * - Icons (⚙️ 🏠 📧 📞 🔒 🔍 💾 📁)
+ * - Icons (⚙️ 🏠 📧 📞 🔒 🔍 💾 📁 ± × ÷ = ✓ 📶 ☁️ 🎤 🔧)
  * 
  * For each object type, tests:
  * - Create single
@@ -108,6 +109,30 @@ describe('AI Agent - Comprehensive Object Coverage', () => {
       
       const shapes = Object.values(useCanvas.getState().shapes);
       expect(shapes[0].imageUrl).toContain('1f50d'); // Magnifying glass code
+    });
+
+    it('should create a checkmark icon', async () => {
+      const result = await interpret('create a checkmark icon');
+      expect(result.ok).toBe(true);
+      
+      const shapes = Object.values(useCanvas.getState().shapes);
+      expect(shapes[0].imageUrl).toContain('2713'); // Checkmark code
+    });
+
+    it('should create a cloud icon', async () => {
+      const result = await interpret('create a cloud icon');
+      expect(result.ok).toBe(true);
+      
+      const shapes = Object.values(useCanvas.getState().shapes);
+      expect(shapes[0].imageUrl).toContain('2601'); // Cloud code
+    });
+
+    it('should create a microphone icon', async () => {
+      const result = await interpret('create a microphone icon');
+      expect(result.ok).toBe(true);
+      
+      const shapes = Object.values(useCanvas.getState().shapes);
+      expect(shapes[0].imageUrl).toContain('1f3a4'); // Microphone code
     });
   });
 
@@ -391,6 +416,61 @@ describe('AI Agent - Comprehensive Object Coverage', () => {
       
       // Should have at least 1 more now
       expect(Object.keys(useCanvas.getState().shapes).length).toBeGreaterThan(initialCount);
+    });
+  });
+
+  // ========================================================================
+  // MERMAID SHAPE CREATION TESTS
+  // ========================================================================
+  
+  describe('Mermaid Shape Creation', () => {
+    it('should create a rounded rectangle', async () => {
+      const result = await interpret('create a rounded rectangle');
+      expect(result.ok).toBe(true);
+      
+      const shapes = Object.values(useCanvas.getState().shapes);
+      expect(shapes.length).toBe(1);
+      expect(shapes[0].type).toBe('roundedRect');
+    });
+
+    it('should create a stadium shape', async () => {
+      const result = await interpret('create a stadium');
+      expect(result.ok).toBe(true);
+      
+      const shapes = Object.values(useCanvas.getState().shapes);
+      expect(shapes.length).toBe(1);
+      expect(shapes[0].type).toBe('stadium');
+    });
+
+    it('should create a note annotation', async () => {
+      const result = await interpret('create a note annotation');
+      expect(result.ok).toBe(true);
+      
+      const shapes = Object.values(useCanvas.getState().shapes);
+      expect(shapes.length).toBe(1);
+      expect(shapes[0].type).toBe('note');
+    });
+
+    it('should create a 3x3 grid of rounded rectangles', async () => {
+      const result = await interpret('create a 3x3 grid of rounded rectangles');
+      expect(result.ok).toBe(true);
+      
+      const shapes = Object.values(useCanvas.getState().shapes);
+      expect(shapes.length).toBe(9);
+      shapes.forEach(shape => {
+        expect(shape.type).toBe('roundedRect');
+      });
+    });
+
+    it('should create a 2x2 grid of stadium shapes', async () => {
+      const result = await interpret('create a 2x2 grid of stadiums');
+      expect(result.ok).toBe(true);
+      
+      const shapes = Object.values(useCanvas.getState().shapes);
+      expect(shapes.length).toBe(4);
+      shapes.forEach(shape => {
+        expect(shape.type).toBe('stadium');
+      });
     });
   });
 

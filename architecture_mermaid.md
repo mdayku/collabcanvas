@@ -11,7 +11,7 @@ flowchart TD
     
     subgraph UI["React Components"]
       CANVAS[Konva Canvas<br/>Pan/Zoom/Select<br/>Per-Tab State]
-      TOOLBAR[Categorized Toolbar<br/>📏 Lines & Arrows<br/>🔷 Shapes (▭●▲★♥)<br/>😊 Emojis (12 clickable)<br/>⭐ Symbols<br/>📝 Forms<br/>🎯 Assets (📝)]
+      TOOLBAR[Categorized Toolbar<br/>📏 Lines & Arrows<br/>🔷 Shapes (▭●▲★♥)<br/>😊 Emojis (12 clickable)<br/>⭐ Symbols<br/>📝 Forms<br/>🎯 Assets (📝)<br/>🛠️ Tools (🔲 Box Select, ✏️ Pen)<br/>🔣 Icons (±×÷=✓📶☁️🎤🔧)<br/>📊 Mermaid Diagrams]
       CONTEXT[Right-Click Context Menu<br/>Fill, Outline, Text Formatting]
       HELP[Help Panel<br/>AI Commands<br/>Shortcuts<br/>Tips]
     end
@@ -294,7 +294,7 @@ erDiagram
     uuid id PK
     uuid canvas_id FK "Parent canvas"
     string room_id "Legacy compatibility"
-    string type "rect|circle|text|triangle|star|heart|pentagon|hexagon|octagon|trapezoid|rhombus|parallelogram|oval"
+    string type "rect|circle|text|triangle|star|heart|pentagon|hexagon|octagon|trapezoid|rhombus|parallelogram|oval|line|arrow|frame|cylinder|document|path|roundedRect|stadium|note"
     float x "Position X"
     float y "Position Y" 
     float w "Width"
@@ -459,8 +459,9 @@ flowchart LR
   end
   
   subgraph Mobile["Mobile Touch Support"]
+    SINGLE[Single-Finger Pan<br/>Canvas navigation<br/>Touch optimized]
     PINCH[Two-Finger Pinch<br/>Zoom in/out<br/>Smooth scaling]
-    PAN[Two-Finger Pan<br/>Canvas navigation<br/>Touch optimized]
+    SIDEBAR[Collapsible Sidebar<br/>Arrow button<br/>ResizeObserver canvas adjust]
     GESTURE[Gesture Handling<br/>Touch event detection<br/>Prevents conflicts]
   end
   
@@ -478,8 +479,9 @@ flowchart LR
   
   DRAG --> DETECT --> THRESHOLD --> RENDER
   FPS --> METRICS --> TOGGLE
+  SINGLE --> GESTURE
   PINCH --> GESTURE
-  PAN --> GESTURE
+  SIDEBAR --> GESTURE
   ARROWS --> SMART
   DELETE --> SMART
   SHORTCUTS --> SMART
