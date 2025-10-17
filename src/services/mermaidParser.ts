@@ -104,7 +104,8 @@ function parseMermaidContent(content: string): MermaidDiagram | null {
     }
     
     // Parse node definitions (A[Text], B(Text), C{Text}, etc.)
-    const nodeRegex = /(\w+)([\[\(\{<][\[\(]?)(.*?)([\]\)\}>][\]\)]?)/;
+    // Updated regex to properly capture double brackets like [[...]] or [(...)]
+    const nodeRegex = /(\w+)((?:\[\[|\[\(|\(\[|\(\(|\{\{|[\[\(\{<]))(.*?)((?:\]\]|\)\]|\]\)|\)\)|\}\}|[\]\)\}>]))/;
     const nodeMatch = line.match(nodeRegex);
     
     if (nodeMatch) {

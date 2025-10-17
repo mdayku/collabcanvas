@@ -47,11 +47,12 @@ export function importMermaidDiagram(
     const shapes: ShapeBase[] = [];
     let zIndex = 0;
     
-    // Create node shapes
+    // Create node shapes (backgrounds first, text on top)
     for (const [nodeId, node] of diagram.nodes) {
       const pos = layout.get(nodeId);
       if (!pos) continue;
       
+      // Create background shape
       const shape: ShapeBase = {
         id: crypto.randomUUID(),
         type: node.shapeType,
@@ -62,25 +63,52 @@ export function importMermaidDiagram(
         color: getShapeColor(node.shapeType, colors.primary),
         stroke: '#000000',
         strokeWidth: 2,
-        text: node.text,
-        fontSize: 14,
         updated_at: Date.now(),
         updated_by: userId,
         zIndex: zIndex++
       };
       
       shapes.push(shape);
+      
+      // Create text label on top of shape
+      if (node.text) {
+        const textShape: ShapeBase = {
+          id: crypto.randomUUID(),
+          type: 'text',
+          x: pos.x + pos.w / 2 - 40, // Center text (approximate)
+          y: pos.y + pos.h / 2 - 10,  // Center vertically
+          w: 80,
+          h: 20,
+          text: node.text,
+          fontSize: 14,
+          color: '#FFFFFF', // White text for better visibility on colored shapes
+          stroke: '#000000', // Black outline for contrast
+          strokeWidth: 1,
+          textAlign: 'center',
+          updated_at: Date.now(),
+          updated_by: userId,
+          zIndex: zIndex++
+        };
+        
+        shapes.push(textShape);
+      }
     }
     
-    // Create connection arrows
+    // Map node IDs to their background shapes (not text) for arrow connections
     const nodeIdToShape = new Map<string, ShapeBase>();
-    for (const node of diagram.nodes.keys()) {
-      const shape = shapes.find(s => {
-        const layoutNode = layout.get(node);
-        return layoutNode && s.x === layoutNode.x && s.y === layoutNode.y;
-      });
+    for (const [nodeId, node] of diagram.nodes) {
+      const pos = layout.get(nodeId);
+      if (!pos) continue;
+      
+      // Find the background shape (not text type) at this position
+      const shape = shapes.find(s => 
+        s.type !== 'text' && 
+        s.x === pos.x && 
+        s.y === pos.y
+      );
+      
       if (shape) {
-        nodeIdToShape.set(node, shape);
+        nodeIdToShape.set(nodeId, shape);
       }
     }
     
@@ -129,7 +157,7 @@ export function importMermaidDiagram(
           h: 20,
           text: conn.label,
           fontSize: 12,
-          color: colors.text,
+          color: '#000000', // Black text for connection labels
           updated_at: Date.now(),
           updated_by: userId,
           zIndex: zIndex++

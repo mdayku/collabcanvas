@@ -399,58 +399,6 @@ function TopRibbon({ onSignOut, stageRef, setShowHelpPopup, centerOnNewShape, se
     input.click();
   };
 
-  const handleImportMermaid = () => {
-    setShowFileMenu(false);
-    
-    // Create hidden file input for .md files
-    const input = document.createElement('input');
-    input.type = 'file';
-    input.accept = '.md,.txt';
-    input.onchange = (e: any) => {
-      const file = e.target.files[0];
-      if (file) {
-        const reader = new FileReader();
-        reader.onload = async (e) => {
-          const markdown = e.target?.result as string;
-          await importMermaidFromText(markdown);
-        };
-        reader.readAsText(file);
-      }
-    };
-    input.click();
-  };
-
-  const importMermaidFromText = async (markdown: string) => {
-    const { importMermaidDiagram, containsMermaidDiagram } = await import('./services/mermaidImporter');
-    
-    if (!containsMermaidDiagram(markdown)) {
-      showToast('No Mermaid diagram found in file', 'error');
-      return;
-    }
-    
-    const { me } = useCanvas.getState();
-    const result = importMermaidDiagram(markdown, me.id, colors);
-    
-    if (!result.success) {
-      showToast(result.error || 'Failed to import diagram', 'error');
-      return;
-    }
-    
-    // Save history before adding shapes
-    useCanvas.getState().pushHistory();
-    
-    // Add all shapes to canvas
-    for (const shape of result.shapes) {
-      useCanvas.getState().upsert(shape);
-      broadcastUpsert(shape);
-    }
-    
-    showToast(`Imported ${result.shapes.length} elements from Mermaid diagram`, 'success');
-    
-    // Select all imported shapes
-    const shapeIds = result.shapes.map(s => s.id);
-    useCanvas.getState().select(shapeIds);
-  };
 
   const createImageShape = (imageUrl: string) => {
     // Create an Image object to get dimensions
@@ -651,17 +599,6 @@ function TopRibbon({ onSignOut, stageRef, setShowHelpPopup, centerOnNewShape, se
               >
                 <span className="mr-2">🖼️</span>
                 Import Image
-              </button>
-              
-              <button
-                onClick={handleImportMermaid}
-                className="w-full text-left px-4 py-2 text-sm flex items-center transition-colors"
-                style={{ color: colors.text }}
-                onMouseEnter={(e) => e.currentTarget.style.backgroundColor = colors.buttonHover}
-                onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
-              >
-                <span className="mr-2">📊</span>
-                Import Mermaid Diagram
               </button>
               
               <hr className="my-1" style={{ borderColor: colors.border }} />
