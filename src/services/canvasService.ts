@@ -429,6 +429,63 @@ class CanvasService {
       if (shape.strokeWidth !== null && shape.strokeWidth !== undefined) {
         baseShape.strokeWidth = shape.strokeWidth;
       }
+      
+      // Image properties
+      if (shape.image_url !== null && shape.image_url !== undefined) {
+        baseShape.imageUrl = shape.image_url;
+      }
+      if (shape.original_width !== null && shape.original_width !== undefined) {
+        baseShape.originalWidth = shape.original_width;
+      }
+      if (shape.original_height !== null && shape.original_height !== undefined) {
+        baseShape.originalHeight = shape.original_height;
+      }
+      
+      // AI Frame properties
+      if (shape.ai_prompt !== null && shape.ai_prompt !== undefined) {
+        baseShape.aiPrompt = shape.ai_prompt;
+      }
+      if (shape.generated_image_url !== null && shape.generated_image_url !== undefined) {
+        baseShape.generatedImageUrl = shape.generated_image_url;
+      }
+      if (shape.is_generating !== null && shape.is_generating !== undefined) {
+        baseShape.isGenerating = shape.is_generating;
+      }
+      
+      // Text formatting properties
+      if (shape.text_align !== null && shape.text_align !== undefined) {
+        baseShape.textAlign = shape.text_align;
+      }
+      if (shape.font_style !== null && shape.font_style !== undefined) {
+        baseShape.fontStyle = shape.font_style;
+      }
+      if (shape.font_weight !== null && shape.font_weight !== undefined) {
+        baseShape.fontWeight = shape.font_weight;
+      }
+      if (shape.text_decoration !== null && shape.text_decoration !== undefined) {
+        baseShape.textDecoration = shape.text_decoration;
+      }
+      
+      // Line/arrow properties
+      if (shape.x2 !== null && shape.x2 !== undefined) {
+        baseShape.x2 = shape.x2;
+      }
+      if (shape.y2 !== null && shape.y2 !== undefined) {
+        baseShape.y2 = shape.y2;
+      }
+      if (shape.arrow_head !== null && shape.arrow_head !== undefined) {
+        baseShape.arrowHead = shape.arrow_head;
+      }
+      
+      // Group properties
+      if (shape.group_id !== null && shape.group_id !== undefined) {
+        baseShape.groupId = shape.group_id;
+      }
+      
+      // Layer ordering
+      if (shape.z_index !== null && shape.z_index !== undefined) {
+        baseShape.zIndex = shape.z_index;
+      }
 
       return baseShape;
     });
@@ -483,6 +540,63 @@ class CanvasService {
       }
       if (shape.strokeWidth !== undefined) {
         baseShape.strokeWidth = shape.strokeWidth;
+      }
+      
+      // Image properties
+      if (shape.imageUrl !== undefined) {
+        baseShape.image_url = shape.imageUrl;
+      }
+      if (shape.originalWidth !== undefined) {
+        baseShape.original_width = shape.originalWidth;
+      }
+      if (shape.originalHeight !== undefined) {
+        baseShape.original_height = shape.originalHeight;
+      }
+      
+      // AI Frame properties
+      if (shape.aiPrompt !== undefined) {
+        baseShape.ai_prompt = shape.aiPrompt;
+      }
+      if (shape.generatedImageUrl !== undefined) {
+        baseShape.generated_image_url = shape.generatedImageUrl;
+      }
+      if (shape.isGenerating !== undefined) {
+        baseShape.is_generating = shape.isGenerating;
+      }
+      
+      // Text formatting properties
+      if (shape.textAlign !== undefined) {
+        baseShape.text_align = shape.textAlign;
+      }
+      if (shape.fontStyle !== undefined) {
+        baseShape.font_style = shape.fontStyle;
+      }
+      if (shape.fontWeight !== undefined) {
+        baseShape.font_weight = shape.fontWeight;
+      }
+      if (shape.textDecoration !== undefined) {
+        baseShape.text_decoration = shape.textDecoration;
+      }
+      
+      // Line/arrow properties
+      if (shape.x2 !== undefined) {
+        baseShape.x2 = shape.x2;
+      }
+      if (shape.y2 !== undefined) {
+        baseShape.y2 = shape.y2;
+      }
+      if (shape.arrowHead !== undefined) {
+        baseShape.arrow_head = shape.arrowHead;
+      }
+      
+      // Group properties
+      if (shape.groupId !== undefined) {
+        baseShape.group_id = shape.groupId;
+      }
+      
+      // Layer ordering
+      if (shape.zIndex !== undefined) {
+        baseShape.z_index = shape.zIndex;
       }
 
       return baseShape;
