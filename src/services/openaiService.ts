@@ -78,6 +78,9 @@ Response: {"intent": "create", "confidence": 0.9, "actions": [{"tool": "createSh
 User: "Make something blue"  
 Response: {"intent": "clarify", "confidence": 0.6, "actions": [], "message": "I'd love to make something blue! What would you like me to create?", "suggestions": ["Create a blue rectangle", "Create a blue circle", "Add blue text"]}
 
+User: "make it yellow" (with circle selected)
+Response: {"intent": "create", "confidence": 0.9, "actions": [{"tool": "changeColor", "params": {"id": "circle-id", "color": "#ffff00"}}], "message": "I'll make the selected circle yellow!", "suggestions": []}
+
 Always be creative, helpful, and encouraging!`;
 
 export type AIAction = {
@@ -103,7 +106,11 @@ const SYSTEM_PROMPTS = {
   ar: `أنت مساعد ذكي لـ CollabCanvas، أداة تصميم تعاونية. يمكن للمستخدمين إعطاؤك أوامر بلغة طبيعية لإنشاء ومعالجة الأشكال على لوحة الرسم.`
 };
 
-export async function callOpenAI(userMessage: string, language: string = 'en'): Promise<AIResponse> {
+export async function callOpenAI(
+  userMessage: string, 
+  language: string = 'en',
+  conversationHistory?: Array<{ role: 'user' | 'assistant'; content: string }>
+): Promise<AIResponse> {
   const client = initializeOpenAI();
   
   if (!client) {
@@ -119,10 +126,20 @@ export async function callOpenAI(userMessage: string, language: string = 'en'): 
 
   try {
     // Get current canvas state for context
-    const canvasState = Object.values(useCanvas.getState().shapes);
+    const state = useCanvas.getState();
+    const canvasState = Object.values(state.shapes);
+    const selectedIds = state.selectedIds;
+    
     const stateDescription = canvasState.length === 0 
       ? 'empty canvas' 
       : `${canvasState.length} shapes: ${canvasState.map(s => `${s.type} at (${s.x},${s.y})`).join(', ')}`;
+    
+    const selectionDescription = selectedIds.length === 0
+      ? 'No shapes currently selected.'
+      : `Currently selected: ${selectedIds.map(id => {
+          const shape = state.shapes[id];
+          return shape ? `${shape.type} (id: ${id}, color: ${shape.color || 'default'})` : id;
+        }).join(', ')}. When user says "it" or "the shape", they mean the selected shape(s).`;
 
     const basePrompt = SYSTEM_PROMPTS[language as keyof typeof SYSTEM_PROMPTS] || SYSTEM_PROMPTS.en;
     const fullPrompt = `${basePrompt}
@@ -138,7 +155,9 @@ AVAILABLE TOOLS:
 8. createCard() - Create a card layout with title, image, description
 9. arrangeHorizontally() - Arrange existing shapes in a horizontal row
 
-CURRENT CANVAS STATE: The user has these shapes: ${stateDescription}
+CURRENT CANVAS STATE: 
+- Shapes: ${stateDescription}
+- Selection: ${selectionDescription}
 
 RESPONSE FORMAT: Always respond with valid JSON in this format:
 {
@@ -173,12 +192,21 @@ Always be creative, helpful, and encouraging!`;
 
     console.log('[OpenAI] Sending request for:', userMessage);
     
+    // Build messages array with conversation history if provided
+    const messages: Array<{ role: 'system' | 'user' | 'assistant'; content: string }> = [
+      { role: 'system', content: systemPrompt }
+    ];
+    
+    if (conversationHistory && conversationHistory.length > 0) {
+      console.log('[OpenAI] Including conversation history:', conversationHistory.length, 'messages');
+      messages.push(...conversationHistory);
+    }
+    
+    messages.push({ role: 'user', content: userMessage });
+    
     const completion = await client.chat.completions.create({
       model: 'gpt-3.5-turbo',
-      messages: [
-        { role: 'system', content: systemPrompt },
-        { role: 'user', content: userMessage }
-      ],
+      messages,
       max_tokens: 500,
       temperature: 0.7,
       response_format: { type: 'json_object' } // Ensure JSON response
@@ -195,9 +223,14 @@ Always be creative, helpful, and encouraging!`;
     const aiResponse: AIResponse = JSON.parse(responseText);
     console.log('[OpenAI] Parsed response:', aiResponse);
     
-    // Validate required fields
-    if (!aiResponse.intent || !aiResponse.message || !Array.isArray(aiResponse.actions)) {
+    // Validate required fields (actions are optional for error/clarify intents)
+    if (!aiResponse.intent || !aiResponse.message) {
       throw new Error('Invalid response format from AI');
+    }
+    
+    // Ensure actions array exists (default to empty for error/clarify)
+    if (!aiResponse.actions) {
+      aiResponse.actions = [];
     }
 
     return aiResponse;

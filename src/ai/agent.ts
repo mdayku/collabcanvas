@@ -284,6 +284,64 @@ export type AIResponse = {
 export async function interpretWithResponse(text: string, language: string = 'en'): Promise<AIResponse> {
   console.log('[AI] Processing command:', text);
   
+  // CHECK FOR ACTIVE CONVERSATION
+  const canvasState = useCanvas.getState();
+  const conversation = canvasState.aiConversation;
+  
+  if (conversation?.isActive) {
+    console.log('[AI] 🔄 Continuing conversation, turn:', conversation.history.length / 2);
+    
+    // Safety check: Max 2 clarification rounds (4 messages total)
+    if (conversation.history.length >= 4) {
+      canvasState.setAIConversation(null);
+      return {
+        type: 'error',
+        message: "I'm having trouble understanding. Could you try rephrasing your command?",
+        suggestions: [
+          "Be more specific about which shape",
+          "Use clear numbers (e.g., 'make it 50% smaller')",
+          "Try a different approach"
+        ]
+      };
+    }
+    
+    // Call LLM with conversation history for clarification response
+    if (isOpenAIConfigured()) {
+      try {
+        const openaiResponse = await callOpenAI(text, language, conversation.history);
+        
+        if (openaiResponse.intent === 'clarify') {
+          // Still needs more clarification
+          canvasState.addAIMessage('assistant', openaiResponse.message);
+          return {
+            type: 'clarification_needed',
+            message: openaiResponse.message,
+            suggestions: openaiResponse.suggestions || []
+          };
+        } else {
+          // Got clear answer, execute and end conversation
+          canvasState.setAIConversation(null);
+          
+          // If LLM provided actions, execute them (handled by calling code)
+          return {
+            type: 'success',
+            message: openaiResponse.message,
+            result: openaiResponse.actions,
+            suggestions: []
+          };
+        }
+      } catch (error) {
+        console.error('[AI] Error in conversation:', error);
+        canvasState.setAIConversation(null);
+        return {
+          type: 'error',
+          message: "AI service error. Please try again.",
+          suggestions: []
+        };
+      }
+    }
+  }
+  
   // PRIORITIZE: Try rule-based parser first for instant responses
   console.log('[AI] Trying enhanced rule-based parser first...');
   const ruleResult = await interpret(text);
@@ -323,6 +381,20 @@ export async function interpretWithResponse(text: string, language: string = 'en
     try {
       console.log('[AI] ⭐ Using browser OpenAI (primary) for:', text);
       const openaiResponse = await callOpenAI(text, language);
+      
+      // If LLM needs clarification, start a conversation
+      if (openaiResponse.intent === 'clarify') {
+        console.log('[AI] 🤔 Starting clarification conversation');
+        canvasState.setAIConversation({
+          isActive: true,
+          history: [
+            { role: 'user', content: text },
+            { role: 'assistant', content: openaiResponse.message }
+          ],
+          pendingCommand: text,
+          contextShapes: canvasState.selectedIds,
+        });
+      }
       
       // Convert OpenAI response to our AIResponse format
       return {
