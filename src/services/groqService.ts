@@ -102,10 +102,22 @@ export async function callGroq(userMessage: string, language: string = 'en'): Pr
 
   try {
     // Get current canvas state for context
-    const canvasState = Object.values(useCanvas.getState().shapes);
+    const state = useCanvas.getState();
+    const canvasState = Object.values(state.shapes);
+    const selectedIds = state.selectedIds;
+    
     const stateDescription = canvasState.length === 0 
       ? 'empty canvas' 
       : `${canvasState.length} shapes: ${canvasState.map(s => `${s.type} at (${s.x},${s.y})`).join(', ')}`;
+    
+    const selectionDescription = selectedIds.length === 0
+      ? 'No shapes currently selected.'
+      : `Currently selected: ${selectedIds.map(id => {
+          const shape = state.shapes[id];
+          return shape ? `${shape.type} (id: ${id}, color: ${shape.color || 'default'})` : id;
+        }).join(', ')}. 
+        
+IMPORTANT: When user gives modification commands (like "make outline thicker", "change color", "make it bigger", etc.) and there are selected shapes, they mean to apply the modification to the SELECTED shapes UNLESS they explicitly specify a different target (like "make the red circle bigger" when a blue square is selected). Don't ask for clarification - just apply the modification to the selected shapes.`;
 
     const basePrompt = SYSTEM_PROMPTS[language as keyof typeof SYSTEM_PROMPTS] || SYSTEM_PROMPTS.en;
     const fullPrompt = `${basePrompt}
@@ -121,7 +133,8 @@ AVAILABLE TOOLS:
 8. createCard() - Create a card layout with title, image, description
 9. arrangeHorizontally() - Arrange existing shapes in a horizontal row
 
-CURRENT CANVAS STATE: The user has these shapes: ${stateDescription}
+CURRENT CANVAS STATE: ${stateDescription}
+SELECTION STATE: ${selectionDescription}
 
 RESPONSE FORMAT: Always respond with valid JSON in this exact format:
 {

@@ -139,7 +139,9 @@ export async function callOpenAI(
       : `Currently selected: ${selectedIds.map(id => {
           const shape = state.shapes[id];
           return shape ? `${shape.type} (id: ${id}, color: ${shape.color || 'default'})` : id;
-        }).join(', ')}. When user says "it" or "the shape", they mean the selected shape(s).`;
+        }).join(', ')}. 
+        
+IMPORTANT: When user gives modification commands (like "make outline thicker", "change color", "make it bigger", etc.) and there are selected shapes, they mean to apply the modification to the SELECTED shapes UNLESS they explicitly specify a different target (like "make the red circle bigger" when a blue square is selected). Don't ask for clarification - just apply the modification to the selected shapes.`;
 
     const basePrompt = SYSTEM_PROMPTS[language as keyof typeof SYSTEM_PROMPTS] || SYSTEM_PROMPTS.en;
     const fullPrompt = `${basePrompt}

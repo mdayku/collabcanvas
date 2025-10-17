@@ -2242,7 +2242,7 @@ export default function Canvas({ onSignOut }: CanvasProps) {
     };
   }, []);
 
-  // Canvas sizing effect
+  // Canvas sizing effect with ResizeObserver
   useEffect(() => {
     const updateCanvasSize = () => {
       if (canvasContainerRef.current) {
@@ -2255,12 +2255,22 @@ export default function Canvas({ onSignOut }: CanvasProps) {
     // Initial size calculation
     updateCanvasSize();
 
-    // Update on window resize
-    window.addEventListener('resize', updateCanvasSize);
+    // Use ResizeObserver to detect container size changes (including sidebar collapse)
+    const container = canvasContainerRef.current;
+    if (container) {
+      const resizeObserver = new ResizeObserver(() => {
+        updateCanvasSize();
+      });
+      resizeObserver.observe(container);
 
-    return () => {
-      window.removeEventListener('resize', updateCanvasSize);
-    };
+      // Also listen to window resize for manual resizing
+      window.addEventListener('resize', updateCanvasSize);
+
+      return () => {
+        resizeObserver.disconnect();
+        window.removeEventListener('resize', updateCanvasSize);
+      };
+    }
   }, []);
 
   // Wheel zoom
@@ -2950,6 +2960,28 @@ export default function Canvas({ onSignOut }: CanvasProps) {
     // Clear normal panning
     stage.startPointerPos = null;
     stage.startPos = null;
+  };
+
+  // Mobile touch handlers for single-finger pan
+  const onStageTouchStart = (e: any) => {
+    // Only handle single-touch (two-finger is handled by pinch-zoom code)
+    if (e.evt.touches.length !== 1) return;
+    
+    // Treat single touch like mouse down
+    onStageMouseDown(e);
+  };
+
+  const onStageTouchMove = (e: any) => {
+    // Only handle single-touch
+    if (e.evt.touches.length !== 1) return;
+    
+    // Treat single touch move like mouse move
+    onStageMouseMove(e);
+  };
+
+  const onStageTouchEnd = (e: any) => {
+    // Treat touch end like mouse up
+    onStageMouseUp();
   };
 
   // #5: Smart Guides - Calculate alignment guides during drag
@@ -3749,6 +3781,9 @@ export default function Canvas({ onSignOut }: CanvasProps) {
           onMouseDown={onStageMouseDown}
           onMouseMove={onStageMouseMove}
           onMouseUp={onStageMouseUp}
+          onTouchStart={onStageTouchStart}
+          onTouchMove={onStageTouchMove}
+          onTouchEnd={onStageTouchEnd}
         >
           <Layer ref={layerRef}>
             <Rect 
@@ -4521,6 +4556,7 @@ function Toolbar({ status, centerOnNewShape, stageRef, isBoxSelectMode, setIsBox
 }) {
   const { me, onlineUsers, cursors } = useCanvas();
   const { colors } = useTheme();
+  const [isCollapsed, setIsCollapsed] = useState(false);
   
   // Clear selection when clicking on sidebar background (not on interactive elements)
   const handleSidebarClick = (e: React.MouseEvent) => {
@@ -4533,7 +4569,7 @@ function Toolbar({ status, centerOnNewShape, stageRef, isBoxSelectMode, setIsBox
   
   return (
     <div 
-      className="w-64 p-4 border-r space-y-3 overflow-y-auto" 
+      className={`${isCollapsed ? 'w-12' : 'w-64'} p-4 border-r space-y-3 overflow-y-auto relative transition-all duration-300`}
       style={{ 
         backgroundColor: colors.bg, 
         borderColor: colors.border,
@@ -4541,12 +4577,27 @@ function Toolbar({ status, centerOnNewShape, stageRef, isBoxSelectMode, setIsBox
       }}
       onClick={handleSidebarClick}
     >
-      <div className="flex items-center justify-between">
-        <div className="text-xl font-semibold">CollabCanvas</div>
-      </div>
-      <div className="text-sm">Signed in as <span style={{color: me.color}}>{me.name||"Guest"}</span></div>
-      
-      {/* Online users */}
+      {/* Collapse/Expand Button */}
+      <button
+        onClick={(e) => {
+          e.stopPropagation();
+          setIsCollapsed(!isCollapsed);
+        }}
+        className="absolute top-4 right-2 p-1 rounded hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors z-10"
+        title={isCollapsed ? "Expand sidebar" : "Collapse sidebar"}
+        style={{ color: colors.text }}
+      >
+        {isCollapsed ? '→' : '←'}
+      </button>
+
+      {!isCollapsed && (
+        <>
+          <div className="flex items-center justify-between">
+            <div className="text-xl font-semibold">CollabCanvas</div>
+          </div>
+          <div className="text-sm">Signed in as <span style={{color: me.color}}>{me.name||"Guest"}</span></div>
+          
+          {/* Online users */}
       {onlineUsers.length > 0 && (
         <div className="border-t pt-3">
           <div className="text-sm font-medium mb-2">Online ({onlineUsers.length + 1})</div>
@@ -4602,6 +4653,8 @@ function Toolbar({ status, centerOnNewShape, stageRef, isBoxSelectMode, setIsBox
           </div>
         </div>
       </div>
+        </>
+      )}
     </div>
   );
 }
