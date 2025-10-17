@@ -3324,7 +3324,7 @@ export default function Canvas({ onSignOut }: CanvasProps) {
               wrap="word"
               ellipsis={false}
               align={isEmoji(s.text || "") ? "center" : (s.textAlign || "left")}
-              verticalAlign={isEmoji(s.text || "") ? "middle" : "top"}
+              verticalAlign={(isEmoji(s.text || "") || s.textAlign === 'center') ? "middle" : "top"}
               onDblClick={() => {
                 setEditingText({ id: s.id, x: s.x, y: s.y, value: s.text || '' });
               }}
@@ -3610,6 +3610,33 @@ export default function Canvas({ onSignOut }: CanvasProps) {
             lineJoin="round"
             closed={s.closed || false}
             tension={s.smooth ? 0.5 : 0}
+          />
+        )}
+        {s.type === "roundedRect" && (
+          <RoundedRectShape
+            width={s.w}
+            height={s.h}
+            fill={s.color || "#000"}
+            stroke={s.stroke || "#000"}
+            strokeWidth={s.strokeWidth || 1}
+          />
+        )}
+        {s.type === "stadium" && (
+          <StadiumShape
+            width={s.w}
+            height={s.h}
+            fill={s.color || "#000"}
+            stroke={s.stroke || "#000"}
+            strokeWidth={s.strokeWidth || 1}
+          />
+        )}
+        {s.type === "note" && (
+          <NoteShape
+            width={s.w}
+            height={s.h}
+            fill={s.color || "#000"}
+            stroke={s.stroke || "#000"}
+            strokeWidth={s.strokeWidth || 1}
           />
         )}
       </Group>
@@ -4026,7 +4053,7 @@ function CategorizedToolbar({ centerOnNewShape, stageRef, isBoxSelectMode, setIs
 }) {
   const { colors, snapToGrid } = useTheme();
   const [expandedCategories, setExpandedCategories] = useState<Set<string>>(
-    new Set(['lines-arrows', 'shapes', 'emojis']) // Start with lines-arrows, shapes and emojis expanded
+    new Set(['lines-arrows', 'shapes', 'emojis', 'mermaid', 'icons']) // Start with key categories expanded
   );
   
   const toggleCategory = (category: string) => {
@@ -4055,10 +4082,56 @@ function CategorizedToolbar({ centerOnNewShape, stageRef, isBoxSelectMode, setIs
   const addParallelogram = () => addShape("parallelogram", colors, snapToGrid, centerOnNewShape, stageRef);
   const addCylinder = () => addShape("cylinder", colors, snapToGrid, centerOnNewShape, stageRef);
   const addDocument = () => addShape("document", colors, snapToGrid, centerOnNewShape, stageRef);
+  const addRoundedRect = () => addShape("roundedRect", colors, snapToGrid, centerOnNewShape, stageRef);
+  const addStadium = () => addShape("stadium", colors, snapToGrid, centerOnNewShape, stageRef);
+  const addNote = () => addShape("note", colors, snapToGrid, centerOnNewShape, stageRef);
   
   // Line and arrow creation functions
   const addLine = () => addShape("line", colors, snapToGrid, centerOnNewShape, stageRef);
   const addArrow = () => addShape("arrow", colors, snapToGrid, centerOnNewShape, stageRef);
+  
+  // Icon creation functions (as text objects with specific symbols)
+  const addIcon = (icon: string, tooltipName: string) => {
+    const newShape: ShapeBase = {
+      id: crypto.randomUUID(),
+      type: 'text',
+      x: 100,
+      y: 100,
+      w: 50,  // Adjusted for better spacing
+      h: 50,  // Adjusted for better spacing
+      text: icon,
+      fontSize: 40,  // Larger for visibility
+      color: colors.primary,
+      textAlign: 'center',  // Center horizontally
+      updated_at: Date.now(),
+      updated_by: useCanvas.getState().me.id,
+      zIndex: Object.keys(useCanvas.getState().shapes).length
+    };
+    
+    // Apply snap to grid if enabled
+    if (snapToGrid) {
+      const gridSize = 25;
+      newShape.x = Math.round(newShape.x / gridSize) * gridSize;
+      newShape.y = Math.round(newShape.y / gridSize) * gridSize;
+    }
+    
+    // Find blank area and add shape
+    const blankPos = findBlankArea(useCanvas.getState().shapes, newShape.w, newShape.h);
+    newShape.x = blankPos.x;
+    newShape.y = blankPos.y;
+    
+    useCanvas.getState().pushHistory();
+    useCanvas.getState().upsert(newShape);
+    useCanvas.getState().select([newShape.id]);
+    broadcastUpsert(newShape);
+    
+    // Center on new shape if enabled
+    if (centerOnNewShape && stageRef.current) {
+      centerStageOnShape(newShape, stageRef);
+    }
+    
+    showToast(`${tooltipName} icon added!`, 'success');
+  };
   
   // AI Template Command Handler - triggers AI to create complex layouts
   const handleAITemplateCommand = async (command: string) => {
@@ -4273,16 +4346,36 @@ function CategorizedToolbar({ centerOnNewShape, stageRef, isBoxSelectMode, setIs
       ]
     },
     {
-      id: 'flowchart',
-      name: 'Flowchart',
+      id: 'mermaid',
+      name: 'Mermaid Diagrams',
       emoji: '📊',
       tools: [
         { name: '▭', action: addRect, available: true, tooltip: 'Process (Rectangle)' },
+        { name: '╭─╮', action: addRoundedRect, available: true, tooltip: 'State (Rounded Rectangle)' },
+        { name: '(─)', action: addStadium, available: true, tooltip: 'Stadium (Start/End)' },
         { name: '◆', action: addRhombus, available: true, tooltip: 'Decision (Diamond)' },
-        { name: '⬯', action: addOval, available: true, tooltip: 'Start/End (Oval)' },
-        { name: '🗎', action: addDocument, available: true, tooltip: 'Document' },
-        { name: '⌭', action: addCylinder, available: true, tooltip: 'Database (Cylinder)' },
+        { name: '⬯', action: addOval, available: true, tooltip: 'Circle (Start/End)' },
+        { name: '⬡', action: addHexagon, available: true, tooltip: 'Hexagon (Preparation)' },
         { name: '▱', action: addParallelogram, available: true, tooltip: 'Input/Output' },
+        { name: '🛢️', action: addCylinder, available: true, tooltip: 'Database (Cylinder)' },
+        { name: '🗎', action: addDocument, available: true, tooltip: 'Document' },
+        { name: '📝', action: addNote, available: true, tooltip: 'Note (Annotation)' },
+      ]
+    },
+    {
+      id: 'icons',
+      name: 'Icons',
+      emoji: '🔣',
+      tools: [
+        { name: '±', action: () => addIcon('±', 'Plus-Minus'), available: true, tooltip: 'Plus-Minus' },
+        { name: '×', action: () => addIcon('×', 'Multiply'), available: true, tooltip: 'Multiply' },
+        { name: '÷', action: () => addIcon('÷', 'Divide'), available: true, tooltip: 'Divide' },
+        { name: '=', action: () => addIcon('=', 'Equals'), available: true, tooltip: 'Equals' },
+        { name: '✓', action: () => addIcon('✓', 'Checkmark'), available: true, tooltip: 'Checkmark' },
+        { name: '📶', action: () => addIcon('📶', 'Signal'), available: true, tooltip: 'Signal Bars' },
+        { name: '☁️', action: () => addIcon('☁️', 'Cloud'), available: true, tooltip: 'Cloud' },
+        { name: '🎤', action: () => addIcon('🎤', 'Microphone'), available: true, tooltip: 'Microphone' },
+        { name: '🔧', action: () => addIcon('🔧', 'Wrench'), available: true, tooltip: 'Wrench/Settings' },
       ]
     },
     {
@@ -4686,6 +4779,9 @@ function addShape(type: ShapeType, colors: any, snapToGrid: boolean = false, cen
     else if (type === "circle") { w = 100; h = 100; }
     else if (type === "heart") { w = 90; h = 100; } // Taller for better proportions
     else if (type === "oval" || type === "trapezoid" || type === "parallelogram") { w = 120; h = 80; }
+    else if (type === "stadium") { w = 150; h = 60; } // Wide pill shape
+    else if (type === "roundedRect") { w = 120; h = 80; } // Same as rect
+    else if (type === "note") { w = 120; h = 100; } // Slightly taller for note
     
     const position = findBlankArea(shapes, w, h);
     
@@ -6585,6 +6681,86 @@ function DocumentShape({ width, height, fill, stroke, strokeWidth }: {
         closed={true}
       />
       {/* Folded corner */}
+      <Line
+        points={foldPoints}
+        fill="transparent"
+        stroke={stroke}
+        strokeWidth={strokeWidth}
+        closed={false}
+      />
+    </>
+  );
+}
+
+function RoundedRectShape({ width, height, fill, stroke, strokeWidth }: {
+  width: number; height: number; fill: string; stroke: string; strokeWidth: number;
+}) {
+  const cornerRadius = Math.min(width, height) * 0.1; // 10% corner radius
+  return (
+    <Rect
+      x={0}
+      y={0}
+      width={width}
+      height={height}
+      fill={fill}
+      stroke={stroke}
+      strokeWidth={strokeWidth}
+      cornerRadius={cornerRadius}
+    />
+  );
+}
+
+function StadiumShape({ width, height, fill, stroke, strokeWidth }: {
+  width: number; height: number; fill: string; stroke: string; strokeWidth: number;
+}) {
+  // Stadium/pill shape - rectangle with semicircular ends
+  // Cap the radius at half the shorter dimension to maintain pill shape
+  const radius = Math.min(height / 2, width / 2);
+  return (
+    <Rect
+      x={0}
+      y={0}
+      width={width}
+      height={height}
+      fill={fill}
+      stroke={stroke}
+      strokeWidth={strokeWidth}
+      cornerRadius={radius}
+    />
+  );
+}
+
+function NoteShape({ width, height, fill, stroke, strokeWidth }: {
+  width: number; height: number; fill: string; stroke: string; strokeWidth: number;
+}) {
+  // Note shape with folded corner (bottom-right)
+  const foldSize = Math.min(width, height) * 0.15; // 15% fold
+  const points = [
+    0, 0,                          // Top left
+    width, 0,                      // Top right
+    width, height - foldSize,      // Right side (before fold)
+    width - foldSize, height,      // Bottom fold point
+    0, height,                     // Bottom left
+    0, 0                           // Close path
+  ];
+  
+  const foldPoints = [
+    width - foldSize, height,      // Fold start
+    width - foldSize, height - foldSize, // Fold corner
+    width, height - foldSize       // Fold end
+  ];
+  
+  return (
+    <>
+      {/* Main note body */}
+      <Line
+        points={points}
+        fill={fill}
+        stroke={stroke}
+        strokeWidth={strokeWidth}
+        closed={true}
+      />
+      {/* Folded corner line */}
       <Line
         points={foldPoints}
         fill="transparent"
