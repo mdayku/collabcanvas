@@ -2316,19 +2316,26 @@ export default function Canvas({ onSignOut }: CanvasProps) {
         const channel = supabase.channel(`room:${useCanvas.getState().roomId}`);
         const { me, roomId } = useCanvas.getState();
         
-        // Get canvas-relative coordinates
+        // Get canvas-relative coordinates and convert to world coordinates
         const canvasContainer = canvasContainerRef.current;
-        if (!canvasContainer) return;
+        const stage = canvasStageRef.current;
+        if (!canvasContainer || !stage) return;
         
         const rect = canvasContainer.getBoundingClientRect();
-        const canvasX = e.clientX - rect.left;
-        const canvasY = e.clientY - rect.top;
+        const screenX = e.clientX - rect.left;
+        const screenY = e.clientY - rect.top;
+        
+        // Transform screen coordinates to world coordinates (accounting for pan/zoom)
+        const stagePos = stage.position();
+        const stageScale = stage.scaleX();
+        const worldX = (screenX - stagePos.x) / stageScale;
+        const worldY = (screenY - stagePos.y) / stageScale;
         
         channel.track({ 
           id: me.id, 
           name: me.name || "Guest", 
-          x: canvasX, 
-          y: canvasY, 
+          x: worldX, 
+          y: worldY, 
           color: me.color, 
           roomId: roomId, // Include roomId for isolation
           last: Date.now() 
