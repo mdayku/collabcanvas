@@ -1,4 +1,4 @@
-export type ShapeType = "rect" | "circle" | "text" | "image" | "triangle" | "star" | "heart" | "pentagon" | "hexagon" | "octagon" | "trapezoid" | "rhombus" | "parallelogram" | "oval" | "line" | "arrow" | "frame" | "cylinder" | "document";
+export type ShapeType = "rect" | "circle" | "text" | "image" | "triangle" | "star" | "heart" | "pentagon" | "hexagon" | "octagon" | "trapezoid" | "rhombus" | "parallelogram" | "oval" | "line" | "arrow" | "frame" | "cylinder" | "document" | "path";
 
 export type ShapeBase = {
   id: string;
@@ -32,6 +32,10 @@ export type ShapeBase = {
   aiPrompt?: string; // the prompt used to generate AI image (for frame type)
   generatedImageUrl?: string; // URL of the generated AI image (for frame type)
   isGenerating?: boolean; // whether AI image generation is in progress
+  // Path/Pen tool properties
+  points?: { x: number; y: number }[]; // array of points for path shapes
+  closed?: boolean; // whether the path is closed
+  smooth?: boolean; // whether to use bezier smoothing
   updated_at: number;
   updated_by: string;
 };

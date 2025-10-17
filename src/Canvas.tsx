@@ -1800,6 +1800,11 @@ export default function Canvas({ onSignOut }: CanvasProps) {
   const boxSelectRef = useRef<{start: {x: number, y: number} | null, current: {x: number, y: number} | null}>({ start: null, current: null });
   const justCompletedBoxSelect = useRef(false);
   const isPanning = useRef(false);
+  
+  // Pen tool state
+  const [isPenMode, setIsPenMode] = useState(false);
+  const [penPoints, setPenPoints] = useState<{x: number, y: number}[]>([]);
+  const lastPenClick = useRef<number>(0);
   const [showHelpPopup, setShowHelpPopup] = useState(false);
   const [status, setStatus] = useState<'connecting'|'online'|'reconnecting'|'offline'>('connecting');
   const [canvasSize, setCanvasSize] = useState({ width: 800, height: 600 });
@@ -2493,9 +2498,29 @@ export default function Canvas({ onSignOut }: CanvasProps) {
         return;
       }
       
-      // Deselect All with Escape
+      // Complete pen tool path or deselect with Escape
       if (e.key === 'Escape') {
+        // If pen tool is active and has points, complete the path
+        if (isPenMode && penPoints.length >= 2) {
+          completePath();
+          e.preventDefault();
+          return;
+        }
+        // If pen tool is active but not enough points, cancel it
+        if (isPenMode && penPoints.length > 0) {
+          setPenPoints([]);
+          e.preventDefault();
+          return;
+        }
+        // Otherwise, deselect all
         useCanvas.getState().select([]);
+        e.preventDefault();
+        return;
+      }
+      
+      // Complete pen tool path with Enter
+      if (e.key === 'Enter' && isPenMode && penPoints.length >= 2) {
+        completePath();
         e.preventDefault();
         return;
       }
@@ -2655,6 +2680,67 @@ export default function Canvas({ onSignOut }: CanvasProps) {
   }, [editingText]);
 
 
+  // Pen tool - Complete path
+  const completePath = () => {
+    if (penPoints.length < 2) return;
+    
+    // Calculate bounding box for the path
+    const xs = penPoints.map(p => p.x);
+    const ys = penPoints.map(p => p.y);
+    const minX = Math.min(...xs);
+    const minY = Math.min(...ys);
+    const maxX = Math.max(...xs);
+    const maxY = Math.max(...ys);
+    
+    // Convert points to relative coordinates
+    const relativePoints = penPoints.map(p => ({
+      x: p.x - minX,
+      y: p.y - minY
+    }));
+    
+    const newPath: ShapeBase = {
+      id: crypto.randomUUID(),
+      type: 'path',
+      x: minX,
+      y: minY,
+      w: maxX - minX || 1,
+      h: maxY - minY || 1,
+      color: colors.primary,
+      stroke: colors.primary,
+      strokeWidth: 2,
+      points: relativePoints,
+      closed: false,
+      smooth: true,
+      updated_at: Date.now(),
+      updated_by: me.id,
+      zIndex: Object.keys(shapes).length
+    };
+    
+    // Save history before creating
+    useCanvas.getState().pushHistory();
+    
+    // Add to store
+    useCanvas.getState().upsert(newPath);
+    
+    // Broadcast to other users
+    broadcastUpsert(newPath);
+    
+    // Save to database (auto-save will handle this)
+    
+    // Select the new path
+    useCanvas.getState().select([newPath.id]);
+    
+    // Clear pen tool state
+    setPenPoints([]);
+    
+    // Center on new shape if enabled
+    if (centerOnNewShape && canvasStageRef.current) {
+      centerStageOnShape(newPath, canvasStageRef);
+    }
+    
+    showToast('Path created!', 'success');
+  };
+
   // Text editing
 
   const finishTextEdit = (save: boolean = true) => {
@@ -2701,6 +2787,33 @@ export default function Canvas({ onSignOut }: CanvasProps) {
     
     // Don't handle clicks if we're doing box select
     if (isBoxSelectMode && (boxSelectStart || boxSelectCurrent)) {
+      return;
+    }
+    
+    // Handle pen tool clicks
+    if (isPenMode) {
+      const now = Date.now();
+      const timeSinceLastClick = now - lastPenClick.current;
+      
+      // Double-click detection (within 300ms)
+      if (timeSinceLastClick < 300 && penPoints.length >= 2) {
+        completePath();
+        lastPenClick.current = 0;
+        return;
+      }
+      
+      lastPenClick.current = now;
+      
+      const stage = canvasStageRef.current;
+      const pointerPos = stage.getPointerPosition();
+      const scale = stage.scaleX();
+      const worldPos = {
+        x: (pointerPos.x - stage.x()) / scale,
+        y: (pointerPos.y - stage.y()) / scale
+      };
+      
+      // Add point to path
+      setPenPoints(prev => [...prev, worldPos]);
       return;
     }
     
@@ -3488,6 +3601,17 @@ export default function Canvas({ onSignOut }: CanvasProps) {
             strokeWidth={s.strokeWidth || 1}
           />
         )}
+        {s.type === "path" && s.points && s.points.length >= 2 && (
+          <Line
+            points={s.points.flatMap(p => [p.x, p.y])}
+            stroke={s.stroke || s.color || "#000"}
+            strokeWidth={s.strokeWidth || 2}
+            lineCap="round"
+            lineJoin="round"
+            closed={s.closed || false}
+            tension={s.smooth ? 0.5 : 0}
+          />
+        )}
       </Group>
     );
   }), [shapes, selectedIds]);
@@ -3579,6 +3703,10 @@ export default function Canvas({ onSignOut }: CanvasProps) {
           stageRef={canvasStageRef} 
           isBoxSelectMode={isBoxSelectMode}
           setIsBoxSelectMode={setIsBoxSelectMode}
+          isPenMode={isPenMode}
+          setIsPenMode={setIsPenMode}
+          penPoints={penPoints}
+          setPenPoints={setPenPoints}
         />
         <div 
           ref={canvasContainerRef} 
@@ -3668,6 +3796,33 @@ export default function Canvas({ onSignOut }: CanvasProps) {
                 dash={[5, 5]}
                 listening={false}
               />
+            )}
+            
+            {/* Pen Tool Preview Path */}
+            {isPenMode && penPoints.length > 0 && (
+              <>
+                {/* Draw line segments */}
+                <Line
+                  points={penPoints.flatMap(p => [p.x, p.y])}
+                  stroke={colors.primary}
+                  strokeWidth={2}
+                  lineCap="round"
+                  lineJoin="round"
+                  listening={false}
+                  dash={[5, 5]}
+                />
+                {/* Draw points as circles */}
+                {penPoints.map((point, i) => (
+                  <Circle
+                    key={`pen-point-${i}`}
+                    x={point.x}
+                    y={point.y}
+                    radius={4}
+                    fill={colors.primary}
+                    listening={false}
+                  />
+                ))}
+              </>
             )}
             
             <Transformer 
@@ -3859,11 +4014,15 @@ interface ToolbarProps {
   status: 'connecting'|'online'|'reconnecting'|'offline';
 }
 
-function CategorizedToolbar({ centerOnNewShape, stageRef, isBoxSelectMode, setIsBoxSelectMode }: { 
+function CategorizedToolbar({ centerOnNewShape, stageRef, isBoxSelectMode, setIsBoxSelectMode, isPenMode, setIsPenMode, penPoints, setPenPoints }: { 
   centerOnNewShape: boolean; 
   stageRef: React.RefObject<Konva.Stage>;
   isBoxSelectMode: boolean;
   setIsBoxSelectMode: (value: boolean) => void;
+  isPenMode: boolean;
+  setIsPenMode: (value: boolean) => void;
+  penPoints: {x: number, y: number}[];
+  setPenPoints: (value: {x: number, y: number}[]) => void;
 }) {
   const { colors, snapToGrid } = useTheme();
   const [expandedCategories, setExpandedCategories] = useState<Set<string>>(
@@ -4037,8 +4196,22 @@ function CategorizedToolbar({ centerOnNewShape, stageRef, isBoxSelectMode, setIs
       name: 'Tools',
       emoji: '🛠️',
       tools: [
-        { name: '🔲', action: () => setIsBoxSelectMode(!isBoxSelectMode), available: true, tooltip: 'Box Select Tool', active: isBoxSelectMode },
-        { name: '✏️', action: () => showToast('Pen Tool - Coming Soon!', 'info'), available: false, tooltip: 'Pen Tool (Coming Soon)' },
+        { name: '🔲', action: () => {
+          setIsBoxSelectMode(!isBoxSelectMode);
+          if (isPenMode) setIsPenMode(false); // Disable pen mode
+        }, available: true, tooltip: 'Box Select Tool', active: isBoxSelectMode },
+        { name: '✏️', action: () => {
+          setIsPenMode(!isPenMode);
+          if (isBoxSelectMode) setIsBoxSelectMode(false); // Disable box select
+          if (!isPenMode) {
+            showToast('Pen Tool: Click to add points. Double-click or press Escape to finish.', 'info');
+          } else {
+            // Cancel current path if toggling off
+            if (penPoints.length > 0) {
+              setPenPoints([]);
+            }
+          }
+        }, available: true, tooltip: 'Pen Tool (Draw Paths)', active: isPenMode },
       ]
     },
     {
@@ -4243,11 +4416,15 @@ function CategorizedToolbar({ centerOnNewShape, stageRef, isBoxSelectMode, setIs
   );
 }
 
-function Toolbar({ status, centerOnNewShape, stageRef, isBoxSelectMode, setIsBoxSelectMode }: Omit<ToolbarProps, 'onSignOut'> & { 
+function Toolbar({ status, centerOnNewShape, stageRef, isBoxSelectMode, setIsBoxSelectMode, isPenMode, setIsPenMode, penPoints, setPenPoints }: Omit<ToolbarProps, 'onSignOut'> & { 
   centerOnNewShape: boolean; 
   stageRef: React.RefObject<Konva.Stage>;
   isBoxSelectMode: boolean;
   setIsBoxSelectMode: (value: boolean) => void;
+  isPenMode: boolean;
+  setIsPenMode: (value: boolean) => void;
+  penPoints: {x: number, y: number}[];
+  setPenPoints: (value: {x: number, y: number}[]) => void;
 }) {
   const { me, onlineUsers, cursors } = useCanvas();
   const { colors } = useTheme();
@@ -4305,6 +4482,10 @@ function Toolbar({ status, centerOnNewShape, stageRef, isBoxSelectMode, setIsBox
         stageRef={stageRef}
         isBoxSelectMode={isBoxSelectMode}
         setIsBoxSelectMode={setIsBoxSelectMode}
+        isPenMode={isPenMode}
+        setIsPenMode={setIsPenMode}
+        penPoints={penPoints}
+        setPenPoints={setPenPoints}
       />
       
       {/* Connection Status Badge */}

@@ -486,6 +486,18 @@ class CanvasService {
       if (shape.z_index !== null && shape.z_index !== undefined) {
         baseShape.zIndex = shape.z_index;
       }
+      
+      // Path/Pen tool properties
+      if (shape.points !== null && shape.points !== undefined) {
+        // Parse JSON string back to array
+        baseShape.points = typeof shape.points === 'string' ? JSON.parse(shape.points) : shape.points;
+      }
+      if (shape.closed !== null && shape.closed !== undefined) {
+        baseShape.closed = shape.closed;
+      }
+      if (shape.smooth !== null && shape.smooth !== undefined) {
+        baseShape.smooth = shape.smooth;
+      }
 
       return baseShape;
     });
@@ -597,6 +609,17 @@ class CanvasService {
       // Layer ordering
       if (shape.zIndex !== undefined) {
         baseShape.z_index = shape.zIndex;
+      }
+      
+      // Path/Pen tool properties
+      if (shape.points !== undefined) {
+        baseShape.points = JSON.stringify(shape.points); // Store as JSON
+      }
+      if (shape.closed !== undefined) {
+        baseShape.closed = shape.closed;
+      }
+      if (shape.smooth !== undefined) {
+        baseShape.smooth = shape.smooth;
       }
 
       return baseShape;
