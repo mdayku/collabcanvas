@@ -1649,7 +1649,7 @@ interface ContextMenuData {
 }
 
 export default function Canvas({ onSignOut }: CanvasProps) {
-  const { shapes, selectedIds, me, cursors, showCanvasSelector, hideCanvasSelectorDialog, roomId } = useCanvas();
+  const { shapes, selectedIds, me, cursors, showCanvasSelector, hideCanvasSelectorDialog, roomId, setCenterOnShapeCallback } = useCanvas();
   const { colors, showGrid, snapToGrid } = useTheme();
   const [contextMenu, setContextMenu] = useState<ContextMenuData | null>(null);
   const [_scale, setScale] = useState(1);
@@ -1675,6 +1675,24 @@ export default function Canvas({ onSignOut }: CanvasProps) {
     return Math.round(value / gridSize) * gridSize;
   };
 
+  // Set up auto-center callback for AI agent
+  useEffect(() => {
+    const shouldCenter = localStorage.getItem('centerOnNewShape') === 'true';
+    
+    if (shouldCenter && canvasStageRef.current) {
+      setCenterOnShapeCallback((shape: ShapeBase) => {
+        centerStageOnShape(shape, canvasStageRef);
+      });
+    } else {
+      setCenterOnShapeCallback(null);
+    }
+    
+    // Update when centerOnNewShape changes
+    return () => {
+      setCenterOnShapeCallback(null);
+    };
+  }, [centerOnNewShape]);
+  
   // Initialize with last active canvas on app start
   useEffect(() => {
     let isInitializing = false;

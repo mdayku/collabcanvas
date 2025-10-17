@@ -59,6 +59,10 @@ export type CanvasState = {
   // Room management
   setRoom: (id: string) => void;
   
+  // Auto-center callback (set by Canvas.tsx, called by agent)
+  centerOnShape: ((shape: ShapeBase) => void) | null;
+  setCenterOnShapeCallback: (callback: ((shape: ShapeBase) => void) | null) => void;
+  
   // Authentication
   setAuthenticated: (authenticated: boolean) => void;
   setUser: (user: { id: string; name: string; color: string }) => void;
@@ -147,6 +151,10 @@ export const useCanvas = create<CanvasState>()(immer((set, get) => ({
   canvasError: null,
   hasUnsavedChanges: false,
   showCanvasSelector: false,
+  
+  // Auto-center callback
+  centerOnShape: null,
+  setCenterOnShapeCallback: (callback) => set({ centerOnShape: callback }),
   
   // Tab management state
   openTabs: [],

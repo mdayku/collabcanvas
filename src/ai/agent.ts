@@ -17,6 +17,12 @@ export const tools = {
     // Auto-select the newly created shape so user can see what was made
     useCanvas.getState().select([s.id]);
     
+    // Auto-center if enabled
+    const centerCallback = useCanvas.getState().centerOnShape;
+    if (centerCallback) {
+      centerCallback(s);
+    }
+    
     return s.id;
   },
   moveShape: (id:string, x:number, y:number) => up(id, { x, y }),
@@ -67,6 +73,82 @@ export const tools = {
   ungroupShapes: (groupId:string) => {
     useCanvas.getState().pushHistory();
     useCanvas.getState().ungroupShapes(groupId);
+  },
+  createEmoji: (emoji: string, x?: number, y?: number) => {
+    // Save history before AI creates emoji
+    useCanvas.getState().pushHistory();
+    
+    // Convert emoji to Twemoji image URL
+    const emojiCodePoint = emoji.codePointAt(0)?.toString(16);
+    if (!emojiCodePoint) return null;
+    
+    const twemojiUrl = `https://cdn.jsdelivr.net/gh/twitter/twemoji@14.0.2/assets/72x72/${emojiCodePoint}.png`;
+    const size = 48;
+    
+    const emojiShape: ShapeBase = {
+      id: crypto.randomUUID(),
+      type: "image",
+      x: x ?? 100,
+      y: y ?? 100,
+      w: size,
+      h: size,
+      imageUrl: twemojiUrl,
+      originalWidth: 72,
+      originalHeight: 72,
+      updated_at: Date.now(),
+      updated_by: useCanvas.getState().me.id
+    };
+    
+    useCanvas.getState().upsert(emojiShape);
+    broadcastUpsert(emojiShape);
+    persist(emojiShape);
+    useCanvas.getState().select([emojiShape.id]);
+    
+    // Auto-center if enabled
+    const centerCallback = useCanvas.getState().centerOnShape;
+    if (centerCallback) {
+      centerCallback(emojiShape);
+    }
+    
+    return emojiShape.id;
+  },
+  createIcon: (icon: string, x?: number, y?: number) => {
+    // Save history before AI creates icon
+    useCanvas.getState().pushHistory();
+    
+    // Convert icon to Twemoji image URL
+    const iconCodePoint = icon.codePointAt(0)?.toString(16);
+    if (!iconCodePoint) return null;
+    
+    const twemojiUrl = `https://cdn.jsdelivr.net/gh/twitter/twemoji@14.0.2/assets/72x72/${iconCodePoint}.png`;
+    const size = 48;
+    
+    const iconShape: ShapeBase = {
+      id: crypto.randomUUID(),
+      type: "image",
+      x: x ?? 100,
+      y: y ?? 100,
+      w: size,
+      h: size,
+      imageUrl: twemojiUrl,
+      originalWidth: 72,
+      originalHeight: 72,
+      updated_at: Date.now(),
+      updated_by: useCanvas.getState().me.id
+    };
+    
+    useCanvas.getState().upsert(iconShape);
+    broadcastUpsert(iconShape);
+    persist(iconShape);
+    useCanvas.getState().select([iconShape.id]);
+    
+    // Auto-center if enabled
+    const centerCallback = useCanvas.getState().centerOnShape;
+    if (centerCallback) {
+      centerCallback(iconShape);
+    }
+    
+    return iconShape.id;
   },
   alignShapes: (ids:string[], alignment: 'left'|'right'|'center'|'top'|'middle'|'bottom') => {
     if (ids.length < 2) return;
@@ -454,6 +536,127 @@ export async function interpret(text: string) {
     return { ok: true, tool_calls: [{ name:"resizeShape", args:{ id: target.id, ...wh }}] };
   }
 
+  // GRID / ROW layout - CHECK FIRST (before individual creation)
+  if (/grid/.test(t) && /(\d+)x(\d+)/.test(t)) {
+    const [_, gx, gy] = t.match(/(\d+)x(\d+)/)!;
+    const ids: string[] = [];
+    const spacing = 60; // Default spacing between objects
+    
+    // Temporarily disable auto-center for individual shapes
+    const state = useCanvas.getState();
+    const originalCenterCallback = state.centerOnShape || null;
+    if (state.setCenterOnShapeCallback) {
+      state.setCenterOnShapeCallback(null);
+    }
+    
+    // Detect object type from command
+    let objectType: 'emoji' | 'icon' | 'shape' | 'line' | 'arrow' = 'shape';
+    let shapeType: any = 'rect';
+    let emojiChar = '🚀'; // Default emoji
+    let iconChar = '⚙️'; // Default icon
+    
+    // Check for emojis
+    if (/emoji/.test(t)) {
+      objectType = 'emoji';
+      // Detect specific emoji
+      for (const [pattern, emoji] of Object.entries({
+        'rocket': '🚀', 'fire': '🔥', 'thumbs?\\s*up': '👍', 'heart': '❤️',
+        'star': '🌟', 'smiley': '😊', 'party': '🎉', 'bulb': '💡',
+        'computer': '💻', 'music': '🎵', 'art': '🎨', 'book': '📚', 'trophy': '🏆'
+      })) {
+        if (new RegExp(pattern, 'i').test(t)) {
+          emojiChar = emoji;
+          break;
+        }
+      }
+    }
+    // Check for icons
+    else if (/icon/.test(t)) {
+      objectType = 'icon';
+      // Detect specific icon
+      for (const [pattern, icon] of Object.entries({
+        'settings?|gear': '⚙️', 'home': '🏠', 'email|mail': '📧', 'phone': '📞',
+        'lock': '🔒', 'search': '🔍', 'save': '💾', 'folder': '📁'
+      })) {
+        if (new RegExp(pattern, 'i').test(t)) {
+          iconChar = icon;
+          break;
+        }
+      }
+    }
+    // Check for lines/arrows
+    else if (/line/.test(t) && !/\btext\b/.test(t)) {
+      objectType = 'line';
+    }
+    else if (/arrow/.test(t)) {
+      objectType = 'arrow';
+    }
+    // Check for specific shapes
+    else {
+      const shapePatterns: Record<string, any> = {
+        'circle': 'circle', 'star': 'star', 'heart': 'heart',
+        'triangle': 'triangle', 'pentagon': 'pentagon', 'hexagon': 'hexagon',
+        'octagon': 'octagon', 'oval': 'oval', 'trapezoid': 'trapezoid',
+        'rhombus|diamond': 'rhombus', 'parallelogram': 'parallelogram',
+        'rect|rectangle|square': 'rect'
+      };
+      
+      for (const [pattern, type] of Object.entries(shapePatterns)) {
+        if (new RegExp(pattern, 'i').test(t)) {
+          shapeType = type;
+          break;
+        }
+      }
+    }
+    
+    // Create grid based on object type
+    const color = parseColor(t) || "#3b82f6";
+    for (let i = 0; i < +gx; i++) {
+      for (let j = 0; j < +gy; j++) {
+        const x = 80 + i * spacing;
+        const y = 80 + j * spacing;
+        
+        if (objectType === 'emoji') {
+          const id = tools.createEmoji(emojiChar, x, y);
+          if (id) ids.push(id);
+        } else if (objectType === 'icon') {
+          const id = tools.createIcon(iconChar, x, y);
+          if (id) ids.push(id);
+        } else if (objectType === 'line') {
+          const id = tools.createShape("line", x, y, 50, 2, color);
+          ids.push(id as string);
+        } else if (objectType === 'arrow') {
+          const id = tools.createShape("arrow", x, y, 50, 2, color);
+          ids.push(id as string);
+        } else {
+          // Regular shape
+          const size = shapeType === 'oval' ? [60, 40] : [50, 50];
+          const id = tools.createShape(shapeType, x, y, size[0], size[1], color);
+          ids.push(id as string);
+        }
+      }
+    }
+    
+    // Restore original center callback
+    const restoreState = useCanvas.getState();
+    if (restoreState.setCenterOnShapeCallback) {
+      restoreState.setCenterOnShapeCallback(originalCenterCallback);
+    }
+    
+    // Select all created shapes as a group
+    if (ids.length > 0) {
+      useCanvas.getState().select(ids);
+      
+      // Auto-center on the first shape in the grid if callback was enabled
+      const firstShape = useCanvas.getState().shapes[ids[0]];
+      if (firstShape && originalCenterCallback) {
+        originalCenterCallback(firstShape);
+      }
+    }
+    
+    return { ok: true, tool_calls: [{ name:"createGrid", args:{ gx:+gx, gy:+gy, type: objectType, ids }}] };
+  }
+
   // CREATE basic shapes
   if (/create|make|add/.test(t)) {
     if (/\b(circle)\b/.test(t))  {
@@ -521,6 +724,48 @@ export async function interpret(text: string) {
       const content = parseText(t) ?? "Hello World";
       const id = tools.createText(content, 180, 180, 24, parseColor(t));
       return { ok: true, tool_calls: [{ name:"createText", args:{ text: content, id }}] };
+    }
+    
+    // EMOJIS - Support all emojis from toolbar
+    const emojiMap: Record<string, string> = {
+      'smiley|smile|happy|face': '😊',
+      'thumbs?\\s*up|like|approve': '👍',
+      'fire|flame|hot': '🔥',
+      'light\\s*bulb|bulb|idea': '💡',
+      'rocket|spaceship': '🚀',
+      'party|celebrate|confetti': '🎉',
+      'computer|laptop|pc': '💻',
+      'music|note|song': '🎵',
+      'star|sparkle': '🌟',
+      'art|palette|paint': '🎨',
+      'book|books|library': '📚',
+      'trophy|win|award': '🏆'
+    };
+    
+    for (const [pattern, emoji] of Object.entries(emojiMap)) {
+      if (new RegExp(`\\b(${pattern})\\b`, 'i').test(t) && /emoji/.test(t)) {
+        const id = tools.createEmoji(emoji, 250, 200);
+        return { ok: true, tool_calls: [{ name:"createEmoji", args:{ emoji, id }}] };
+      }
+    }
+    
+    // ICONS - Support all icons from toolbar
+    const iconMap: Record<string, string> = {
+      'settings?|gear|config': '⚙️',
+      'home|house': '🏠',
+      'email|mail|message': '📧',
+      'phone|call|telephone': '📞',
+      'lock|secure|password': '🔒',
+      'search|find|magnify': '🔍',
+      'save|disk|floppy': '💾',
+      'folder|directory|file': '📁'
+    };
+    
+    for (const [pattern, icon] of Object.entries(iconMap)) {
+      if (new RegExp(`\\b(${pattern})\\b`, 'i').test(t) && /icon/.test(t)) {
+        const id = tools.createIcon(icon, 250, 200);
+        return { ok: true, tool_calls: [{ name:"createIcon", args:{ icon, id }}] };
+      }
     }
   }
 
@@ -601,14 +846,6 @@ export async function interpret(text: string) {
     }
   }
 
-  // GRID / ROW layout (simple)
-  if (/grid/.test(t) && /(\d+)x(\d+)/.test(t)) {
-    const [_, gx, gy] = t.match(/(\d+)x(\d+)/)!;
-    const ids:string[] = [];
-    for (let i=0;i<+gx;i++) for (let j=0;j<+gy;j++)
-      ids.push(tools.createShape("rect", 80+ i*110, 80+ j*110, 90, 90, "#ddd") as any);
-    return { ok: true, tool_calls: [{ name:"createGrid", args:{ gx:+gx, gy:+gy, ids }}] };
-  }
   if (/\b(row|horizontal)\b/.test(t) && /\barrange|align|layout\b/.test(t)) {
     const ids = getSelectionOrAll(3); // pick first 3 by default
     if (ids.length) {
