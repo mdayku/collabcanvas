@@ -3804,6 +3804,9 @@ export default function Canvas({ onSignOut }: CanvasProps) {
               height={6000} 
               fill="#fafafa"
               onClick={() => {
+                // Always close context menu on background click
+                setContextMenu(null);
+                
                 // Don't clear selection if we just panned
                 if (isPanning.current) {
                   isPanning.current = false;
@@ -3817,6 +3820,8 @@ export default function Canvas({ onSignOut }: CanvasProps) {
                 useCanvas.getState().select([]);
               }}
               onTap={() => {
+                // Always close context menu on background tap
+                setContextMenu(null);
                 // Don't clear selection if we just panned
                 if (isPanning.current) {
                   isPanning.current = false;
