@@ -6,7 +6,7 @@ import { callGroq, isGroqConfigured } from "../services/groqService";
 
 
 export const tools = {
-  createShape: (type: "rect"|"circle"|"text"|"triangle"|"star"|"heart"|"pentagon"|"hexagon"|"octagon"|"oval"|"trapezoid"|"rhombus"|"parallelogram"|"line"|"arrow"|"frame", x:number, y:number, w:number, h:number, color?:string, text?:string) => {
+  createShape: (type: "rect"|"circle"|"text"|"triangle"|"star"|"heart"|"pentagon"|"hexagon"|"octagon"|"oval"|"trapezoid"|"rhombus"|"parallelogram"|"line"|"arrow"|"frame"|"cylinder"|"document", x:number, y:number, w:number, h:number, color?:string, text?:string) => {
     // Save history before AI creates shapes
     useCanvas.getState().pushHistory();
     const s: ShapeBase = { id: crypto.randomUUID(), type, x, y, w, h, color, text, rotation: 0, updated_at: Date.now(), updated_by: useCanvas.getState().me.id };
@@ -598,6 +598,7 @@ export async function interpret(text: string) {
         'triangle': 'triangle', 'pentagon': 'pentagon', 'hexagon': 'hexagon',
         'octagon': 'octagon', 'oval': 'oval', 'trapezoid': 'trapezoid',
         'rhombus|diamond': 'rhombus', 'parallelogram': 'parallelogram',
+        'cylinder': 'cylinder', 'document': 'document',
         'rect|rectangle|square': 'rect'
       };
       
@@ -707,6 +708,14 @@ export async function interpret(text: string) {
     if (/\b(parallelogram)\b/.test(t)) {
       const id = tools.createShape("parallelogram", 250, 200, 100, 100, parseColor(t));
       return { ok: true, tool_calls: [{ name:"createShape", args:{ type:"parallelogram", id }}] };
+    }
+    if (/\b(cylinder)\b/.test(t)) {
+      const id = tools.createShape("cylinder", 250, 200, 100, 120, parseColor(t));
+      return { ok: true, tool_calls: [{ name:"createShape", args:{ type:"cylinder", id }}] };
+    }
+    if (/\b(document)\b/.test(t)) {
+      const id = tools.createShape("document", 250, 200, 100, 130, parseColor(t));
+      return { ok: true, tool_calls: [{ name:"createShape", args:{ type:"document", id }}] };
     }
     if (/\b(line)\b/.test(t) && !/\btext\b/.test(t)) {
       const id = tools.createShape("line", 250, 200, 120, 2, parseColor(t));
@@ -933,16 +942,84 @@ export async function interpret(text: string) {
     }
   }
 
-  // LOGIN FORM shortcut
+  // LOGIN FORM shortcut - modern grouped design
   if (/login form/.test(t)) {
-    const baseX = 400, baseY = 200; const gap = 60; const W=280, H=40;
-    const u = tools.createShape("rect", baseX, baseY, W, H, "#ffffff");
-    const p = tools.createShape("rect", baseX, baseY+gap, W, H, "#ffffff");
-    const b = tools.createShape("rect", baseX, baseY+gap*2, W, H, "#0ea5e9");
-    tools.createText("Username", baseX-120, baseY-26, 16, "#444");
-    tools.createText("Password", baseX-120, baseY+gap-26, 16, "#444");
-    tools.createText("Sign in", baseX+W/2-34, baseY+gap*2+10, 18, "#fff");
-    return { ok: true, tool_calls: [{ name:"createLoginForm", args:{ ids:[u,p,b] }}] };
+    const W = 300, H = 45, labelGap = 28, fieldGap = 55;
+    const totalHeight = labelGap + H + fieldGap + labelGap + H + fieldGap + H;
+    
+    // Find blank area
+    const shapes = useCanvas.getState().shapes;
+    const margin = 60;
+    let pos = { x: 0, y: 0 };
+    let found = false;
+    
+    // Try grid-based positions
+    for (let attempt = 0; attempt < 50; attempt++) {
+      const gridSize = 250;
+      const col = attempt % 5;
+      const row = Math.floor(attempt / 5);
+      const x = 100 + (col * gridSize);
+      const y = 100 + (row * gridSize);
+      
+      let hasCollision = false;
+      for (const shape of Object.values(shapes)) {
+        const shapeW = shape.w || 100;
+        const shapeH = shape.h || 100;
+        
+        if (x < shape.x + shapeW + margin &&
+            x + W + margin > shape.x &&
+            y < shape.y + shapeH + margin &&
+            y + totalHeight + margin > shape.y) {
+          hasCollision = true;
+          break;
+        }
+      }
+      
+      if (!hasCollision) {
+        pos = { x, y };
+        found = true;
+        break;
+      }
+    }
+    
+    if (!found) {
+      // Fallback
+      const occupied = Object.values(shapes);
+      const maxX = occupied.length > 0 ? Math.max(...occupied.map(s => s.x + (s.w || 0))) : 0;
+      pos = { x: Math.max(100, maxX + 100), y: 100 };
+    }
+    
+    const baseX = pos.x, baseY = pos.y;
+    const allIds: string[] = [];
+    
+    // Email label (above field)
+    const emailLabel = tools.createText("Email", baseX, baseY, 14, "#374151");
+    allIds.push(emailLabel);
+    
+    // Email input field
+    const emailField = tools.createShape("rect", baseX, baseY + labelGap, W, H, "#f9fafb");
+    allIds.push(emailField);
+    
+    // Password label (above field)
+    const passwordLabel = tools.createText("Password", baseX, baseY + labelGap + H + fieldGap, 14, "#374151");
+    allIds.push(passwordLabel);
+    
+    // Password input field  
+    const passwordField = tools.createShape("rect", baseX, baseY + labelGap + H + fieldGap + labelGap, W, H, "#f9fafb");
+    allIds.push(passwordField);
+    
+    // Sign In button
+    const button = tools.createShape("rect", baseX, baseY + labelGap + H + fieldGap + labelGap + H + fieldGap, W, H, "#3b82f6");
+    allIds.push(button);
+    
+    // Button text (centered)
+    const buttonText = tools.createText("Sign In", baseX + W/2 - 30, baseY + labelGap + H + fieldGap + labelGap + H + fieldGap + 14, 16, "#ffffff");
+    allIds.push(buttonText);
+    
+    // Group all elements together
+    tools.groupShapes(allIds);
+    
+    return { ok: true, tool_calls: [{ name:"createLoginForm", args:{ ids: allIds }}] };
   }
 
   // FALLBACK to original parsing for compatibility
@@ -1336,8 +1413,79 @@ async function interpretLegacy(text: string) {
     }
   }
   
+  // Helper: Find blank area for templates - with better collision detection
+  const findTemplatePosition = (width: number, height: number): { x: number; y: number } => {
+    const shapes = useCanvas.getState().shapes;
+    const canvasWidth = 1400;
+    const canvasHeight = 1000;
+    const margin = 60; // Increased margin for better spacing
+    const maxAttempts = 100; // More attempts
+    
+    for (let attempt = 0; attempt < maxAttempts; attempt++) {
+      // Try grid-based positions first for better distribution
+      if (attempt < 50) {
+        const gridSize = 250;
+        const col = attempt % 5;
+        const row = Math.floor(attempt / 5);
+        const x = 100 + (col * gridSize);
+        const y = 100 + (row * gridSize);
+        
+        let hasCollision = false;
+        for (const shape of Object.values(shapes)) {
+          const shapeW = shape.w || 100;
+          const shapeH = shape.h || 100;
+          
+          if (x < shape.x + shapeW + margin &&
+              x + width + margin > shape.x &&
+              y < shape.y + shapeH + margin &&
+              y + height + margin > shape.y) {
+            hasCollision = true;
+            break;
+          }
+        }
+        
+        if (!hasCollision) {
+          return { x, y };
+        }
+      } else {
+        // Random positions as fallback
+        const x = 100 + Math.random() * (canvasWidth - width - 200);
+        const y = 100 + Math.random() * (canvasHeight - height - 200);
+        
+        let hasCollision = false;
+        for (const shape of Object.values(shapes)) {
+          const shapeW = shape.w || 100;
+          const shapeH = shape.h || 100;
+          
+          if (x < shape.x + shapeW + margin &&
+              x + width + margin > shape.x &&
+              y < shape.y + shapeH + margin &&
+              y + height + margin > shape.y) {
+            hasCollision = true;
+            break;
+          }
+        }
+        
+        if (!hasCollision) {
+          return { x, y };
+        }
+      }
+    }
+    
+    // Fallback: find rightmost/bottommost position and offset
+    const occupied = Object.values(shapes);
+    const maxX = occupied.length > 0 ? Math.max(...occupied.map(s => s.x + (s.w || 0))) : 0;
+    const maxY = occupied.length > 0 ? Math.max(...occupied.map(s => s.y + (s.h || 0))) : 0;
+    
+    return {
+      x: Math.max(100, maxX + 100),
+      y: Math.max(100, maxY + 100)
+    };
+  };
+
   if (t.includes("navigation bar") || (t.includes("nav") && t.includes("menu"))) {
-    const baseX = 100, baseY = 50;
+    const pos = findTemplatePosition(580, 40);
+    const baseX = pos.x, baseY = pos.y;
     const itemHeight = 40;
     const spacing = 140;
     
@@ -1376,15 +1524,137 @@ async function interpretLegacy(text: string) {
     return [container, image, title, description];
   }
   
+  // CARD LAYOUT
+  if (t.includes("card layout") || (t.includes("card") && t.includes("grid"))) {
+    const cardWidth = 200, cardHeight = 250;
+    const gapX = 240;
+    const totalWidth = (cardWidth * 3) + (gapX * 2);
+    const pos = findTemplatePosition(totalWidth, cardHeight);
+    const startX = pos.x, startY = pos.y;
+    const cards = [];
+    
+    for (let i = 0; i < 3; i++) {
+      const x = startX + (i * gapX);
+      const card = tools.createShape("rect", x, startY, cardWidth, cardHeight, "#ffffff");
+      const header = tools.createShape("rect", x, startY, cardWidth, 60, "#3b82f6");
+      
+      // Create text boxes with proper width to contain text
+      const titleBox = tools.createText(`Card ${i + 1}`, x + 10, startY + 15, 18, "#ffffff");
+      const descBox = tools.createText("Description text", x + 10, startY + 75, 14, "#666666");
+      
+      cards.push(card, header, titleBox, descBox);
+    }
+    return cards;
+  }
+
+  // MOBILE HEADER
+  if (t.includes("mobile header") || (t.includes("mobile") && (t.includes("nav") || t.includes("header")))) {
+    const headerWidth = 375, headerHeight = 60;
+    const pos = findTemplatePosition(headerWidth, headerHeight);
+    const x = pos.x, y = pos.y;
+    
+    const bg = tools.createShape("rect", x, y, headerWidth, headerHeight, "#1e293b");
+    tools.createText("☰", x + 20, y + 16, 24, "#ffffff");
+    tools.createText("App Name", x + headerWidth/2 - 50, y + 18, 20, "#ffffff");
+    tools.createText("⋮", x + headerWidth - 40, y + 16, 24, "#ffffff");
+    
+    return [bg];
+  }
+
+  // HERO SECTION
+  if (t.includes("hero section") || (t.includes("hero") && t.includes("banner"))) {
+    const width = 800, height = 400;
+    const pos = findTemplatePosition(width, height);
+    const x = pos.x, y = pos.y;
+    
+    const bg = tools.createShape("rect", x, y, width, height, "#0ea5e9");
+    tools.createText("Welcome to Our Platform", x + width/2 - 160, y + 100, 32, "#ffffff");
+    tools.createText("Build something amazing today", x + width/2 - 140, y + 150, 18, "#e0f2fe");
+    const button = tools.createShape("rect", x + width/2 - 80, y + 220, 160, 50, "#ffffff");
+    tools.createText("Get Started", x + width/2 - 50, y + 235, 18, "#0ea5e9");
+    
+    return [bg, button];
+  }
+
+  // CONTACT FORM
+  if (t.includes("contact form") || (t.includes("contact") && t.includes("form"))) {
+    const W = 300, H = 40, gap = 70;
+    const totalHeight = H + gap + H + gap + 120 + gap + 60 + H;
+    const pos = findTemplatePosition(W, totalHeight);
+    const baseX = pos.x, baseY = pos.y;
+    
+    const name = tools.createShape("rect", baseX, baseY, W, H, "#ffffff");
+    const email = tools.createShape("rect", baseX, baseY + gap, W, H, "#ffffff");
+    const message = tools.createShape("rect", baseX, baseY + gap * 2, W, 120, "#ffffff");
+    const submit = tools.createShape("rect", baseX, baseY + gap * 3 + 60, W, H, "#10b981");
+    
+    tools.createText("Name", baseX - 80, baseY - 26, 16, "#444");
+    tools.createText("Email", baseX - 80, baseY + gap - 26, 16, "#444");
+    tools.createText("Message", baseX - 100, baseY + gap * 2 - 26, 16, "#444");
+    tools.createText("Send Message", baseX + W/2 - 70, baseY + gap * 3 + 70, 18, "#fff");
+    
+    return [name, email, message, submit];
+  }
+
+  // USER PROFILE
+  if (t.includes("user profile") || (t.includes("profile") && (t.includes("card") || t.includes("user")))) {
+    const cardWidth = 320, cardHeight = 400;
+    const pos = findTemplatePosition(cardWidth, cardHeight);
+    const x = pos.x, y = pos.y;
+    
+    const bg = tools.createShape("rect", x, y, cardWidth, cardHeight, "#ffffff");
+    const header = tools.createShape("rect", x, y, cardWidth, 120, "#8b5cf6");
+    const avatar = tools.createShape("circle", x + cardWidth/2 - 50, y + 70, 100, 100, "#e0e7ff");
+    
+    tools.createText("John Doe", x + cardWidth/2 - 50, y + 180, 24, "#1f2937");
+    tools.createText("Product Designer", x + cardWidth/2 - 70, y + 210, 16, "#6b7280");
+    tools.createText("john@example.com", x + cardWidth/2 - 80, y + 240, 14, "#9ca3af");
+    
+    const editBtn = tools.createShape("rect", x + 30, y + 320, 120, 40, "#3b82f6");
+    const msgBtn = tools.createShape("rect", x + 170, y + 320, 120, 40, "#e5e7eb");
+    
+    tools.createText("Edit Profile", x + 45, y + 332, 14, "#ffffff");
+    tools.createText("Message", x + 200, y + 332, 14, "#1f2937");
+    
+    return [bg, header, avatar, editBtn, msgBtn];
+  }
+
   if (t.includes("login form")) {
-    const baseX = 400, baseY = 200; const gap = 60; const W=280, H=40;
-    const u = tools.createShape("rect", baseX, baseY, W, H, "#ffffff");
-    const p = tools.createShape("rect", baseX, baseY+gap, W, H, "#ffffff");
-    const b = tools.createShape("rect", baseX, baseY+gap*2, W, H, "#0ea5e9");
-    tools.createText("Username", baseX-120, baseY-26, 16, "#444");
-    tools.createText("Password", baseX-120, baseY+gap-26, 16, "#444");
-    tools.createText("Sign in", baseX+W/2-34, baseY+gap*2+10, 18, "#fff");
-    return [u,p,b];
+    const W = 300, H = 45, labelGap = 28, fieldGap = 55;
+    const totalHeight = labelGap + H + fieldGap + labelGap + H + fieldGap + H;
+    const pos = findTemplatePosition(W, totalHeight);
+    const baseX = pos.x, baseY = pos.y;
+    
+    const allIds: string[] = [];
+    
+    // Email label (above field)
+    const emailLabel = tools.createText("Email", baseX, baseY, 14, "#374151");
+    allIds.push(emailLabel);
+    
+    // Email input field
+    const emailField = tools.createShape("rect", baseX, baseY + labelGap, W, H, "#f9fafb");
+    allIds.push(emailField);
+    
+    // Password label (above field)
+    const passwordLabel = tools.createText("Password", baseX, baseY + labelGap + H + fieldGap, 14, "#374151");
+    allIds.push(passwordLabel);
+    
+    // Password input field  
+    const passwordField = tools.createShape("rect", baseX, baseY + labelGap + H + fieldGap + labelGap, W, H, "#f9fafb");
+    allIds.push(passwordField);
+    
+    // Sign In button
+    const button = tools.createShape("rect", baseX, baseY + labelGap + H + fieldGap + labelGap + H + fieldGap, W, H, "#3b82f6");
+    allIds.push(button);
+    
+    // Button text (centered)
+    const buttonText = tools.createText("Sign In", baseX + W/2 - 30, baseY + labelGap + H + fieldGap + labelGap + H + fieldGap + 14, 16, "#ffffff");
+    allIds.push(buttonText);
+    
+    // Group all elements together
+    tools.groupShapes(allIds);
+    
+    return allIds;
   }
   return null;
 }

@@ -1889,7 +1889,7 @@ export default function Canvas({ onSignOut }: CanvasProps) {
       });
     });
 
-    channel.on("presence", { event: "join" }, ({ key }) => {
+    channel.on("presence", { event: "join" }, () => {
       // Update online users list when someone joins
       const presenceState = channel.presenceState();
       const users = Object.keys(presenceState);
@@ -2987,6 +2987,24 @@ export default function Canvas({ onSignOut }: CanvasProps) {
             )}
           </>
         )}
+        {s.type === "cylinder" && (
+          <CylinderShape
+            width={s.w}
+            height={s.h}
+            fill={s.color || "#000"}
+            stroke={s.stroke || "#000"}
+            strokeWidth={s.strokeWidth || 1}
+          />
+        )}
+        {s.type === "document" && (
+          <DocumentShape
+            width={s.w}
+            height={s.h}
+            fill={s.color || "#000"}
+            stroke={s.stroke || "#000"}
+            strokeWidth={s.strokeWidth || 1}
+          />
+        )}
       </Group>
     );
   }), [shapes, selectedIds]);
@@ -3264,11 +3282,28 @@ function CategorizedToolbar({ centerOnNewShape, stageRef }: {
   const addTrapezoid = () => addShape("trapezoid", colors, snapToGrid, centerOnNewShape, stageRef);
   const addRhombus = () => addShape("rhombus", colors, snapToGrid, centerOnNewShape, stageRef);
   const addParallelogram = () => addShape("parallelogram", colors, snapToGrid, centerOnNewShape, stageRef);
+  const addCylinder = () => addShape("cylinder", colors, snapToGrid, centerOnNewShape, stageRef);
+  const addDocument = () => addShape("document", colors, snapToGrid, centerOnNewShape, stageRef);
   
   // Line and arrow creation functions
   const addLine = () => addShape("line", colors, snapToGrid, centerOnNewShape, stageRef);
   const addArrow = () => addShape("arrow", colors, snapToGrid, centerOnNewShape, stageRef);
   
+  // AI Template Command Handler - triggers AI to create complex layouts
+  const handleAITemplateCommand = async (command: string) => {
+    // Use the existing AI command system to process the template request
+    const { interpret } = await import('./ai/agent');
+    try {
+      const result = await interpret(command);
+      if (result && typeof result === 'object' && 'error' in result) {
+        showToast(`AI: ${result.error}`, 'error');
+      }
+    } catch (error) {
+      console.error('AI template command error:', error);
+      showToast('Failed to create template', 'error');
+    }
+  };
+
   const addEmoji = (emoji: string) => {
     // Save history before creating
     useCanvas.getState().pushHistory();
@@ -3320,58 +3355,82 @@ function CategorizedToolbar({ centerOnNewShape, stageRef }: {
     }
   };
 
-  const addIcon = (icon: string) => {
-    // Save history before creating
-    useCanvas.getState().pushHistory();
-    
-    const { me, shapes } = useCanvas.getState();
-    
-    // Convert icon to Twemoji image URL
-    const iconCodePoint = icon.codePointAt(0)?.toString(16);
-    if (!iconCodePoint) return;
-    
-    // Twemoji CDN URL (Twitter's emoji images)
-    const twemojiUrl = `https://cdn.jsdelivr.net/gh/twitter/twemoji@14.0.2/assets/72x72/${iconCodePoint}.png`;
-    
-    // Icon size - good default for functional icons
-    const size = 48; 
-    const position = findBlankArea(shapes, size, size);
-    
-    // Helper function to apply snapping if enabled
-    const applySnap = (value: number) => {
-      if (!snapToGrid) return value;
-      const gridSize = 25;
-      return Math.round(value / gridSize) * gridSize;
-    };
-    
-    const iconShape: ShapeBase = { 
-      id: crypto.randomUUID(), 
-      type: "image", 
-      x: applySnap(position.x), 
-      y: applySnap(position.y), 
-      w: size, 
-      h: size, 
-      imageUrl: twemojiUrl,
-      originalWidth: 72, // Twemoji standard size
-      originalHeight: 72,
-      updated_at: Date.now(), 
-      updated_by: me.id 
-    };
-    
-    useCanvas.getState().upsert(iconShape); 
-    broadcastUpsert(iconShape); 
-    // Auto-save handles persistence
-    
-    // Auto-select the new icon
-    useCanvas.getState().select([iconShape.id]);
-
-    // Center on new shape if enabled
-    if (centerOnNewShape && stageRef.current) {
-      centerStageOnShape(iconShape, stageRef);
+  // Load saved components from localStorage
+  const [savedComponents, setSavedComponents] = useState<any[]>([]);
+  const [componentRefreshKey, setComponentRefreshKey] = useState(0);
+  
+  const refreshComponents = () => {
+    try {
+      const components = JSON.parse(localStorage.getItem('collabcanvas_components') || '[]');
+      setSavedComponents(components);
+    } catch (error) {
+      console.error('Failed to load components:', error);
     }
   };
-
+  
+  useEffect(() => {
+    refreshComponents();
+  }, [componentRefreshKey]);
+  
+  // Listen for component saves via custom event
+  useEffect(() => {
+    const handleComponentSaved = () => {
+      setComponentRefreshKey(prev => prev + 1);
+    };
+    window.addEventListener('componentsUpdated', handleComponentSaved);
+    return () => window.removeEventListener('componentsUpdated', handleComponentSaved);
+  }, []);
+  
+  // Handler to insert a component onto the canvas
+  const handleInsertComponent = (component: any) => {
+    useCanvas.getState().pushHistory();
+    
+    const { me } = useCanvas.getState();
+    const newShapeIds: string[] = [];
+    
+    // Insert all shapes from the component
+    component.shapes.forEach((templateShape: any) => {
+      const newId = crypto.randomUUID();
+      const newShape: ShapeBase = {
+        ...templateShape,
+        id: newId,
+        // Offset from origin to avoid overlap with existing shapes
+        x: 300 + templateShape.x,
+        y: 200 + templateShape.y,
+        updated_at: Date.now(),
+        updated_by: me.id,
+      };
+      useCanvas.getState().upsert(newShape);
+      broadcastUpsert(newShape);
+      newShapeIds.push(newId);
+    });
+    
+    // Select the newly inserted shapes
+    useCanvas.getState().select(newShapeIds);
+    
+    // Center on the first shape if enabled
+    if (centerOnNewShape && stageRef.current && newShapeIds.length > 0) {
+      const firstShape = useCanvas.getState().shapes[newShapeIds[0]];
+      if (firstShape) {
+        centerStageOnShape(firstShape, stageRef);
+      }
+    }
+    
+    showToast(`Component "${component.name}" inserted!`, 'success');
+  };
+  
   const toolCategories = [
+    {
+      id: 'components',
+      name: 'Components',
+      emoji: '🧩',
+      tools: savedComponents.map(component => ({
+        name: component.name.slice(0, 2), // Show first 2 chars as icon
+        action: () => handleInsertComponent(component),
+        available: true,
+        tooltip: component.name,
+      }))
+    },
     {
       id: 'lines-arrows',
       name: 'Lines & Arrows',
@@ -3420,38 +3479,32 @@ function CategorizedToolbar({ centerOnNewShape, stageRef }: {
       ]
     },
     {
-      id: 'icons',
-      name: 'Icons',
-      emoji: '🔧',
+      id: 'flowchart',
+      name: 'Flowchart',
+      emoji: '📊',
       tools: [
-        { name: '⚙️', action: () => addIcon('⚙️'), available: true, tooltip: 'Settings' },
-        { name: '🏠', action: () => addIcon('🏠'), available: true, tooltip: 'Home' },
-        { name: '📧', action: () => addIcon('📧'), available: true, tooltip: 'Email' },
-        { name: '📞', action: () => addIcon('📞'), available: true, tooltip: 'Phone' },
-        { name: '🔒', action: () => addIcon('🔒'), available: true, tooltip: 'Lock' },
-        { name: '🔍', action: () => addIcon('🔍'), available: true, tooltip: 'Search' },
-        { name: '💾', action: () => addIcon('💾'), available: true, tooltip: 'Save' },
-        { name: '📁', action: () => addIcon('📁'), available: true, tooltip: 'Folder' },
-        { name: '🔗', action: () => addIcon('🔗'), available: true, tooltip: 'Link' },
-        { name: '⚠️', action: () => addIcon('⚠️'), available: true, tooltip: 'Warning' },
-      ]
-    },
-    {
-      id: 'forms',
-      name: 'Forms',
-      emoji: '📝',
-      tools: [
-        // Coming soon via AI commands
+        { name: '▭', action: addRect, available: true, tooltip: 'Process (Rectangle)' },
+        { name: '◆', action: addRhombus, available: true, tooltip: 'Decision (Diamond)' },
+        { name: '⬯', action: addOval, available: true, tooltip: 'Start/End (Oval)' },
+        { name: '🗎', action: addDocument, available: true, tooltip: 'Document' },
+        { name: '⌭', action: addCylinder, available: true, tooltip: 'Database (Cylinder)' },
+        { name: '▱', action: addParallelogram, available: true, tooltip: 'Input/Output' },
       ]
     },
     {
       id: 'assets',
-      name: 'Assets',
+      name: 'Assets & Templates',
       emoji: '📦',
       tools: [
         { name: '📝', action: addText, available: true, tooltip: 'Text Box' },
         { name: '🖼️', action: addFrame, available: true, tooltip: 'AI Image Frame' },
-        // More coming soon
+        { name: '🔐', action: () => handleAITemplateCommand('create a login form with username and password fields'), available: true, tooltip: 'Login Form' },
+        { name: '☰', action: () => handleAITemplateCommand('create a navigation bar'), available: true, tooltip: 'Nav Bar' },
+        { name: '🗃️', action: () => handleAITemplateCommand('create a card layout'), available: true, tooltip: 'Card Layout' },
+        { name: '📱', action: () => handleAITemplateCommand('create a mobile header'), available: true, tooltip: 'Mobile Header' },
+        { name: '🏠', action: () => handleAITemplateCommand('create a hero section'), available: true, tooltip: 'Hero Section' },
+        { name: '📧', action: () => handleAITemplateCommand('create a contact form'), available: true, tooltip: 'Contact Form' },
+        { name: '👤', action: () => handleAITemplateCommand('create a user profile'), available: true, tooltip: 'User Profile' },
       ]
     }
   ];
@@ -4686,6 +4739,53 @@ function ContextMenu({ x, y, shapeIds, onClose }: {
     }
   };
 
+  const handleSaveAsComponent = (shapeIds: string[]) => {
+    const componentName = prompt('Enter component name:', 'My Component');
+    if (!componentName || !componentName.trim()) return;
+    
+    const canvasState = useCanvas.getState();
+    const shapesToSave = shapeIds.map(id => canvasState.shapes[id]).filter(Boolean);
+    
+    if (shapesToSave.length === 0) return;
+    
+    // Calculate bounding box to normalize positions
+    const xs = shapesToSave.map(s => s.x);
+    const ys = shapesToSave.map(s => s.y);
+    const minX = Math.min(...xs);
+    const minY = Math.min(...ys);
+    
+    // Normalize positions relative to top-left
+    const normalizedShapes = shapesToSave.map(shape => ({
+      ...shape,
+      x: shape.x - minX,
+      y: shape.y - minY,
+      id: undefined, // Remove IDs so new ones are generated on insert
+      updated_at: undefined,
+      updated_by: undefined,
+    }));
+    
+    // Store in localStorage
+    try {
+      const existingComponents = JSON.parse(localStorage.getItem('collabcanvas_components') || '[]');
+      const newComponent = {
+        id: crypto.randomUUID(),
+        name: componentName.trim(),
+        shapes: normalizedShapes,
+        created_at: Date.now(),
+      };
+      existingComponents.push(newComponent);
+      localStorage.setItem('collabcanvas_components', JSON.stringify(existingComponents));
+      
+      // Dispatch event to refresh components list
+      window.dispatchEvent(new Event('componentsUpdated'));
+      
+      showToast(`Component "${componentName}" saved!`, 'success');
+    } catch (error) {
+      console.error('Failed to save component:', error);
+      showToast('Failed to save component', 'error');
+    }
+  };
+
   const handleDelete = () => {
     // Save history before deleting so it can be undone with all properties intact
     useCanvas.getState().pushHistory();
@@ -5207,6 +5307,22 @@ function ContextMenu({ x, y, shapeIds, onClose }: {
               );
             })()}
             
+            {/* Save as Component - for selected shapes */}
+            {shapeIds.length > 0 && (
+              <button
+                onClick={() => {
+                  handleSaveAsComponent(shapeIds);
+                  onClose();
+                }}
+                className="w-full text-left text-sm px-2 py-1 rounded"
+                style={{ color: colors.primary }}
+                onMouseEnter={(e) => e.currentTarget.style.backgroundColor = colors.buttonHover}
+                onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
+              >
+                💾 Save as Component
+              </button>
+            )}
+            
             {/* Generate AI Image - only for frame shapes */}
             {(!isMultiSelection && shape?.type === 'frame') && (
               <button
@@ -5568,6 +5684,102 @@ function ParallelogramShape({ width, height, fill, stroke, strokeWidth }: {
       strokeWidth={strokeWidth}
       closed={true}
     />
+  );
+}
+
+function CylinderShape({ width, height, fill, stroke, strokeWidth }: {
+  width: number; height: number; fill: string; stroke: string; strokeWidth: number;
+}) {
+  // Cylinder consists of a top ellipse, two vertical sides, and a bottom ellipse
+  const ellipseHeight = height * 0.15; // Top/bottom ellipse height (15% of total)
+  
+  return (
+    <>
+      {/* Top ellipse */}
+      <Ellipse
+        x={width / 2}
+        y={ellipseHeight}
+        radiusX={width / 2}
+        radiusY={ellipseHeight}
+        fill={fill}
+        stroke={stroke}
+        strokeWidth={strokeWidth}
+      />
+      {/* Main body */}
+      <Rect
+        x={0}
+        y={ellipseHeight}
+        width={width}
+        height={height - ellipseHeight * 2}
+        fill={fill}
+        stroke="transparent" // No stroke on body, just sides
+        strokeWidth={0}
+      />
+      {/* Left side */}
+      <Line
+        points={[0, ellipseHeight, 0, height - ellipseHeight]}
+        stroke={stroke}
+        strokeWidth={strokeWidth}
+      />
+      {/* Right side */}
+      <Line
+        points={[width, ellipseHeight, width, height - ellipseHeight]}
+        stroke={stroke}
+        strokeWidth={strokeWidth}
+      />
+      {/* Bottom ellipse */}
+      <Ellipse
+        x={width / 2}
+        y={height - ellipseHeight}
+        radiusX={width / 2}
+        radiusY={ellipseHeight}
+        fill={fill}
+        stroke={stroke}
+        strokeWidth={strokeWidth}
+      />
+    </>
+  );
+}
+
+function DocumentShape({ width, height, fill, stroke, strokeWidth }: {
+  width: number; height: number; fill: string; stroke: string; strokeWidth: number;
+}) {
+  // Document shape with a folded corner (top-right)
+  const foldSize = Math.min(width, height) * 0.2; // 20% fold
+  const points = [
+    0, 0,                          // Top left
+    width - foldSize, 0,           // Top right (before fold)
+    width, foldSize,               // Fold point
+    width, height,                 // Bottom right
+    0, height,                     // Bottom left
+    0, 0                           // Close path
+  ];
+  
+  const foldPoints = [
+    width - foldSize, 0,           // Fold start
+    width - foldSize, foldSize,    // Fold corner
+    width, foldSize                // Fold end
+  ];
+  
+  return (
+    <>
+      {/* Main document body */}
+      <Line
+        points={points}
+        fill={fill}
+        stroke={stroke}
+        strokeWidth={strokeWidth}
+        closed={true}
+      />
+      {/* Folded corner */}
+      <Line
+        points={foldPoints}
+        fill="transparent"
+        stroke={stroke}
+        strokeWidth={strokeWidth}
+        closed={false}
+      />
+    </>
   );
 }
 

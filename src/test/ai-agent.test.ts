@@ -12,6 +12,7 @@ vi.mock('../state/store', () => ({
       shapes: {},
       selectedIds: [],
       select: vi.fn(),
+      groupShapes: vi.fn(() => 'group-id'),
     })),
   },
 }));

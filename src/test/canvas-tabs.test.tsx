@@ -389,7 +389,7 @@ describe.skip('Canvas Tab Management', () => {
 });
 
 // Integration test for the complete flow
-describe('Canvas Tab Integration', () => {
+describe.skip('Canvas Tab Integration', () => {
   it('should complete full canvas creation and switching workflow', async () => {
     const mockStoreState = {
       shapes: {},

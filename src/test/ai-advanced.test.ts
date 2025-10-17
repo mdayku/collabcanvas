@@ -26,6 +26,7 @@ vi.mock('../state/store', async (importOriginal) => {
           pushHistory: vi.fn(),
           upsert: vi.fn(),
           select: vi.fn(),
+          groupShapes: vi.fn(() => 'group-id'),
           centerOnShape: null,
           setCenterOnShapeCallback: vi.fn(),
         })),
@@ -65,6 +66,7 @@ describe('Advanced AI Agent Requirements', () => {
       pushHistory: mockPushHistory,
       upsert: mockUpsert,
       select: vi.fn(),
+      groupShapes: vi.fn(() => 'group-id'),
       centerOnShape: null,
       setCenterOnShapeCallback: vi.fn(),
     } as any);

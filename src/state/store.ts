@@ -1036,6 +1036,10 @@ function getShapeDefaults(type: ShapeType): Partial<ShapeBase> {
       return { x: 100, y: 100, w: 100, h: 100, strokeWidth: 2 };
     case 'parallelogram':
       return { x: 100, y: 100, w: 120, h: 80, strokeWidth: 2 };
+    case 'cylinder':
+      return { x: 100, y: 100, w: 100, h: 120, strokeWidth: 2 }; // Taller for cylinder appearance
+    case 'document':
+      return { x: 100, y: 100, w: 100, h: 130, strokeWidth: 2 }; // Taller for document appearance
     default:
       return { x: 100, y: 100, w: 100, h: 100, strokeWidth: 2 };
   }
