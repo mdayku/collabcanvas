@@ -60,9 +60,13 @@ describe('Advanced AI Agent Requirements', () => {
     vi.mocked(useCanvas.getState).mockReturnValue({
       me: { id: 'test-user', name: 'Test User', color: '#3b82f6' },
       shapes: {},
+      selectedIds: [],
+      roomId: 'test-room',
       pushHistory: mockPushHistory,
       upsert: mockUpsert,
       select: vi.fn(),
+      centerOnShape: null,
+      setCenterOnShapeCallback: vi.fn(),
     } as any);
   });
 
@@ -134,9 +138,13 @@ describe('Advanced AI Agent Requirements', () => {
       vi.mocked(useCanvas.getState).mockReturnValue({
         me: { id: 'test-user', name: 'Test User', color: '#3b82f6' },
         shapes: existingShapes,
+        selectedIds: [],
+        roomId: 'test-room',
         pushHistory: mockPushHistory,
         upsert: mockUpsert,
         select: vi.fn(),
+        centerOnShape: null,
+        setCenterOnShapeCallback: vi.fn(),
       } as any);
 
       // This command should identify the blue rectangle by analyzing canvas state
@@ -231,9 +239,13 @@ describe('Advanced AI Agent Requirements', () => {
       vi.mocked(useCanvas.getState).mockReturnValue({
         me: { id: 'test-user', name: 'Test User', color: '#3b82f6' },
         shapes: { 'blue-rect': blueRect },
+        selectedIds: [],
+        roomId: 'test-room',
         pushHistory: mockPushHistory,
         upsert: mockUpsert,
         select: vi.fn(),
+        centerOnShape: null,
+        setCenterOnShapeCallback: vi.fn(),
       } as any);
 
       const result = await interpret('Move the blue rectangle to position 200, 300');
@@ -265,9 +277,13 @@ describe('Advanced AI Agent Requirements', () => {
       vi.mocked(useCanvas.getState).mockReturnValue({
         me: { id: 'test-user', name: 'Test User', color: '#3b82f6' },
         shapes: { 'test-circle': circle },
+        selectedIds: [],
+        roomId: 'test-room',
         pushHistory: mockPushHistory,
         upsert: mockUpsert,
         select: vi.fn(),
+        centerOnShape: null,
+        setCenterOnShapeCallback: vi.fn(),
       } as any);
 
       const result = await interpret('Make the red circle twice as big');
@@ -301,9 +317,13 @@ describe('Advanced AI Agent Requirements', () => {
       vi.mocked(useCanvas.getState).mockReturnValue({
         me: { id: 'test-user', name: 'Test User', color: '#3b82f6' },
         shapes: { 'test-text': textShape },
+        selectedIds: [],
+        roomId: 'test-room',
         pushHistory: mockPushHistory,
         upsert: mockUpsert,
         select: vi.fn(),
+        centerOnShape: null,
+        setCenterOnShapeCallback: vi.fn(),
       } as any);
 
       const result = await interpret('Rotate the text 45 degrees');
@@ -330,9 +350,13 @@ describe('Advanced AI Agent Requirements', () => {
       vi.mocked(useCanvas.getState).mockReturnValue({
         me: { id: 'test-user', name: 'Test User', color: '#3b82f6' },
         shapes,
+        selectedIds: [],
+        roomId: 'test-room',
         pushHistory: mockPushHistory,
         upsert: mockUpsert,
         select: vi.fn(),
+        centerOnShape: null,
+        setCenterOnShapeCallback: vi.fn(),
       } as any);
 
       const result = await interpret('Arrange all shapes in a horizontal row');
