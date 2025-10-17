@@ -17,8 +17,11 @@
 - **💬 AI Clarification System**: ✅ **CONVERSATIONAL** - Multi-turn dialogue for ambiguous commands with context preservation
 - **📐 Smart Guides**: ✅ **FIGMA-LIKE** - Real-time alignment guides during drag operations (5px snap threshold)
 - **📱 Mobile Touch Support**: ✅ **NATIVE FEEL** - Two-finger pinch-to-zoom and pan gestures
-- **♿ Keyboard Navigation**: ✅ **ACCESSIBLE** - Comprehensive shortcuts (arrows, Ctrl+D/G, Delete, Escape)
+- **⌨️ Keyboard Navigation**: ✅ **CONFLICT-FREE** - Optimized shortcuts (Ctrl+Shift+D duplicate, Ctrl+Y redo, arrows, Delete, Escape)
 - **🎯 Layer Ordering**: ✅ **SMART Z-INDEX** - Selected shapes always draggable (dynamic rendering order)
+- **📝 Text Features**: ✅ **PROFESSIONAL** - Duplicate text, proper font rendering (bold/italic), accurate underline width
+- **🎯 Context Menu**: ✅ **INTELLIGENT** - Smart positioning avoids covering shapes, keeps menu fully visible
+- **🗃️ Card Layouts**: ✅ **CONSTRAINED** - Text wraps within boundaries (no overflow outside cards)
 
 ### **Frontend Architecture**
 ```

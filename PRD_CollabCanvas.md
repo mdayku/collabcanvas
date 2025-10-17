@@ -53,17 +53,19 @@ A real-time collaborative design canvas where users and AI co-create. Like Figma
 #### **✅ Professional Design Tools**
 - **Shapes**: Circle, rectangle, triangle, star, heart, pentagon, hexagon, octagon, trapezoid, rhombus, parallelogram, oval
 - **Drawing**: Lines and arrows with customizable styling
-- **Text**: Multiple fonts, sizes (1-256px), bold, italic, underline
+- **Text**: Multiple fonts (8 options including Comic Sans MS), sizes (1-256px), bold, italic, underline (accurate width)
 - **Emojis & Icons**: 12 popular emojis + icon system
 - **Styling**: Fill color, outline color, outline weight for all objects
+- **Context Menus**: Duplicate, layer ordering, styling - smart positioning keeps shapes visible
 
 #### **✅ Productivity Features**
 - Shape grouping with Ctrl+G shortcuts
 - Alignment tools (left/right/center, distribute evenly)
 - Snap-to-grid with visual grid system
 - Copy/paste with clipboard integration (Ctrl+C/V/X)
-- Comprehensive keyboard shortcut system
-- Undo/redo for all operations
+- Conflict-free keyboard shortcuts (Ctrl+Shift+D duplicate, Ctrl+Y redo, single handler)
+- Undo/redo for all operations with proper UUID generation
+- Duplicate works for all shapes including text boxes
 
 #### **✅ Multi-Canvas System**
 - Browser-style tabbed interface
@@ -73,7 +75,7 @@ A real-time collaborative design canvas where users and AI co-create. Like Figma
 - High-quality export (PNG/PDF)
 - Database persistence with metadata
 
-#### **✅ AI-Powered Design (Revolutionary)**
+#### **✅ AI-Powered Design**
 - **Hybrid AI Agent**: Rule-based parser (80% coverage, <20ms) + LLM fallback
 - **Natural Language Commands**: Create, move, resize, rotate, color, group, align for ALL objects
 - **Comprehensive Coverage**: 17 shapes, emojis, icons, text, lines, arrows
@@ -84,7 +86,7 @@ A real-time collaborative design canvas where users and AI co-create. Like Figma
 - **Multi-Turn Conversations**: AI asks clarifying questions for ambiguous commands
 - **Selection Context**: AI understands "it" and "the shape" based on current selection
 
-#### **✅ AI Image Generation (World's First)**
+#### **✅ AI Image Generation**
 - **Smart Frame System**: AI image frames in Assets toolbar
 - **Context Menu Integration**: Right-click → "Generate AI Image"
 - **Intelligent Dimension Analysis**: Auto-detects aspect ratio (wide/tall/square)
@@ -104,7 +106,7 @@ A real-time collaborative design canvas where users and AI co-create. Like Figma
 
 #### **✅ UI/UX Excellence**
 - Categorized toolbar (Lines+Arrows, Shapes, Emojis, Symbols, Forms, Assets)
-- Right-click context menus for all styling operations
+- Right-click context menus for all styling operations (smart positioning avoids shape overlap)
 - Collapsible help panel with commands and shortcuts
 - Theme system (Light/Dark/Halloween modes)
 - Professional file dropdown menu
@@ -112,8 +114,10 @@ A real-time collaborative design canvas where users and AI co-create. Like Figma
 - **Smart Guides**: Figma-style alignment lines during drag operations
 - **Performance Monitor**: Real-time FPS, user count, shape count, connection status
 - **Mobile Touch Support**: Two-finger pinch-to-zoom and pan gestures
-- **Keyboard Navigation**: Comprehensive accessibility (arrows, Delete, Ctrl+D/G, Escape)
+- **Keyboard Navigation**: Conflict-free shortcuts (Ctrl+Shift+D duplicate, Ctrl+Y redo, arrows, Delete, Escape)
 - **Layer Ordering**: Selected shapes always draggable (rendered on top)
+- **Text Features**: Duplicate option, proper font rendering (bold/italic/underline), accurate underline width
+- **Card Layouts**: Text properly constrained within card boundaries (no overflow)
 
 #### **✅ Testing & Quality**
 - **97+ Total Tests**: Comprehensive coverage of all features
