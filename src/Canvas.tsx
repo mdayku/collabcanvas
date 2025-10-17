@@ -146,13 +146,15 @@ function useFps() {
 // const CANVAS_W = 2400, CANVAS_H = 1600;
 
 // TopRibbon Component with File Menu
-function TopRibbon({ onSignOut, stageRef, setShowHelpPopup, centerOnNewShape, setCenterOnNewShape, offlineQueueState }: { 
+function TopRibbon({ onSignOut, stageRef, setShowHelpPopup, centerOnNewShape, setCenterOnNewShape, offlineQueueState, showPerf, setShowPerf }: { 
   onSignOut: () => void; 
   stageRef: React.RefObject<any>; 
   setShowHelpPopup: (show: boolean) => void;
   centerOnNewShape: boolean;
   setCenterOnNewShape: (value: boolean) => void;
   offlineQueueState: OfflineQueue.OfflineQueueState;
+  showPerf: boolean;
+  setShowPerf: (value: boolean) => void;
 }) {
   const [showFileMenu, setShowFileMenu] = useState(false);
   const [showViewMenu, setShowViewMenu] = useState(false);
@@ -891,6 +893,35 @@ function TopRibbon({ onSignOut, stageRef, setShowHelpPopup, centerOnNewShape, se
                     <span className="mr-2">🧲</span>
                     Snap to Grid
                     {snapToGrid && <span className="ml-auto text-xs">✓</span>}
+                  </button>
+                  
+                  {/* #6: Performance Monitor Toggle */}
+                  <button
+                    onClick={() => {
+                      const newValue = !showPerf;
+                      setShowPerf(newValue);
+                      localStorage.setItem('showPerfMonitor', String(newValue));
+                      setShowViewMenu(false);
+                    }}
+                    className="w-full text-left px-2 py-1 text-sm rounded flex items-center transition-colors"
+                    style={{
+                      backgroundColor: showPerf ? colors.primary : 'transparent',
+                      color: showPerf ? colors.bg : colors.text
+                    }}
+                    onMouseEnter={(e) => {
+                      if (!showPerf) {
+                        e.currentTarget.style.backgroundColor = colors.buttonHover;
+                      }
+                    }}
+                    onMouseLeave={(e) => {
+                      if (!showPerf) {
+                        e.currentTarget.style.backgroundColor = 'transparent';
+                      }
+                    }}
+                  >
+                    <span className="mr-2">📊</span>
+                    Performance Monitor
+                    {showPerf && <span className="ml-auto text-xs">✓</span>}
                   </button>
                 </div>
               </div>
@@ -1665,6 +1696,26 @@ export default function Canvas({ onSignOut }: CanvasProps) {
   const [offlineQueueState, setOfflineQueueState] = useState<OfflineQueue.OfflineQueueState>(
     OfflineQueue.getState()
   );
+  
+  // Smart Guides state (#5)
+  const [smartGuides, setSmartGuides] = useState<{
+    vertical: number[];
+    horizontal: number[];
+  }>({ vertical: [], horizontal: [] });
+  
+  // Performance monitoring state (#6)
+  const [showPerf, setShowPerf] = useState(() => 
+    localStorage.getItem('showPerfMonitor') === 'true'
+  );
+  const [perfMetrics, setPerfMetrics] = useState({
+    fps: 60,
+    syncLatency: 0,
+    shapeCount: 0,
+    userCount: 0,
+  });
+  const fpsFrames = useRef<number[]>([]);
+  const lastFrameTime = useRef<number>(performance.now());
+  
   const trRef = useRef<any>(null);
   const layerRef = useRef<any>(null);
   const canvasContainerRef = useRef<HTMLDivElement>(null);
@@ -1692,6 +1743,188 @@ export default function Canvas({ onSignOut }: CanvasProps) {
       setCenterOnShapeCallback(null);
     };
   }, [centerOnNewShape]);
+  
+  // #6: Performance monitoring - FPS tracking
+  useEffect(() => {
+    if (!showPerf) return;
+    
+    let animationId: number;
+    const updateFPS = () => {
+      const now = performance.now();
+      const delta = now - lastFrameTime.current;
+      lastFrameTime.current = now;
+      
+      fpsFrames.current.push(1000 / delta);
+      if (fpsFrames.current.length > 60) fpsFrames.current.shift();
+      
+      const avgFPS = fpsFrames.current.reduce((a, b) => a + b, 0) / fpsFrames.current.length;
+      
+      setPerfMetrics(prev => ({
+        ...prev,
+        fps: Math.round(avgFPS),
+        shapeCount: Object.keys(shapes).length,
+        userCount: Object.keys(cursors).length + 1, // +1 for current user
+      }));
+      
+      animationId = requestAnimationFrame(updateFPS);
+    };
+    
+    animationId = requestAnimationFrame(updateFPS);
+    return () => cancelAnimationFrame(animationId);
+  }, [showPerf, shapes, cursors]);
+  
+  // #8: Accessibility - Keyboard navigation
+  useEffect(() => {
+    const handleKeyDown = async (e: KeyboardEvent) => {
+      // Ignore if typing in input
+      if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
+      
+      const selected = selectedIds.map(id => shapes[id]).filter(Boolean);
+      if (selected.length === 0) return;
+      
+      const moveDistance = e.shiftKey ? 10 : 1;
+      
+      // Arrow keys: Move selected shapes
+      if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(e.key)) {
+        e.preventDefault();
+        useCanvas.getState().pushHistory();
+        
+        selected.forEach(shape => {
+          const updates: Partial<ShapeBase> = { updated_at: Date.now(), updated_by: me.id };
+          
+          switch (e.key) {
+            case 'ArrowUp': updates.y = shape.y - moveDistance; break;
+            case 'ArrowDown': updates.y = shape.y + moveDistance; break;
+            case 'ArrowLeft': updates.x = shape.x - moveDistance; break;
+            case 'ArrowRight': updates.x = shape.x + moveDistance; break;
+          }
+          
+          const updatedShape = { ...shape, ...updates };
+          useCanvas.getState().upsert(updatedShape);
+          broadcastUpsert(updatedShape);
+        });
+      }
+      
+      // Delete key: Remove selected shapes
+      if (e.key === 'Delete' || e.key === 'Backspace') {
+        e.preventDefault();
+        useCanvas.getState().pushHistory();
+        const idsToRemove = selected.map(s => s.id);
+        useCanvas.getState().remove(idsToRemove);
+        await broadcastRemove(idsToRemove);
+        useCanvas.getState().select([]);
+      }
+      
+      // Ctrl+D / Cmd+D: Duplicate
+      if ((e.ctrlKey || e.metaKey) && e.key === 'd') {
+        e.preventDefault();
+        useCanvas.getState().pushHistory();
+        selected.forEach(shape => {
+          const newShape = { 
+            ...shape, 
+            id: crypto.randomUUID(), 
+            x: shape.x + 20, 
+            y: shape.y + 20,
+            updated_at: Date.now(),
+            updated_by: me.id
+          };
+          useCanvas.getState().upsert(newShape);
+          broadcastUpsert(newShape);
+        });
+      }
+      
+      // Ctrl+G / Cmd+G: Group shapes
+      if ((e.ctrlKey || e.metaKey) && e.key === 'g' && selected.length > 1) {
+        e.preventDefault();
+        useCanvas.getState().pushHistory();
+        useCanvas.getState().groupShapes(selectedIds);
+      }
+      
+      // Escape: Deselect
+      if (e.key === 'Escape') {
+        useCanvas.getState().select([]);
+        setContextMenu(null);
+        setShowHelpPopup(false);
+      }
+    };
+    
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [selectedIds, shapes, me.id]);
+  
+  // #7: Mobile touch support - Pinch to zoom and two-finger pan
+  useEffect(() => {
+    const stage = canvasStageRef.current;
+    if (!stage) return;
+    
+    let lastCenter: { x: number; y: number } | null = null;
+    let lastDist = 0;
+    
+    const getCenter = (p1: Touch, p2: Touch) => ({
+      x: (p1.clientX + p2.clientX) / 2,
+      y: (p1.clientY + p2.clientY) / 2,
+    });
+    
+    const getDistance = (p1: Touch, p2: Touch) => {
+      return Math.sqrt(
+        Math.pow(p2.clientX - p1.clientX, 2) + Math.pow(p2.clientY - p1.clientY, 2)
+      );
+    };
+    
+    const handleTouchMove = (e: TouchEvent) => {
+      if (e.touches.length === 2) {
+        e.preventDefault();
+        
+        const touch1 = e.touches[0];
+        const touch2 = e.touches[1];
+        
+        const newCenter = getCenter(touch1, touch2);
+        const newDist = getDistance(touch1, touch2);
+        
+        if (lastCenter && lastDist) {
+          // Pinch to zoom
+          const pointTo = {
+            x: newCenter.x - stage.x(),
+            y: newCenter.y - stage.y(),
+          };
+          
+          const scale = stage.scaleX() * (newDist / lastDist);
+          const newScale = Math.max(0.1, Math.min(5, scale));
+          
+          stage.scale({ x: newScale, y: newScale });
+          
+          // Two-finger pan
+          const dx = newCenter.x - lastCenter.x;
+          const dy = newCenter.y - lastCenter.y;
+          
+          stage.position({
+            x: newCenter.x - pointTo.x * newScale + dx,
+            y: newCenter.y - pointTo.y * newScale + dy,
+          });
+          
+          stage.batchDraw();
+          setScale(newScale);
+        }
+        
+        lastCenter = newCenter;
+        lastDist = newDist;
+      }
+    };
+    
+    const handleTouchEnd = () => {
+      lastCenter = null;
+      lastDist = 0;
+    };
+    
+    const container = stage.container();
+    container.addEventListener('touchmove', handleTouchMove, { passive: false });
+    container.addEventListener('touchend', handleTouchEnd);
+    
+    return () => {
+      container.removeEventListener('touchmove', handleTouchMove);
+      container.removeEventListener('touchend', handleTouchEnd);
+    };
+  }, []);
   
   // Initialize with last active canvas on app start
   useEffect(() => {
@@ -2466,7 +2699,51 @@ export default function Canvas({ onSignOut }: CanvasProps) {
     stage.startPos = null;
   };
 
+  // #5: Smart Guides - Calculate alignment guides during drag
+  const calculateSmartGuides = (draggedShape: ShapeBase, currentX: number, currentY: number) => {
+    const threshold = 5; // Snap threshold in pixels
+    const guides: { vertical: number[]; horizontal: number[] } = { vertical: [], horizontal: [] };
+    
+    const draggedCenterX = currentX + (draggedShape.w || 0) / 2;
+    const draggedCenterY = currentY + (draggedShape.h || 0) / 2;
+    const draggedRight = currentX + (draggedShape.w || 0);
+    const draggedBottom = currentY + (draggedShape.h || 0);
+    
+    Object.values(shapes).forEach(shape => {
+      if (shape.id === draggedShape.id || !shape.w || !shape.h) return;
+      
+      const shapeCenterX = shape.x + shape.w / 2;
+      const shapeCenterY = shape.y + shape.h / 2;
+      const shapeRight = shape.x + shape.w;
+      const shapeBottom = shape.y + shape.h;
+      
+      // Check vertical alignments (x-axis)
+      if (Math.abs(currentX - shape.x) < threshold) guides.vertical.push(shape.x);
+      if (Math.abs(draggedRight - shapeRight) < threshold) guides.vertical.push(shapeRight);
+      if (Math.abs(draggedCenterX - shapeCenterX) < threshold) guides.vertical.push(shapeCenterX);
+      
+      // Check horizontal alignments (y-axis)
+      if (Math.abs(currentY - shape.y) < threshold) guides.horizontal.push(shape.y);
+      if (Math.abs(draggedBottom - shapeBottom) < threshold) guides.horizontal.push(shapeBottom);
+      if (Math.abs(draggedCenterY - shapeCenterY) < threshold) guides.horizontal.push(shapeCenterY);
+    });
+    
+    return guides;
+  };
+  
+  const onDragMove = (id: string, e: any) => {
+    const node = e.target;
+    const currentShape = shapes[id];
+    if (!currentShape) return;
+    
+    const guides = calculateSmartGuides(currentShape, node.x(), node.y());
+    setSmartGuides(guides);
+  };
+  
   const onDragEnd = (id:string, e:any) => {
+    // Clear smart guides
+    setSmartGuides({ vertical: [], horizontal: [] });
+    
     // Save history before moving
     useCanvas.getState().pushHistory();
     
@@ -2597,8 +2874,19 @@ export default function Canvas({ onSignOut }: CanvasProps) {
 
 
   // Shape elements with right-click support and styling - sorted by zIndex for layer ordering
+  // Selected shapes are always rendered on top to ensure they can be dragged
   const shapeEls = useMemo(() => Object.values(shapes)
-    .sort((a, b) => (a.zIndex ?? 0) - (b.zIndex ?? 0))
+    .sort((a, b) => {
+      const aSelected = selectedIds.includes(a.id);
+      const bSelected = selectedIds.includes(b.id);
+      
+      // Selected shapes always on top
+      if (aSelected && !bSelected) return 1;
+      if (!aSelected && bSelected) return -1;
+      
+      // Otherwise sort by zIndex
+      return (a.zIndex ?? 0) - (b.zIndex ?? 0);
+    })
     .map((s: ShapeBase) => {
     // For text shapes, calculate dynamic dimensions
     let textWidth = s.w;
@@ -2698,6 +2986,7 @@ export default function Canvas({ onSignOut }: CanvasProps) {
         onClick={onClick} 
         onContextMenu={onRightClick}
         draggable={true}
+        onDragMove={(e) => onDragMove(s.id, e)}
         onDragEnd={(e) => onDragEnd(s.id, e)}
       >
         {s.type === "rect" && (
@@ -3085,6 +3374,8 @@ export default function Canvas({ onSignOut }: CanvasProps) {
         centerOnNewShape={centerOnNewShape}
         setCenterOnNewShape={setCenterOnNewShape}
         offlineQueueState={offlineQueueState}
+        showPerf={showPerf}
+        setShowPerf={setShowPerf}
       />
       <TabBar />
       <div className="flex-1 flex min-h-0">
@@ -3118,6 +3409,28 @@ export default function Canvas({ onSignOut }: CanvasProps) {
             {/* Grid Overlay */}
             {showGrid && <GridOverlay canvasSize={canvasSize} />}
             {shapeEls}
+            {/* #5: Smart Guides - Alignment guides during drag */}
+            {smartGuides.vertical.map((x, i) => (
+              <Line
+                key={`v-guide-${i}`}
+                points={[x, 0, x, canvasSize.height]}
+                stroke="#ff00ff"
+                strokeWidth={1}
+                dash={[4, 4]}
+                listening={false}
+              />
+            ))}
+            {smartGuides.horizontal.map((y, i) => (
+              <Line
+                key={`h-guide-${i}`}
+                points={[0, y, canvasSize.width, y]}
+                stroke="#ff00ff"
+                strokeWidth={1}
+                dash={[4, 4]}
+                listening={false}
+              />
+            ))}
+            
             <Transformer 
               ref={trRef} 
               rotateEnabled={
@@ -3237,6 +3550,61 @@ export default function Canvas({ onSignOut }: CanvasProps) {
       
       {/* Help Popup */}
       <HelpPopup isOpen={showHelpPopup} onClose={() => setShowHelpPopup(false)} />
+      
+      {/* #6: Performance Monitor Dashboard */}
+      {showPerf && (
+        <div
+          className="fixed top-16 right-4 bg-opacity-90 backdrop-blur-sm rounded-lg shadow-2xl p-4 z-50 text-sm"
+          style={{
+            backgroundColor: colors.bg,
+            border: `2px solid ${colors.primary}`,
+            color: colors.text,
+            minWidth: '200px',
+          }}
+        >
+          <div className="font-bold mb-3 flex items-center justify-between">
+            <span className="flex items-center">
+              📊 Performance
+            </span>
+            <button
+              onClick={() => {
+                setShowPerf(false);
+                localStorage.setItem('showPerfMonitor', 'false');
+              }}
+              className="text-xl leading-none hover:opacity-70"
+              style={{ color: colors.text }}
+            >
+              ×
+            </button>
+          </div>
+          <div className="space-y-2">
+            <div className="flex justify-between items-center">
+              <span className="opacity-75">FPS:</span>
+              <span className="font-mono font-bold" style={{ 
+                color: perfMetrics.fps >= 50 ? '#10b981' : perfMetrics.fps >= 30 ? '#f59e0b' : '#ef4444'
+              }}>
+                {perfMetrics.fps}
+              </span>
+            </div>
+            <div className="flex justify-between items-center">
+              <span className="opacity-75">Shapes:</span>
+              <span className="font-mono">{perfMetrics.shapeCount}</span>
+            </div>
+            <div className="flex justify-between items-center">
+              <span className="opacity-75">Users:</span>
+              <span className="font-mono">{perfMetrics.userCount}</span>
+            </div>
+            <div className="flex justify-between items-center">
+              <span className="opacity-75">Status:</span>
+              <span className="font-mono capitalize" style={{
+                color: status === 'online' ? '#10b981' : status === 'reconnecting' ? '#f59e0b' : '#ef4444'
+              }}>
+                {status}
+              </span>
+            </div>
+          </div>
+        </div>
+      )}
       
       {/* Toast Notification System */}
       <ToastContainer />
