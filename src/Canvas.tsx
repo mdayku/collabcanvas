@@ -5,6 +5,7 @@ import { useCanvas } from "./state/store";
 import type { ShapeBase, ShapeType } from "./types";
 import { supabase } from "./lib/supabaseClient";
 import { interpretWithResponse } from "./ai/agent";
+import { tools } from "./ai/agent";
 import { isOpenAIConfigured, generateImageWithDALLE } from "./services/openaiService";
 import { isGroqConfigured } from "./services/groqService";
 import { SaveStatusIndicator } from "./components/SaveStatusIndicator";
@@ -2982,7 +2983,7 @@ export default function Canvas({ onSignOut }: CanvasProps) {
     onStageMouseMove(e);
   };
 
-  const onStageTouchEnd = (e: any) => {
+  const onStageTouchEnd = () => {
     // Treat touch end like mouse up
     onStageMouseUp();
   };
@@ -5043,7 +5044,7 @@ function FloatingAIWidget() {
     setErrorMessage(null); // Clear any previous errors
     
     try {
-      // Use the existing AIBox logic with language support
+      // Use interpretWithResponse which returns actions to execute
       const response = await interpretWithResponse(prompt.trim(), selectedLanguage);
       console.log('AI Response:', response);
       
@@ -5051,18 +5052,69 @@ function FloatingAIWidget() {
       if (response.type === 'error') {
         const errorMsg = response.message || "I couldn't understand that command. Try being more specific or check the help menu for examples.";
         setErrorMessage(errorMsg);
-        // Show toast notification for better visibility
         showToast(errorMsg, 'error');
       } else if (response.type === 'clarification_needed') {
         setErrorMessage(response.message);
-        // Show toast for clarification requests
         showToast(response.message || "Could you be more specific?", 'warning');
       } else {
-        // Success! Show positive feedback
+        // Success! Execute the actions
+        if (response.result && Array.isArray(response.result)) {
+          for (const action of response.result) {
+            const p = action.params;
+            
+            switch (action.tool) {
+              case 'createShape':
+                if (p) tools.createShape(p.type, p.x, p.y, p.w, p.h, p.color, p.text);
+                break;
+              case 'createText':
+                if (p) tools.createText(p.text, p.x, p.y, p.fontSize, p.color);
+                break;
+              case 'createEmoji':
+                if (p) tools.createEmoji(p.emoji, p.x, p.y);
+                break;
+              case 'createIcon':
+                if (p) tools.createIcon(p.icon, p.x, p.y);
+                break;
+              case 'moveShape':
+                if (p) tools.moveShape(p.id, p.x, p.y);
+                break;
+              case 'resizeShape':
+                if (p) tools.resizeShape(p.id, p.w, p.h);
+                break;
+              case 'rotateShape':
+                if (p) tools.rotateShape(p.id, p.degrees);
+                break;
+              case 'changeColor':
+                if (p) tools.changeColor(p.id, p.color);
+                break;
+              case 'changeStroke':
+                if (p) tools.changeStroke(p.id, p.stroke, p.strokeWidth);
+                break;
+              case 'deleteShape':
+                if (p) tools.deleteShape(p.id);
+                break;
+              case 'duplicateShape':
+                if (p) tools.duplicateShape(p.id);
+                break;
+              case 'groupShapes':
+                if (p) tools.groupShapes(p.ids);
+                break;
+              case 'ungroupShapes':
+                if (p) tools.ungroupShapes(p.groupId);
+                break;
+              case 'alignShapes':
+                if (p) tools.alignShapes(p.ids, p.alignment);
+                break;
+              default:
+                console.warn('[AI] Unknown tool:', action.tool);
+            }
+          }
+        }
+        
+        // Show success message
         if (response.message && !response.message.includes('✅')) {
           showToast(`✅ ${response.message}`, 'success');
         }
-        // Clear the input after successful submission
         setPrompt('');
       }
     } catch (error) {

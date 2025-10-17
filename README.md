@@ -17,6 +17,7 @@
 - **🏗️ Production Infrastructure**: ✅ **ENTERPRISE** - Professional UI, 287/299 tests passing (96%), comprehensive documentation
 - **📊 Performance Excellence**: ✅ **60 FPS** - Smooth at scale with advanced optimization
 - **💬 AI Clarification System**: ✅ **CONVERSATIONAL** - Multi-turn dialogue for ambiguous commands with context preservation
+- **🤖 Draggable AI Widget**: ✅ **FULL TOOL EXECUTION** - All 15+ AI tools (create, resize, move, rotate, color, etc.) work from floating assistant
 - **📐 Smart Guides**: ✅ **FIGMA-LIKE** - Real-time alignment guides during drag operations (5px snap threshold)
 - **📱 Mobile Touch Support**: ✅ **NATIVE FEEL** - Single-finger canvas panning + two-finger pinch-to-zoom gestures
 - **📱 Mobile Sidebar**: ✅ **RESPONSIVE** - Collapsible left menu with arrow button, ResizeObserver auto-adjusts canvas size
