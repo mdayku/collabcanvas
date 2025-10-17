@@ -14,6 +14,11 @@
 - **🎯 Hybrid AI Agent**: ✅ **INSTANT** - Rule-based parser + LLM fallback for 12+ command types
 - **🏗️ Production Infrastructure**: ✅ **ENTERPRISE** - Professional UI, 190+ tests, comprehensive documentation
 - **📊 Performance Excellence**: ✅ **60 FPS** - Smooth at scale with advanced optimization
+- **💬 AI Clarification System**: ✅ **CONVERSATIONAL** - Multi-turn dialogue for ambiguous commands with context preservation
+- **📐 Smart Guides**: ✅ **FIGMA-LIKE** - Real-time alignment guides during drag operations (5px snap threshold)
+- **📱 Mobile Touch Support**: ✅ **NATIVE FEEL** - Two-finger pinch-to-zoom and pan gestures
+- **♿ Keyboard Navigation**: ✅ **ACCESSIBLE** - Comprehensive shortcuts (arrows, Ctrl+D/G, Delete, Escape)
+- **🎯 Layer Ordering**: ✅ **SMART Z-INDEX** - Selected shapes always draggable (dynamic rendering order)
 
 ### **Frontend Architecture**
 ```

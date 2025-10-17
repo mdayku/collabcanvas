@@ -398,6 +398,100 @@ flowchart LR
   ExportSystem --> Database
 ```
 
+## 💬 AI Multi-Turn Clarification System (Phase 12 - Oct 17, 2025) ✅ COMPLETED
+```mermaid
+flowchart TD
+  subgraph UserCommand["User Interaction"]
+    CMD[User Types Ambiguous Command<br/>"shrink it by 200%"]
+    SELECT[System Checks Selection<br/>Circle selected]
+  end
+  
+  subgraph AIProcessing["AI Analysis"]
+    RULE[Rule-Based Parser<br/>No match - unclear intent]
+    LLM[OpenAI GPT-3.5<br/>Receives: command + canvas state + selection]
+    CONTEXT[Context Analysis<br/>"selected: circle (id: xyz, color: #ff0000)"]
+    CLARIFY{Intent: "clarify"?}
+  end
+  
+  subgraph ConversationSystem["Multi-Turn Dialog"]
+    STORE[Zustand Store<br/>aiConversation state<br/>history, pendingCommand]
+    DIALOG[Clarification Dialog<br/>Chat-style UI<br/>Bottom-right position]
+    HISTORY[Message History<br/>[{role: 'user', content: '...'}<br/>{role: 'assistant', content: '...'}]]
+    LIMIT[Safety Limit<br/>Max 2 rounds (4 messages)]
+  end
+  
+  subgraph UserResponse["User Clarification"]
+    INPUT[User Types Response<br/>"50% size"]
+    CONTINUE[LLM with Full History<br/>Original + clarification]
+    EXECUTE[Intent: "create/modify"<br/>Execute command]
+  end
+  
+  CMD --> SELECT --> RULE --> LLM --> CONTEXT
+  LLM --> CLARIFY
+  CLARIFY -->|Yes| STORE --> DIALOG --> HISTORY
+  DIALOG -->|User responds| INPUT --> CONTINUE
+  CONTINUE --> LIMIT
+  LIMIT -->|Round 2| CONTINUE
+  LIMIT -->|Round 3| DIALOG
+  CLARIFY -->|No| EXECUTE
+  CONTINUE --> EXECUTE
+  
+  style CMD fill:#e1f5fe
+  style CLARIFY fill:#fff3e0
+  style DIALOG fill:#f3e5f5
+  style EXECUTE fill:#e8f5e8
+```
+
+## 📐 UX Polish Features (Phase 12 - Oct 17, 2025) ✅ COMPLETED
+```mermaid
+flowchart LR
+  subgraph SmartGuides["Smart Guides System"]
+    DRAG[User Drags Shape<br/>Real-time tracking]
+    DETECT[Edge Detection<br/>Left/Right/Center<br/>Top/Bottom/Center]
+    THRESHOLD[5px Snap Threshold<br/>Automatic alignment]
+    RENDER[Magenta Guide Lines<br/>Temporary display]
+  end
+  
+  subgraph Performance["Performance Monitor"]
+    FPS[FPS Counter<br/>requestAnimationFrame<br/>60 FPS tracking]
+    METRICS[Real-time Metrics<br/>Shape count<br/>User count<br/>Connection status]
+    TOGGLE[Toggleable Display<br/>localStorage persistence<br/>Color-coded (green/yellow/red)]
+  end
+  
+  subgraph Mobile["Mobile Touch Support"]
+    PINCH[Two-Finger Pinch<br/>Zoom in/out<br/>Smooth scaling]
+    PAN[Two-Finger Pan<br/>Canvas navigation<br/>Touch optimized]
+    GESTURE[Gesture Handling<br/>Touch event detection<br/>Prevents conflicts]
+  end
+  
+  subgraph Keyboard["Keyboard Navigation"]
+    ARROWS[Arrow Keys<br/>Move 1px/10px<br/>Shift modifier]
+    DELETE[Delete/Backspace<br/>Remove shapes<br/>Undo support]
+    SHORTCUTS[Ctrl+D Duplicate<br/>Ctrl+G Group<br/>Escape Deselect]
+    SMART[Smart Detection<br/>Ignore during typing<br/>Input field awareness]
+  end
+  
+  subgraph LayerOrdering["Layer Z-Index Fix"]
+    RENDER_ORDER[Dynamic Sort<br/>Selected on top<br/>Maintains zIndex]
+    DRAGGABLE[Always Draggable<br/>No z-index conflicts<br/>Professional UX]
+  end
+  
+  DRAG --> DETECT --> THRESHOLD --> RENDER
+  FPS --> METRICS --> TOGGLE
+  PINCH --> GESTURE
+  PAN --> GESTURE
+  ARROWS --> SMART
+  DELETE --> SMART
+  SHORTCUTS --> SMART
+  RENDER_ORDER --> DRAGGABLE
+  
+  style SmartGuides fill:#e1f5fe
+  style Performance fill:#f3e5f5
+  style Mobile fill:#fff3e0
+  style Keyboard fill:#e8f5e8
+  style LayerOrdering fill:#fff8e1
+```
+
 ## 🎨 AI Content Generation System (Phase 8 - Revolutionary)
 ```mermaid
 flowchart TD
