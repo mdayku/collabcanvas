@@ -1679,8 +1679,112 @@ interface ContextMenuData {
   shapeIds: string[]; // Support multiple shapes for alignment tools
 }
 
+// AI Clarification Dialog Component
+function AIClarificationDialog() {
+  const { colors } = useTheme();
+  const { aiConversation, setAIConversation, addAIMessage } = useCanvas();
+  const [input, setInput] = useState('');
+  
+  if (!aiConversation) return null;
+  
+  const handleResponse = async (response: string) => {
+    if (!response.trim()) return;
+    
+    // Add user's response to history
+    addAIMessage('user', response);
+    setInput('');
+    
+    // Import and call the AI agent with the full conversation
+    const { interpret } = await import('./ai/agent');
+    await interpret(response);
+  };
+  
+  const handleCancel = () => {
+    setAIConversation(null);
+    showToast('Conversation cancelled', 'info');
+  };
+  
+  return (
+    <div
+      className="fixed bottom-32 right-4 w-96 bg-opacity-95 backdrop-blur-sm rounded-lg shadow-2xl p-4 z-50 animate-slideIn"
+      style={{
+        backgroundColor: colors.bg,
+        border: `2px solid ${colors.primary}`,
+        color: colors.text,
+      }}
+    >
+      {/* Header */}
+      <div className="font-bold mb-3 flex items-center justify-between">
+        <span className="flex items-center">
+          <span className="mr-2">🤔</span>
+          AI needs clarification
+        </span>
+        <button
+          onClick={handleCancel}
+          className="text-xl leading-none hover:opacity-70 transition-opacity"
+          style={{ color: colors.text }}
+        >
+          ×
+        </button>
+      </div>
+      
+      {/* Conversation History */}
+      <div className="space-y-2 mb-4 max-h-64 overflow-y-auto">
+        {aiConversation.history.map((msg, i) => (
+          <div key={i} className={msg.role === 'user' ? 'text-right' : 'text-left'}>
+            <span
+              className="inline-block px-3 py-2 rounded text-sm"
+              style={{
+                backgroundColor: msg.role === 'user' ? colors.primary : colors.buttonHover,
+                color: msg.role === 'user' ? colors.bg : colors.text,
+              }}
+            >
+              {msg.content}
+            </span>
+          </div>
+        ))}
+      </div>
+      
+      {/* Input */}
+      <div className="flex gap-2">
+        <input
+          type="text"
+          value={input}
+          onChange={(e) => setInput(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter') handleResponse(input);
+            if (e.key === 'Escape') handleCancel();
+          }}
+          placeholder="Type your response..."
+          autoFocus
+          className="flex-1 px-3 py-2 rounded text-sm focus:outline-none focus:ring-2"
+          style={{
+            backgroundColor: colors.buttonHover,
+            color: colors.text,
+            border: `1px solid ${colors.primary}`,
+          }}
+        />
+        <button
+          onClick={() => handleResponse(input)}
+          className="px-4 py-2 rounded text-sm font-medium hover:opacity-90 transition-opacity"
+          style={{
+            backgroundColor: colors.primary,
+            color: colors.bg,
+          }}
+        >
+          Send
+        </button>
+      </div>
+      
+      <div className="mt-2 text-xs opacity-60">
+        Press Enter to send, Escape to cancel
+      </div>
+    </div>
+  );
+}
+
 export default function Canvas({ onSignOut }: CanvasProps) {
-  const { shapes, selectedIds, me, cursors, showCanvasSelector, hideCanvasSelectorDialog, roomId, setCenterOnShapeCallback } = useCanvas();
+  const { shapes, selectedIds, me, cursors, showCanvasSelector, hideCanvasSelectorDialog, roomId, setCenterOnShapeCallback, aiConversation } = useCanvas();
   const { colors, showGrid, snapToGrid } = useTheme();
   const [contextMenu, setContextMenu] = useState<ContextMenuData | null>(null);
   const [_scale, setScale] = useState(1);
@@ -3547,6 +3651,9 @@ export default function Canvas({ onSignOut }: CanvasProps) {
       
       {/* Floating AI Agent Widget - Bottom Right */}
       <FloatingAIWidget />
+      
+      {/* AI Clarification Dialog */}
+      {aiConversation?.isActive && <AIClarificationDialog />}
       
       {/* Help Popup */}
       <HelpPopup isOpen={showHelpPopup} onClose={() => setShowHelpPopup(false)} />

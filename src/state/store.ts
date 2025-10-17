@@ -63,6 +63,16 @@ export type CanvasState = {
   centerOnShape: ((shape: ShapeBase) => void) | null;
   setCenterOnShapeCallback: (callback: ((shape: ShapeBase) => void) | null) => void;
   
+  // AI conversation state (for multi-turn clarification)
+  aiConversation: {
+    isActive: boolean;
+    history: Array<{ role: 'user' | 'assistant'; content: string }>;
+    pendingCommand: string;
+    contextShapes: string[]; // Selected shapes when conversation started
+  } | null;
+  setAIConversation: (conversation: CanvasState['aiConversation']) => void;
+  addAIMessage: (role: 'user' | 'assistant', content: string) => void;
+  
   // Authentication
   setAuthenticated: (authenticated: boolean) => void;
   setUser: (user: { id: string; name: string; color: string }) => void;
@@ -155,6 +165,14 @@ export const useCanvas = create<CanvasState>()(immer((set, get) => ({
   // Auto-center callback
   centerOnShape: null,
   setCenterOnShapeCallback: (callback) => set({ centerOnShape: callback }),
+  
+  // AI conversation state
+  aiConversation: null,
+  setAIConversation: (conversation) => set({ aiConversation: conversation }),
+  addAIMessage: (role, content) => set((state) => {
+    if (!state.aiConversation) return;
+    state.aiConversation.history.push({ role, content });
+  }),
   
   // Tab management state
   openTabs: [],
