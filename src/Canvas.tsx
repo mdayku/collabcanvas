@@ -1792,6 +1792,14 @@ export default function Canvas({ onSignOut }: CanvasProps) {
   const [centerOnNewShape, setCenterOnNewShape] = useState(() => 
     localStorage.getItem('centerOnNewShape') === 'true'
   );
+  
+  // Box select tool state
+  const [isBoxSelectMode, setIsBoxSelectMode] = useState(false);
+  const [boxSelectStart, setBoxSelectStart] = useState<{x: number, y: number} | null>(null);
+  const [boxSelectCurrent, setBoxSelectCurrent] = useState<{x: number, y: number} | null>(null);
+  const boxSelectRef = useRef<{start: {x: number, y: number} | null, current: {x: number, y: number} | null}>({ start: null, current: null });
+  const justCompletedBoxSelect = useRef(false);
+  const isPanning = useRef(false);
   const [showHelpPopup, setShowHelpPopup] = useState(false);
   const [status, setStatus] = useState<'connecting'|'online'|'reconnecting'|'offline'>('connecting');
   const [canvasSize, setCanvasSize] = useState({ width: 800, height: 600 });
@@ -2680,6 +2688,22 @@ export default function Canvas({ onSignOut }: CanvasProps) {
 
   // Selection clearing for clicks outside the main canvas area
   const onStageClick = (e:any) => {
+    // Don't handle clicks if we just panned
+    if (isPanning.current) {
+      isPanning.current = false;
+      return;
+    }
+    
+    // Don't handle clicks if we just completed a box select (don't reset flag here, let Rect handler do it)
+    if (justCompletedBoxSelect.current) {
+      return;
+    }
+    
+    // Don't handle clicks if we're doing box select
+    if (isBoxSelectMode && (boxSelectStart || boxSelectCurrent)) {
+      return;
+    }
+    
     // Clear selection if clicking on background areas
     const isStage = e.target === e.target.getStage();
     const isBackgroundRect = e.target.attrs && e.target.attrs.fill === '#fafafa';
@@ -2693,26 +2717,64 @@ export default function Canvas({ onSignOut }: CanvasProps) {
     }
   };
 
-  // Pan functionality
+  // Pan functionality + Box Select
   const onStageMouseDown = (e:any) => {
-    // Setup panning if clicking on background areas
     const clickedOnEmpty = e.target === e.target.getStage();
     const clickedOnBackground = e.target.attrs && e.target.attrs.fill === '#fafafa';
     
     if (clickedOnEmpty || clickedOnBackground) {
       const stage = canvasStageRef.current;
-      stage.startPointerPos = stage.getPointerPosition();
-      stage.startPos = { x: stage.x(), y: stage.y() };
+      const pointerPos = stage.getPointerPosition();
+      
+      // If box select mode is active, start selection rectangle
+      if (isBoxSelectMode) {
+        // Transform screen coordinates to world coordinates
+        const scale = stage.scaleX();
+        const worldPos = {
+          x: (pointerPos.x - stage.x()) / scale,
+          y: (pointerPos.y - stage.y()) / scale
+        };
+        boxSelectRef.current.start = worldPos;
+        boxSelectRef.current.current = worldPos;
+        setBoxSelectStart(worldPos);
+        setBoxSelectCurrent(worldPos);
+      } else {
+        // Otherwise, setup panning
+        stage.startPointerPos = pointerPos;
+        stage.startPos = { x: stage.x(), y: stage.y() };
+        isPanning.current = false; // Reset panning flag at start
+      }
     }
   };
 
   const onStageMouseMove = (_e:any) => {
     const stage = canvasStageRef.current;
+    
+    // Handle box select dragging
+    if (isBoxSelectMode && boxSelectRef.current.start) {
+      const currentPos = stage.getPointerPosition();
+      // Transform screen coordinates to world coordinates
+      const scale = stage.scaleX();
+      const worldPos = {
+        x: (currentPos.x - stage.x()) / scale,
+        y: (currentPos.y - stage.y()) / scale
+      };
+      boxSelectRef.current.current = worldPos;
+      setBoxSelectCurrent(worldPos);
+      return;
+    }
+    
+    // Handle normal panning
     if (!stage.startPointerPos) return;
     
     const currentPos = stage.getPointerPosition();
     const dx = currentPos.x - stage.startPointerPos.x;
     const dy = currentPos.y - stage.startPointerPos.y;
+    
+    // Mark as panning if we've moved more than a few pixels
+    if (Math.abs(dx) > 3 || Math.abs(dy) > 3) {
+      isPanning.current = true;
+    }
     
     stage.position({
       x: stage.startPos.x + dx,
@@ -2722,6 +2784,57 @@ export default function Canvas({ onSignOut }: CanvasProps) {
 
   const onStageMouseUp = () => {
     const stage = canvasStageRef.current;
+    
+    // Handle box select completion using refs for immediate values
+    if (isBoxSelectMode && boxSelectRef.current.start && boxSelectRef.current.current) {
+      const start = boxSelectRef.current.start;
+      const current = boxSelectRef.current.current;
+      
+      // Calculate selection rectangle bounds
+      const minX = Math.min(start.x, current.x);
+      const maxX = Math.max(start.x, current.x);
+      const minY = Math.min(start.y, current.y);
+      const maxY = Math.max(start.y, current.y);
+      
+      // Find all shapes that intersect with the selection rectangle
+      const selectedShapeIds: string[] = [];
+      Object.values(shapes).forEach(shape => {
+        const shapeRight = shape.x + shape.w;
+        const shapeBottom = shape.y + shape.h;
+        
+        // Check if shape intersects with selection rectangle
+        const intersects = !(
+          shape.x > maxX ||
+          shapeRight < minX ||
+          shape.y > maxY ||
+          shapeBottom < minY
+        );
+        
+        if (intersects) {
+          selectedShapeIds.push(shape.id);
+        }
+      });
+      
+      // Select the shapes
+      if (selectedShapeIds.length > 0) {
+        useCanvas.getState().select(selectedShapeIds);
+      } else {
+        // Clear selection if nothing was selected
+        useCanvas.getState().select([]);
+      }
+      
+      // Mark that we just completed a box select to prevent onClick from clearing selection
+      justCompletedBoxSelect.current = true;
+      
+      // Clear box select state
+      boxSelectRef.current.start = null;
+      boxSelectRef.current.current = null;
+      setBoxSelectStart(null);
+      setBoxSelectCurrent(null);
+      return;
+    }
+    
+    // Clear normal panning
     stage.startPointerPos = null;
     stage.startPos = null;
   };
@@ -2944,7 +3057,7 @@ export default function Canvas({ onSignOut }: CanvasProps) {
       
       const shapesToSelect = getShapesToSelect(s.id);
       
-      if (e.evt.shiftKey) {
+      if (e.evt.shiftKey || e.evt.ctrlKey || e.evt.metaKey) {
         const currentSelection = useCanvas.getState().selectedIds;
         
         // Check if any of the shapes to select are already selected
@@ -3460,7 +3573,13 @@ export default function Canvas({ onSignOut }: CanvasProps) {
       />
       <TabBar />
       <div className="flex-1 flex min-h-0">
-        <Toolbar status={status} centerOnNewShape={centerOnNewShape} stageRef={canvasStageRef} />
+        <Toolbar 
+          status={status} 
+          centerOnNewShape={centerOnNewShape} 
+          stageRef={canvasStageRef} 
+          isBoxSelectMode={isBoxSelectMode}
+          setIsBoxSelectMode={setIsBoxSelectMode}
+        />
         <div 
           ref={canvasContainerRef} 
           className="flex-1 relative overflow-hidden"
@@ -3483,8 +3602,32 @@ export default function Canvas({ onSignOut }: CanvasProps) {
               width={6000} 
               height={6000} 
               fill="#fafafa"
-              onClick={() => useCanvas.getState().select([])}
-              onTap={() => useCanvas.getState().select([])}
+              onClick={() => {
+                // Don't clear selection if we just panned
+                if (isPanning.current) {
+                  isPanning.current = false;
+                  return;
+                }
+                // Don't clear selection if we just completed a box select
+                if (justCompletedBoxSelect.current) {
+                  justCompletedBoxSelect.current = false;
+                  return;
+                }
+                useCanvas.getState().select([]);
+              }}
+              onTap={() => {
+                // Don't clear selection if we just panned
+                if (isPanning.current) {
+                  isPanning.current = false;
+                  return;
+                }
+                // Don't clear selection if we just completed a box select
+                if (justCompletedBoxSelect.current) {
+                  justCompletedBoxSelect.current = false;
+                  return;
+                }
+                useCanvas.getState().select([]);
+              }}
             />
             
             {/* Grid Overlay */}
@@ -3511,6 +3654,21 @@ export default function Canvas({ onSignOut }: CanvasProps) {
                 listening={false}
               />
             ))}
+            
+            {/* Box Select Rectangle */}
+            {isBoxSelectMode && boxSelectStart && boxSelectCurrent && (
+              <Rect
+                x={Math.min(boxSelectStart.x, boxSelectCurrent.x)}
+                y={Math.min(boxSelectStart.y, boxSelectCurrent.y)}
+                width={Math.abs(boxSelectCurrent.x - boxSelectStart.x)}
+                height={Math.abs(boxSelectCurrent.y - boxSelectStart.y)}
+                fill="rgba(0, 123, 255, 0.1)"
+                stroke="#007bff"
+                strokeWidth={2}
+                dash={[5, 5]}
+                listening={false}
+              />
+            )}
             
             <Transformer 
               ref={trRef} 
@@ -3701,9 +3859,11 @@ interface ToolbarProps {
   status: 'connecting'|'online'|'reconnecting'|'offline';
 }
 
-function CategorizedToolbar({ centerOnNewShape, stageRef }: { 
+function CategorizedToolbar({ centerOnNewShape, stageRef, isBoxSelectMode, setIsBoxSelectMode }: { 
   centerOnNewShape: boolean; 
-  stageRef: React.RefObject<Konva.Stage>; 
+  stageRef: React.RefObject<Konva.Stage>;
+  isBoxSelectMode: boolean;
+  setIsBoxSelectMode: (value: boolean) => void;
 }) {
   const { colors, snapToGrid } = useTheme();
   const [expandedCategories, setExpandedCategories] = useState<Set<string>>(
@@ -3873,6 +4033,15 @@ function CategorizedToolbar({ centerOnNewShape, stageRef }: {
   
   const toolCategories = [
     {
+      id: 'tools',
+      name: 'Tools',
+      emoji: '🛠️',
+      tools: [
+        { name: '🔲', action: () => setIsBoxSelectMode(!isBoxSelectMode), available: true, tooltip: 'Box Select Tool', active: isBoxSelectMode },
+        { name: '✏️', action: () => showToast('Pen Tool - Coming Soon!', 'info'), available: false, tooltip: 'Pen Tool (Coming Soon)' },
+      ]
+    },
+    {
       id: 'components',
       name: 'Components',
       emoji: '🧩',
@@ -4005,9 +4174,10 @@ function CategorizedToolbar({ centerOnNewShape, stageRef }: {
                           }
                         `}
                         style={{
-                          backgroundColor: tool.available ? colors.buttonBg : colors.bgTertiary,
-                          color: tool.available ? colors.text : colors.textMuted,
-                          borderColor: colors.border
+                          backgroundColor: (tool as any).active ? colors.primary : (tool.available ? colors.buttonBg : colors.bgTertiary),
+                          color: (tool as any).active ? '#fff' : (tool.available ? colors.text : colors.textMuted),
+                          borderColor: (tool as any).active ? colors.primary : colors.border,
+                          borderWidth: (tool as any).active ? '2px' : '1px'
                         }}
                       >
                         {tool.name}
@@ -4073,9 +4243,11 @@ function CategorizedToolbar({ centerOnNewShape, stageRef }: {
   );
 }
 
-function Toolbar({ status, centerOnNewShape, stageRef }: Omit<ToolbarProps, 'onSignOut'> & { 
+function Toolbar({ status, centerOnNewShape, stageRef, isBoxSelectMode, setIsBoxSelectMode }: Omit<ToolbarProps, 'onSignOut'> & { 
   centerOnNewShape: boolean; 
-  stageRef: React.RefObject<Konva.Stage>; 
+  stageRef: React.RefObject<Konva.Stage>;
+  isBoxSelectMode: boolean;
+  setIsBoxSelectMode: (value: boolean) => void;
 }) {
   const { me, onlineUsers, cursors } = useCanvas();
   const { colors } = useTheme();
@@ -4128,7 +4300,12 @@ function Toolbar({ status, centerOnNewShape, stageRef }: Omit<ToolbarProps, 'onS
         </div>
       )}
       
-      <CategorizedToolbar centerOnNewShape={centerOnNewShape} stageRef={stageRef} />
+      <CategorizedToolbar 
+        centerOnNewShape={centerOnNewShape} 
+        stageRef={stageRef}
+        isBoxSelectMode={isBoxSelectMode}
+        setIsBoxSelectMode={setIsBoxSelectMode}
+      />
       
       {/* Connection Status Badge */}
       <div className="mt-4 pt-3 border-t">
