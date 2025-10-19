@@ -940,8 +940,9 @@ export async function interpret(text: string) {
   const resolve = (hint?: Partial<Hint>) => resolveTarget({ ...extractHint(t), ...hint });
 
   // AI IMAGE GENERATION - Check FIRST before anything else
-  if (/\b(generate|create|make).*\b(ai|dall.?e|image)/.test(t) || /\b(ai|dall.?e).*\b(image|picture|photo)/.test(t)) {
-    console.log('[AI] Rule-based parser detected AI image generation request');
+  // Match any request to create/generate an image, picture, or photo (defaults to DALL-E)
+  if (/\b(generate|create|make).*\b(image|picture|photo)\b/.test(t)) {
+    console.log('[AI] Rule-based parser detected image generation request (using DALL-E)');
     
     // Extract the prompt (everything after "of" or "with" or just use the full text)
     let prompt = raw;
