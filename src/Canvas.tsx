@@ -13,6 +13,7 @@ import { useTheme } from "./contexts/ThemeContext";
 import { CanvasSelector } from "./components/CanvasSelector";
 import { AuthStatus } from "./components/AuthStatus";
 import * as OfflineQueue from "./services/offlineQueue";
+import { findBlankArea } from "./utils/canvasUtils";
 
 // ================================================================================
 // TOAST NOTIFICATION SYSTEM
@@ -1824,6 +1825,34 @@ export default function Canvas({ onSignOut }: CanvasProps) {
     horizontal: number[];
   }>({ vertical: [], horizontal: [] });
   
+  // Line endpoint dragging state (for connection snapping)
+  const [draggingLineEndpoint, setDraggingLineEndpoint] = useState<{
+    lineId: string;
+    endpoint: 'start' | 'end';
+  } | null>(null);
+  
+  // Debug: Log if draggingLineEndpoint is unexpectedly set
+  useEffect(() => {
+    if (draggingLineEndpoint) {
+      console.log('[DEBUG] draggingLineEndpoint is set:', draggingLineEndpoint);
+    }
+  }, [draggingLineEndpoint]);
+  
+  // Auto-cleanup: Reset draggingLineEndpoint if no line/arrow is selected
+  useEffect(() => {
+    if (draggingLineEndpoint) {
+      const hasLineSelected = selectedIds.some(id => {
+        const shape = shapes[id];
+        return shape && (shape.type === 'line' || shape.type === 'arrow');
+      });
+      
+      if (!hasLineSelected) {
+        console.log('[DEBUG] Auto-clearing draggingLineEndpoint (no line/arrow selected)');
+        setDraggingLineEndpoint(null);
+      }
+    }
+  }, [selectedIds, shapes, draggingLineEndpoint]);
+  
   // Performance monitoring state (#6)
   const [showPerf, setShowPerf] = useState(() => 
     localStorage.getItem('showPerfMonitor') === 'true'
@@ -2960,6 +2989,9 @@ export default function Canvas({ onSignOut }: CanvasProps) {
       // Mark that we just completed a box select to prevent onClick from clearing selection
       justCompletedBoxSelect.current = true;
       
+      // Auto-deselect box select tool after completing selection
+      setIsBoxSelectMode(false);
+      
       // Clear box select state
       boxSelectRef.current.start = null;
       boxSelectRef.current.current = null;
@@ -3027,6 +3059,52 @@ export default function Canvas({ onSignOut }: CanvasProps) {
     return guides;
   };
   
+  // Helper function to update all lines/arrows connected to a shape
+  const updateConnectedLines = (shapeId: string) => {
+    const currentShapes = useCanvas.getState().shapes;
+    
+    // Find all lines/arrows connected to this shape
+    Object.values(currentShapes).forEach(shape => {
+      if (shape.type !== 'line' && shape.type !== 'arrow') return;
+      
+      let needsUpdate = false;
+      const updates: Partial<ShapeBase> = {};
+      
+      // Update start point if connected
+      if (shape.startShapeId === shapeId && shape.startAnchor) {
+        const connectedShape = currentShapes[shapeId];
+        if (connectedShape) {
+          const anchorPoint = getAnchorPoint(connectedShape, shape.startAnchor);
+          updates.x = anchorPoint.x;
+          updates.y = anchorPoint.y;
+          needsUpdate = true;
+        }
+      }
+      
+      // Update end point if connected
+      if (shape.endShapeId === shapeId && shape.endAnchor) {
+        const connectedShape = currentShapes[shapeId];
+        if (connectedShape) {
+          const anchorPoint = getAnchorPoint(connectedShape, shape.endAnchor);
+          updates.x2 = anchorPoint.x;
+          updates.y2 = anchorPoint.y;
+          needsUpdate = true;
+        }
+      }
+      
+      if (needsUpdate) {
+        const updatedLine = {
+          ...shape,
+          ...updates,
+          updated_at: Date.now(),
+          updated_by: me.id
+        };
+        useCanvas.getState().upsert(updatedLine);
+        broadcastUpsert(updatedLine);
+      }
+    });
+  };
+  
   const onDragMove = (id: string, e: any) => {
     const node = e.target;
     const currentShape = shapes[id];
@@ -3057,7 +3135,27 @@ export default function Canvas({ onSignOut }: CanvasProps) {
     const deltaY = snappedY - currentShape.y;
     
     // Update the dragged shape and broadcast final position
-    const updatedShape = { ...currentShape, x: snappedX, y: snappedY, updated_at: Date.now(), updated_by: me.id } as ShapeBase;
+    // For lines/arrows, also move the endpoint to preserve length and orientation
+    let updatedShape: ShapeBase;
+    if (currentShape.type === 'line' || currentShape.type === 'arrow') {
+      updatedShape = {
+        ...currentShape,
+        x: snappedX,
+        y: snappedY,
+        x2: currentShape.x2 ? snapToGridCoordinate(currentShape.x2 + deltaX) : undefined,
+        y2: currentShape.y2 ? snapToGridCoordinate(currentShape.y2 + deltaY) : undefined,
+        updated_at: Date.now(),
+        updated_by: me.id
+      };
+    } else {
+      updatedShape = {
+        ...currentShape,
+        x: snappedX,
+        y: snappedY,
+        updated_at: Date.now(),
+        updated_by: me.id
+      } as ShapeBase;
+    }
     useCanvas.getState().upsert(updatedShape);
     broadcastUpsert(updatedShape); // Broadcast final position after drag
     // Auto-save handles persistence
@@ -3099,6 +3197,9 @@ export default function Canvas({ onSignOut }: CanvasProps) {
         }
       });
     }
+    
+    // Update any connected lines/arrows
+    updateConnectedLines(id);
   };
 
   const onTransformEnd = () => {
@@ -3125,6 +3226,9 @@ export default function Canvas({ onSignOut }: CanvasProps) {
     };
     node.scaleX(1); node.scaleY(1);
     useCanvas.getState().upsert(next); broadcastUpsert(next); // Auto-save handles persistence
+    
+    // Update any connected lines/arrows
+    ids.forEach(id => updateConnectedLines(id));
   };
 
   React.useEffect(() => {
@@ -3314,12 +3418,25 @@ export default function Canvas({ onSignOut }: CanvasProps) {
       });
     };
     
+    // Calculate position (for lines/arrows with connections, use calculated start point)
+    let groupX = s.x;
+    let groupY = s.y;
+    
+    if ((s.type === 'line' || s.type === 'arrow') && s.startShapeId && s.startAnchor) {
+      const startShape = shapes[s.startShapeId];
+      if (startShape) {
+        const anchorPoint = getAnchorPoint(startShape, s.startAnchor);
+        groupX = anchorPoint.x;
+        groupY = anchorPoint.y;
+      }
+    }
+    
     return (
       <Group 
         key={s.id}
         id={s.id}
-        x={s.x}
-        y={s.y}
+        x={groupX}
+        y={groupY}
         rotation={s.rotation || 0}
         onTap={onClick} 
         onClick={onClick} 
@@ -3368,6 +3485,7 @@ export default function Canvas({ onSignOut }: CanvasProps) {
               ellipsis={false}
               align={isEmoji(s.text || "") ? "center" : (s.textAlign || "left")}
               verticalAlign={(isEmoji(s.text || "") || s.textAlign === 'center') ? "middle" : "top"}
+              opacity={editingText?.id === s.id ? 0 : 1} // Hide text when editing
               onDblClick={() => {
                 setEditingText({ id: s.id, x: s.x, y: s.y, value: s.text || '' });
               }}
@@ -3497,10 +3615,33 @@ export default function Canvas({ onSignOut }: CanvasProps) {
           <>
             {/* Validate line coordinates to prevent NaN warnings */}
             {(() => {
-              const x2 = typeof s.x2 === 'number' && !isNaN(s.x2) ? s.x2 : s.x + 100;
-              const y2 = typeof s.y2 === 'number' && !isNaN(s.y2) ? s.y2 : s.y;
-              const dx = x2 - s.x;
-              const dy = y2 - s.y;
+              // Calculate start and end points (with connection support)
+              let x1 = s.x;
+              let y1 = s.y;
+              let x2 = typeof s.x2 === 'number' && !isNaN(s.x2) ? s.x2 : s.x + 100;
+              let y2 = typeof s.y2 === 'number' && !isNaN(s.y2) ? s.y2 : s.y;
+              
+              // If connected to shapes, use anchor points
+              if (s.startShapeId && s.startAnchor) {
+                const startShape = shapes[s.startShapeId];
+                if (startShape) {
+                  const anchorPoint = getAnchorPoint(startShape, s.startAnchor);
+                  x1 = anchorPoint.x;
+                  y1 = anchorPoint.y;
+                }
+              }
+              
+              if (s.endShapeId && s.endAnchor) {
+                const endShape = shapes[s.endShapeId];
+                if (endShape) {
+                  const anchorPoint = getAnchorPoint(endShape, s.endAnchor);
+                  x2 = anchorPoint.x;
+                  y2 = anchorPoint.y;
+                }
+              }
+              
+              const dx = x2 - x1;
+              const dy = y2 - y1;
               
               return (
                 <>
@@ -3521,6 +3662,7 @@ export default function Canvas({ onSignOut }: CanvasProps) {
                     stroke={s.stroke || "#000"}
                     strokeWidth={s.strokeWidth || 1}
                     dash={s.dashPattern}
+                    curvature={s.curvature}
                   />
                 </>
               );
@@ -3531,10 +3673,33 @@ export default function Canvas({ onSignOut }: CanvasProps) {
           <>
             {/* Validate arrow coordinates to prevent NaN warnings */}
             {(() => {
-              const x2 = typeof s.x2 === 'number' && !isNaN(s.x2) ? s.x2 : s.x + 100;
-              const y2 = typeof s.y2 === 'number' && !isNaN(s.y2) ? s.y2 : s.y;
-              const dx = x2 - s.x;
-              const dy = y2 - s.y;
+              // Calculate start and end points (with connection support)
+              let x1 = s.x;
+              let y1 = s.y;
+              let x2 = typeof s.x2 === 'number' && !isNaN(s.x2) ? s.x2 : s.x + 100;
+              let y2 = typeof s.y2 === 'number' && !isNaN(s.y2) ? s.y2 : s.y;
+              
+              // If connected to shapes, use anchor points
+              if (s.startShapeId && s.startAnchor) {
+                const startShape = shapes[s.startShapeId];
+                if (startShape) {
+                  const anchorPoint = getAnchorPoint(startShape, s.startAnchor);
+                  x1 = anchorPoint.x;
+                  y1 = anchorPoint.y;
+                }
+              }
+              
+              if (s.endShapeId && s.endAnchor) {
+                const endShape = shapes[s.endShapeId];
+                if (endShape) {
+                  const anchorPoint = getAnchorPoint(endShape, s.endAnchor);
+                  x2 = anchorPoint.x;
+                  y2 = anchorPoint.y;
+                }
+              }
+              
+              const dx = x2 - x1;
+              const dy = y2 - y1;
               
               return (
                 <>
@@ -3556,6 +3721,7 @@ export default function Canvas({ onSignOut }: CanvasProps) {
                     strokeWidth={s.strokeWidth || 1}
                     dash={s.dashPattern}
                     arrowHead={s.arrowHead || "end"}
+                    curvature={s.curvature}
                   />
                 </>
               );
@@ -3903,43 +4069,348 @@ export default function Canvas({ onSignOut }: CanvasProps) {
               </>
             )}
             
-            <Transformer 
-              ref={trRef} 
-              rotateEnabled={
-                selectedIds.length > 0 && 
-                !selectedIds.some(id => {
-                  const shape = shapes[id];
-                  return shape && (shape.type === 'line' || shape.type === 'arrow');
-                })
-              } 
-              onTransformEnd={onTransformEnd} 
-            />
+            {/* Only show Transformer for non-line/arrow shapes */}
+            {selectedIds.length > 0 && !selectedIds.every(id => {
+              const shape = shapes[id];
+              return shape && (shape.type === 'line' || shape.type === 'arrow');
+            }) && (
+              <Transformer 
+                ref={trRef} 
+                rotateEnabled={true}
+                onTransformEnd={onTransformEnd} 
+              />
+            )}
+            
+            {/* Anchor points visualization when dragging line endpoints */}
+            {draggingLineEndpoint && draggingLineEndpoint.lineId && Object.values(shapes).map(shape => {
+              if (shape.type === 'line' || shape.type === 'arrow') return null; // Skip lines/arrows
+              
+              const anchors: Array<'top' | 'right' | 'bottom' | 'left' | 'center'> = ['top', 'right', 'bottom', 'left', 'center'];
+              return anchors.map(anchor => {
+                const anchorPoint = getAnchorPoint(shape, anchor);
+                return (
+                  <Circle
+                    key={`${shape.id}-${anchor}-anchor`}
+                    x={anchorPoint.x}
+                    y={anchorPoint.y}
+                    radius={4}
+                    fill="#ff6b6b"
+                    stroke="#fff"
+                    strokeWidth={1}
+                    opacity={0.7}
+                    listening={false}
+                  />
+                );
+              });
+            })}
+            
+            {/* Custom controls for lines/arrows */}
+            {selectedIds.map(id => {
+              const shape = shapes[id];
+              if (!shape || (shape.type !== 'line' && shape.type !== 'arrow')) return null;
+              
+              // Calculate actual endpoints (considering connections)
+              let x1 = shape.x;
+              let y1 = shape.y;
+              let x2 = shape.x2 || shape.x + 100;
+              let y2 = shape.y2 || shape.y;
+              
+              if (shape.startShapeId && shape.startAnchor) {
+                const startShape = shapes[shape.startShapeId];
+                if (startShape) {
+                  const anchorPoint = getAnchorPoint(startShape, shape.startAnchor);
+                  x1 = anchorPoint.x;
+                  y1 = anchorPoint.y;
+                }
+              }
+              
+              if (shape.endShapeId && shape.endAnchor) {
+                const endShape = shapes[shape.endShapeId];
+                if (endShape) {
+                  const anchorPoint = getAnchorPoint(endShape, shape.endAnchor);
+                  x2 = anchorPoint.x;
+                  y2 = anchorPoint.y;
+                }
+              }
+              
+              // Midpoint for curve control
+              const midX = (x1 + x2) / 2;
+              const midY = (y1 + y2) / 2;
+              
+              // Get control point offset (for bezier curve)
+              const curveOffset = shape.curvature || 0;
+              const angle = Math.atan2(y2 - y1, x2 - x1);
+              const perpAngle = angle + Math.PI / 2;
+              const curveX = midX + Math.cos(perpAngle) * curveOffset;
+              const curveY = midY + Math.sin(perpAngle) * curveOffset;
+              
+              return (
+                <React.Fragment key={`line-controls-${id}`}>
+                  {/* Start endpoint anchor */}
+                  <Circle
+                    x={x1}
+                    y={y1}
+                    radius={6}
+                    fill="#007bff"
+                    stroke="#fff"
+                    strokeWidth={2}
+                    draggable={!shape.startShapeId} // Only draggable if not connected
+                    onDragStart={() => {
+                      useCanvas.getState().pushHistory();
+                      // Set dragging state to show anchor points
+                      setDraggingLineEndpoint({ lineId: shape.id, endpoint: 'start' });
+                    }}
+                    onDragMove={(e) => {
+                      const newX = e.target.x();
+                      const newY = e.target.y();
+                      
+                      // Check for nearby shapes to snap to
+                      let snappedAnchor: { shapeId: string; anchor: 'top' | 'right' | 'bottom' | 'left' | 'center' } | undefined = undefined;
+                      const snapThreshold = 20;
+                      const preFilterDistance = 100; // Only check shapes within 100px for performance
+                      
+                      for (const targetShape of Object.values(shapes)) {
+                        if (targetShape.id === shape.id) continue; // Skip self
+                        if (targetShape.type === 'line' || targetShape.type === 'arrow') continue; // Skip other lines
+                        
+                        // Performance optimization: Skip shapes that are far away
+                        const shapeCenterX = targetShape.x + targetShape.w / 2;
+                        const shapeCenterY = targetShape.y + targetShape.h / 2;
+                        const roughDistance = Math.max(
+                          Math.abs(shapeCenterX - newX),
+                          Math.abs(shapeCenterY - newY)
+                        );
+                        if (roughDistance > preFilterDistance) continue;
+                        
+                        const anchors: Array<'top' | 'right' | 'bottom' | 'left' | 'center'> = ['top', 'right', 'bottom', 'left', 'center'];
+                        for (const anchor of anchors) {
+                          const anchorPoint = getAnchorPoint(targetShape, anchor);
+                          const distance = Math.sqrt(
+                            Math.pow(anchorPoint.x - newX, 2) + Math.pow(anchorPoint.y - newY, 2)
+                          );
+                          
+                          if (distance < snapThreshold) {
+                            snappedAnchor = { shapeId: targetShape.id, anchor };
+                            // Snap to anchor position
+                            e.target.x(anchorPoint.x);
+                            e.target.y(anchorPoint.y);
+                            break;
+                          }
+                        }
+                        if (snappedAnchor) break;
+                      }
+                      
+                      const finalX = e.target.x();
+                      const finalY = e.target.y();
+                      
+                      const updatedShape = {
+                        ...shape,
+                        x: finalX,
+                        y: finalY,
+                        startShapeId: snappedAnchor?.shapeId,
+                        startAnchor: snappedAnchor?.anchor,
+                        updated_at: Date.now(),
+                        updated_by: me.id
+                      };
+                      useCanvas.getState().upsert(updatedShape);
+                      broadcastUpsert(updatedShape);
+                    }}
+                    onDragEnd={() => {
+                      setDraggingLineEndpoint(null);
+                      // Auto-save system will persist changes
+                    }}
+                  />
+                  
+                  {/* End endpoint anchor */}
+                  <Circle
+                    x={x2}
+                    y={y2}
+                    radius={6}
+                    fill="#007bff"
+                    stroke="#fff"
+                    strokeWidth={2}
+                    draggable={!shape.endShapeId} // Only draggable if not connected
+                    onDragStart={() => {
+                      useCanvas.getState().pushHistory();
+                      // Set dragging state to show anchor points
+                      setDraggingLineEndpoint({ lineId: shape.id, endpoint: 'end' });
+                    }}
+                    onDragMove={(e) => {
+                      const newX = e.target.x();
+                      const newY = e.target.y();
+                      
+                      // Check for nearby shapes to snap to
+                      let snappedAnchor: { shapeId: string; anchor: 'top' | 'right' | 'bottom' | 'left' | 'center' } | undefined = undefined;
+                      const snapThreshold = 20;
+                      const preFilterDistance = 100; // Only check shapes within 100px for performance
+                      
+                      for (const targetShape of Object.values(shapes)) {
+                        if (targetShape.id === shape.id) continue; // Skip self
+                        if (targetShape.type === 'line' || targetShape.type === 'arrow') continue; // Skip other lines
+                        
+                        // Performance optimization: Skip shapes that are far away
+                        const shapeCenterX = targetShape.x + targetShape.w / 2;
+                        const shapeCenterY = targetShape.y + targetShape.h / 2;
+                        const roughDistance = Math.max(
+                          Math.abs(shapeCenterX - newX),
+                          Math.abs(shapeCenterY - newY)
+                        );
+                        if (roughDistance > preFilterDistance) continue;
+                        
+                        const anchors: Array<'top' | 'right' | 'bottom' | 'left' | 'center'> = ['top', 'right', 'bottom', 'left', 'center'];
+                        for (const anchor of anchors) {
+                          const anchorPoint = getAnchorPoint(targetShape, anchor);
+                          const distance = Math.sqrt(
+                            Math.pow(anchorPoint.x - newX, 2) + Math.pow(anchorPoint.y - newY, 2)
+                          );
+                          
+                          if (distance < snapThreshold) {
+                            snappedAnchor = { shapeId: targetShape.id, anchor };
+                            // Snap to anchor position
+                            e.target.x(anchorPoint.x);
+                            e.target.y(anchorPoint.y);
+                            break;
+                          }
+                        }
+                        if (snappedAnchor) break;
+                      }
+                      
+                      const finalX = e.target.x();
+                      const finalY = e.target.y();
+                      
+                      const updatedShape = {
+                        ...shape,
+                        x2: finalX,
+                        y2: finalY,
+                        endShapeId: snappedAnchor?.shapeId,
+                        endAnchor: snappedAnchor?.anchor,
+                        updated_at: Date.now(),
+                        updated_by: me.id
+                      };
+                      useCanvas.getState().upsert(updatedShape);
+                      broadcastUpsert(updatedShape);
+                    }}
+                    onDragEnd={() => {
+                      setDraggingLineEndpoint(null);
+                      // Auto-save system will persist changes
+                    }}
+                  />
+                  
+                  {/* Bezier control handle line (visual guide) */}
+                  {curveOffset !== 0 && (
+                    <Line
+                      points={[midX, midY, curveX, curveY]}
+                      stroke="#28a745"
+                      strokeWidth={1}
+                      dash={[4, 4]}
+                      opacity={0.5}
+                      listening={false}
+                    />
+                  )}
+                  
+                  {/* Midpoint curve control - drag perpendicular to line to add curve */}
+                  <Circle
+                    x={curveX}
+                    y={curveY}
+                    radius={5}
+                    fill="#28a745"
+                    stroke="#fff"
+                    strokeWidth={2}
+                    opacity={0.8}
+                    draggable={true}
+                    onDragStart={() => {
+                      useCanvas.getState().pushHistory();
+                    }}
+                    onDragMove={(e) => {
+                      const newX = e.target.x();
+                      const newY = e.target.y();
+                      
+                      // Calculate perpendicular distance from line midpoint
+                      const dx = newX - midX;
+                      const dy = newY - midY;
+                      const perpAngle = Math.atan2(y2 - y1, x2 - x1) + Math.PI / 2;
+                      
+                      // Project onto perpendicular axis to get curvature
+                      const newCurvature = dx * Math.cos(perpAngle) + dy * Math.sin(perpAngle);
+                      
+                      const updatedShape = {
+                        ...shape,
+                        curvature: newCurvature,
+                        pathType: 'curved' as const,
+                        updated_at: Date.now(),
+                        updated_by: me.id
+                      };
+                      useCanvas.getState().upsert(updatedShape);
+                      broadcastUpsert(updatedShape);
+                    }}
+                    onDragEnd={() => {
+                      // Auto-save system will persist changes
+                    }}
+                  />
+                </React.Fragment>
+              );
+            })}
           </Layer>
         </Stage>
         
         {/* Text editing overlay */}
-        {editingText && (
-          <input
-            type="text"
-            value={editingText.value}
-            onChange={(e) => setEditingText({...editingText, value: e.target.value})}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter') {
-                finishTextEdit(true);
-              } else if (e.key === 'Escape') {
-                finishTextEdit(false);
-              }
-            }}
-            onBlur={() => finishTextEdit(true)}
-            autoFocus
-            className="absolute bg-white border-2 border-blue-500 px-2 py-1 text-sm font-mono z-50"
-            style={{
-              left: editingText.x,
-              top: editingText.y,
-              minWidth: '100px'
-            }}
-          />
-        )}
+        {editingText && (() => {
+          // Transform world coordinates to screen coordinates for inline editing
+          const stage = canvasStageRef.current;
+          const shape = shapes[editingText.id];
+          if (!stage || !shape) return null;
+
+          const stagePos = stage.position();
+          const stageScale = stage.scaleX();
+          
+          const screenX = shape.x * stageScale + stagePos.x;
+          const screenY = shape.y * stageScale + stagePos.y;
+          const screenW = shape.w * stageScale;
+          const screenH = shape.h * stageScale;
+          const screenFontSize = (shape.fontSize || 20) * stageScale;
+
+          return (
+            <textarea
+              value={editingText.value}
+              onChange={(e) => setEditingText({...editingText, value: e.target.value})}
+              onKeyDown={(e) => {
+                if (e.key === 'Escape') {
+                  finishTextEdit(false);
+                  e.preventDefault();
+                } else if (e.key === 'Enter' && e.ctrlKey) {
+                  // Ctrl+Enter to finish editing
+                  finishTextEdit(true);
+                  e.preventDefault();
+                }
+                // Allow normal Enter for line breaks
+              }}
+              onBlur={() => finishTextEdit(true)}
+              autoFocus
+              className="absolute bg-white border-2 border-blue-500 px-1 py-1 resize-none z-50 overflow-hidden"
+              style={{
+                left: `${screenX}px`,
+                top: `${screenY}px`,
+                width: `${Math.max(screenW, 100)}px`,
+                height: `${Math.max(screenH, 30)}px`,
+                fontSize: `${screenFontSize}px`,
+                fontFamily: shape.fontFamily || 'Arial',
+                fontWeight: shape.fontWeight || 'normal',
+                fontStyle: shape.fontStyle || 'normal',
+                textAlign: shape.textAlign || 'left',
+                color: shape.color || '#111',
+                lineHeight: '1.4',
+                outline: 'none',
+                boxShadow: '0 2px 8px rgba(0,0,0,0.15)',
+              }}
+              onInput={(e) => {
+                // Auto-resize height based on content
+                const textarea = e.currentTarget;
+                textarea.style.height = 'auto';
+                textarea.style.height = `${Math.max(textarea.scrollHeight, screenH)}px`;
+              }}
+            />
+          );
+        })()}
         
         {/* Multiplayer cursors - filtered by current room, transformed to screen coordinates */}
         {Object.values(cursors)
@@ -4143,35 +4614,37 @@ function CategorizedToolbar({ centerOnNewShape, stageRef, isBoxSelectMode, setIs
   
   // Icon creation functions (as text objects with specific symbols)
   const addIcon = (icon: string, tooltipName: string) => {
+    // Save history before creating
+    useCanvas.getState().pushHistory();
+    
+    const { me, shapes } = useCanvas.getState();
+    
+    // Icons are text symbols (not emojis), so render as text for proper display
+    const size = 48;
+    const position = findBlankArea(shapes, size, size);
+    
+    // Helper function to apply snapping if enabled
+    const applySnap = (value: number) => {
+      if (!snapToGrid) return value;
+      const gridSize = 25;
+      return Math.round(value / gridSize) * gridSize;
+    };
+
     const newShape: ShapeBase = {
       id: crypto.randomUUID(),
       type: 'text',
-      x: 100,
-      y: 100,
-      w: 50,  // Adjusted for better spacing
-      h: 50,  // Adjusted for better spacing
+      x: applySnap(position.x),
+      y: applySnap(position.y),
+      w: size,
+      h: size,
       text: icon,
-      fontSize: 40,  // Larger for visibility
+      fontSize: 40,
       color: colors.primary,
-      textAlign: 'center',  // Center horizontally
+      textAlign: 'center',
       updated_at: Date.now(),
-      updated_by: useCanvas.getState().me.id,
-      zIndex: Object.keys(useCanvas.getState().shapes).length
+      updated_by: me.id,
+      zIndex: Object.keys(shapes).length
     };
-    
-    // Apply snap to grid if enabled
-    if (snapToGrid) {
-      const gridSize = 25;
-      newShape.x = Math.round(newShape.x / gridSize) * gridSize;
-      newShape.y = Math.round(newShape.y / gridSize) * gridSize;
-    }
-    
-    // Find blank area and add shape
-    const blankPos = findBlankArea(useCanvas.getState().shapes, newShape.w, newShape.h);
-    newShape.x = blankPos.x;
-    newShape.y = blankPos.y;
-    
-    useCanvas.getState().pushHistory();
     useCanvas.getState().upsert(newShape);
     useCanvas.getState().select([newShape.id]);
     broadcastUpsert(newShape);
@@ -4254,12 +4727,35 @@ function CategorizedToolbar({ centerOnNewShape, stageRef, isBoxSelectMode, setIs
   const [savedComponents, setSavedComponents] = useState<any[]>([]);
   const [componentRefreshKey, setComponentRefreshKey] = useState(0);
   
-  const refreshComponents = () => {
+  const refreshComponents = async () => {
     try {
-      const components = JSON.parse(localStorage.getItem('collabcanvas_components') || '[]');
-      setSavedComponents(components);
+      // Fetch components from Supabase (user-specific)
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) {
+        // If not authenticated, fall back to localStorage
+        const components = JSON.parse(localStorage.getItem('collabcanvas_components') || '[]');
+        setSavedComponents(components);
+        return;
+      }
+
+      const { data, error } = await supabase
+        .from('components')
+        .select('*')
+        .eq('user_id', user.id)
+        .order('created_at', { ascending: false });
+
+      if (error) {
+        console.error('Failed to fetch components from Supabase:', error);
+        // Fall back to localStorage on error
+        const components = JSON.parse(localStorage.getItem('collabcanvas_components') || '[]');
+        setSavedComponents(components);
+        return;
+      }
+
+      setSavedComponents(data || []);
     } catch (error) {
       console.error('Failed to load components:', error);
+      setSavedComponents([]);
     }
   };
   
@@ -4687,40 +5183,62 @@ function isEmoji(text: string): boolean {
   return false;
 }
 
-// Helper function to find a blank area on canvas
-function findBlankArea(shapes: Record<string, ShapeBase>, width: number, height: number): { x: number; y: number } {
-  const canvasWidth = 1200; // Canvas visible area width
-  const canvasHeight = 800; // Canvas visible area height
-  const margin = 20; // Minimum distance from other shapes
-  const maxAttempts = 50; // Prevent infinite loops
+// Helper function to calculate anchor point on a shape
+function getAnchorPoint(
+  shape: ShapeBase, 
+  anchor: 'top' | 'right' | 'bottom' | 'left' | 'center'
+): { x: number; y: number } {
+  const { x, y, w, h } = shape;
   
-  for (let attempt = 0; attempt < maxAttempts; attempt++) {
-    const x = margin + Math.random() * (canvasWidth - width - margin * 2);
-    const y = margin + Math.random() * (canvasHeight - height - margin * 2);
-    
-    // Check if this position overlaps with any existing shape
-    let hasCollision = false;
-    for (const shape of Object.values(shapes)) {
-      if (x < shape.x + shape.w + margin &&
-          x + width + margin > shape.x &&
-          y < shape.y + shape.h + margin &&
-          y + height + margin > shape.y) {
-        hasCollision = true;
-        break;
-      }
-    }
-    
-    if (!hasCollision) {
-      return { x, y };
-    }
+  switch (anchor) {
+    case 'top':
+      return { x: x + w / 2, y: y };
+    case 'right':
+      return { x: x + w, y: y + h / 2 };
+    case 'bottom':
+      return { x: x + w / 2, y: y + h };
+    case 'left':
+      return { x: x, y: y + h / 2 };
+    case 'center':
+      return { x: x + w / 2, y: y + h / 2 };
+    default:
+      return { x: x + w / 2, y: y + h / 2 };
   }
-  
-  // Fallback to random position if no blank area found
-  return {
-    x: 100 + Math.random() * 200,
-    y: 100 + Math.random() * 200
-  };
 }
+
+// Helper function to find the nearest anchor point on a shape to a given position
+// TODO: Use this for auto-snapping feature
+// function findNearestAnchor(
+//   shape: ShapeBase,
+//   x: number,
+//   y: number,
+//   threshold: number = 20
+// ): { anchor: 'top' | 'right' | 'bottom' | 'left' | 'center' | null; distance: number } {
+//   const anchors: Array<'top' | 'right' | 'bottom' | 'left' | 'center'> = ['top', 'right', 'bottom', 'left', 'center'];
+//   
+//   let nearestAnchor: typeof anchors[number] | null = null;
+//   let minDistance = Infinity;
+//   
+//   for (const anchor of anchors) {
+//     const anchorPoint = getAnchorPoint(shape, anchor);
+//     const distance = Math.sqrt(
+//       Math.pow(anchorPoint.x - x, 2) + Math.pow(anchorPoint.y - y, 2)
+//     );
+//     
+//     if (distance < minDistance) {
+//       minDistance = distance;
+//       nearestAnchor = anchor;
+//     }
+//   }
+//   
+//   if (minDistance <= threshold) {
+//     return { anchor: nearestAnchor, distance: minDistance };
+//   }
+//   
+//   return { anchor: null, distance: minDistance };
+// }
+
+// Helper function to find a blank area on canvas
 
 // Helper function to center the stage on a shape
 function centerStageOnShape(shape: ShapeBase, stageRef: React.RefObject<Konva.Stage>) {
@@ -5072,9 +5590,11 @@ function FloatingAIWidget() {
         // Success! Execute the actions
         if (response.result && Array.isArray(response.result)) {
           for (const action of response.result) {
-            const p = action.params;
+            // Support both normalized (name/args) and legacy (tool/params) formats
+            const toolName = action.name || action.tool;
+            const p = action.args || action.params;
             
-            switch (action.tool) {
+            switch (toolName) {
               case 'createShape':
                 if (p) tools.createShape(p.type, p.x, p.y, p.w, p.h, p.color, p.text);
                 break;
@@ -5102,6 +5622,49 @@ function FloatingAIWidget() {
               case 'changeStroke':
                 if (p) tools.changeStroke(p.id, p.stroke, p.strokeWidth);
                 break;
+              case 'updateText':
+                if (p) tools.updateText(p.id, p.text);
+                break;
+              case 'changeFontSize':
+                if (p) tools.changeFontSize(p.id, p.fontSize);
+                break;
+              case 'changeFontFamily':
+                if (p) tools.changeFontFamily(p.id, p.fontFamily);
+                break;
+              case 'distributeShapes':
+                if (p && p.ids && p.direction) tools.distributeShapes(p.ids, p.direction);
+                break;
+              case 'formatText':
+                if (p && p.id) tools.formatText(p.id, p.formatting || {});
+                break;
+              case 'generateAIImage':
+                if (p && p.frameId && p.prompt) {
+                  tools.generateAIImage(p.frameId, p.prompt).catch((error: Error) => {
+                    showToast(`AI image generation failed: ${error.message}`, 'error');
+                  });
+                }
+                break;
+              case 'undo':
+                tools.undo();
+                break;
+              case 'redo':
+                tools.redo();
+                break;
+              case 'matchSize':
+                if (p && p.sourceId && p.targetId) tools.matchSize(p.sourceId, p.targetId);
+                break;
+              case 'matchPosition':
+                if (p && p.sourceId && p.targetId) tools.matchPosition(p.sourceId, p.targetId);
+                break;
+              case 'copyStyle':
+                if (p && p.sourceId && p.targetIds) tools.copyStyle(p.sourceId, p.targetIds);
+                break;
+              case 'arrangeInGrid':
+                if (p && p.ids && p.columns) tools.arrangeInGrid(p.ids, p.columns, p.gap);
+                break;
+              case 'stackVertically':
+                if (p && p.ids) tools.stackVertically(p.ids, p.gap);
+                break;
               case 'deleteShape':
                 if (p) tools.deleteShape(p.id);
                 break;
@@ -5117,8 +5680,45 @@ function FloatingAIWidget() {
               case 'alignShapes':
                 if (p) tools.alignShapes(p.ids, p.alignment);
                 break;
+              case 'sendToFront':
+                if (p) tools.sendToFront(p.id);
+                break;
+              case 'sendToBack':
+                if (p) tools.sendToBack(p.id);
+                break;
+              case 'moveUp':
+                if (p) tools.moveUp(p.id);
+                break;
+              case 'moveDown':
+                if (p) tools.moveDown(p.id);
+                break;
+              case 'createGrid':
+                // Skip createGrid if shapes were already created by rule-based parser
+                if (p && p.ids && Array.isArray(p.ids) && p.ids.length > 0) {
+                  console.log(`[AI] createGrid already created ${p.ids.length} shapes, skipping re-execution`);
+                  break;
+                }
+                
+                // Handle grid creation - OpenAI returns rows/cols, we need gx/gy
+                if (p) {
+                  console.log('[AI] createGrid params:', p);
+                  // Map rows/cols to gx/gy for compatibility
+                  const gx = p.cols || p.gx || 5;
+                  const gy = p.rows || p.gy || 5;
+                  const shapeType = p.shapeType || p.type || 'triangle'; // Default to triangle for the command
+                  
+                  // Execute grid creation using the rule-based parser
+                  const gridCommand = `create a ${gx}x${gy} grid of ${shapeType}s`;
+                  console.log('[AI] Executing grid command:', gridCommand);
+                  const { interpret } = await import('./ai/agent');
+                  await interpret(gridCommand);
+                }
+                break;
+              case 'connectShapes':
+                if (p) tools.connectShapes(p.startShapeId, p.endShapeId, p.connectionType || 'arrow');
+                break;
               default:
-                console.warn('[AI] Unknown tool:', action.tool);
+                console.warn('[AI] Unknown tool:', toolName);
             }
           }
         }
@@ -5763,7 +6363,7 @@ function ContextMenu({ x, y, shapeIds, onClose }: {
     }
   };
 
-  const handleSaveAsComponent = (shapeIds: string[]) => {
+  const handleSaveAsComponent = async (shapeIds: string[]) => {
     const componentName = prompt('Enter component name:', 'My Component');
     if (!componentName || !componentName.trim()) return;
     
@@ -5788,8 +6388,46 @@ function ContextMenu({ x, y, shapeIds, onClose }: {
       updated_by: undefined,
     }));
     
-    // Store in localStorage
     try {
+      // Get current user
+      const { data: { user } } = await supabase.auth.getUser();
+      
+      if (!user) {
+        // If not authenticated, fall back to localStorage
+        const existingComponents = JSON.parse(localStorage.getItem('collabcanvas_components') || '[]');
+        const newComponent = {
+          id: crypto.randomUUID(),
+          name: componentName.trim(),
+          shapes: normalizedShapes,
+          created_at: Date.now(),
+        };
+        existingComponents.push(newComponent);
+        localStorage.setItem('collabcanvas_components', JSON.stringify(existingComponents));
+        
+        // Dispatch event to refresh components list
+        window.dispatchEvent(new Event('componentsUpdated'));
+        
+        showToast(`Component "${componentName}" saved!`, 'success');
+        return;
+      }
+
+      // Save to Supabase
+      const { error } = await supabase
+        .from('components')
+        .insert({
+          user_id: user.id,
+          canvas_id: null, // Optional: could use currentCanvas?.id if available
+          name: componentName.trim(),
+          shapes: normalizedShapes,
+        });
+
+      if (error) {
+        console.error('Failed to save component to Supabase:', error);
+        showToast('Failed to save component', 'error');
+        return;
+      }
+      
+      // Also save to localStorage as backup
       const existingComponents = JSON.parse(localStorage.getItem('collabcanvas_components') || '[]');
       const newComponent = {
         id: crypto.randomUUID(),
@@ -6132,34 +6770,38 @@ function ContextMenu({ x, y, shapeIds, onClose }: {
               </div>
             </div>
             
-            {/* Text Outline Color */}
-            <div className="flex items-center justify-between">
-              <span className="text-sm" style={{ color: colors.text }}>Outline Color:</span>
-              <button
-                className="w-6 h-6 rounded border border-gray-300 hover:border-gray-500"
-                style={{ backgroundColor: shape.stroke || '#000000' }}
-                onClick={() => setShowColorPicker(showColorPicker === 'stroke' ? null : 'stroke')}
-              />
-          </div>
-            
-            {/* Text Outline Width */}
-            <div className="flex items-center justify-between">
-              <span className="text-sm" style={{ color: colors.text }}>Outline Width:</span>
-              <input
-                type="range"
-                min="0"
-                max="5"
-                value={shape.strokeWidth || 0}
-                onChange={(e) => updateShape({ strokeWidth: Number(e.target.value) })}
-                className="w-16"
-              />
-              <span className="text-xs w-6 text-center" style={{ color: colors.textMuted }}>{shape.strokeWidth || 0}</span>
-          </div>
+            {/* Text Outline Color - Hide for icons (single character text symbols) */}
+            {!isEmoji(shape.text || "") && (shape.text || "").length > 2 && (
+              <>
+                <div className="flex items-center justify-between">
+                  <span className="text-sm" style={{ color: colors.text }}>Outline Color:</span>
+                  <button
+                    className="w-6 h-6 rounded border border-gray-300 hover:border-gray-500"
+                    style={{ backgroundColor: shape.stroke || '#000000' }}
+                    onClick={() => setShowColorPicker(showColorPicker === 'stroke' ? null : 'stroke')}
+                  />
+                </div>
+                
+                {/* Text Outline Width */}
+                <div className="flex items-center justify-between">
+                  <span className="text-sm" style={{ color: colors.text }}>Outline Width:</span>
+                  <input
+                    type="range"
+                    min="0"
+                    max="5"
+                    value={shape.strokeWidth || 0}
+                    onChange={(e) => updateShape({ strokeWidth: Number(e.target.value) })}
+                    className="w-16"
+                  />
+                  <span className="text-xs w-6 text-center" style={{ color: colors.textMuted }}>{shape.strokeWidth || 0}</span>
+                </div>
+              </>
+            )}
           </>
         )}
         
         {/* Shape-specific controls */}
-        {shape.type !== 'text' && (
+        {shape.type !== 'text' && shape.type !== 'image' && (
           <>
             {/* Fill Color */}
             <div className="flex items-center justify-between">
@@ -6405,20 +7047,51 @@ function ImageShape({ imageUrl, width, height, stroke, strokeWidth }: {
   imageUrl: string; width: number; height: number; stroke?: string; strokeWidth?: number;
 }) {
   const [image, setImage] = useState<HTMLImageElement | null>(null);
+  const [loadError, setLoadError] = useState(false);
 
   useEffect(() => {
     const img = new window.Image();
     img.crossOrigin = 'anonymous'; // Handle CORS
     img.onload = () => {
       setImage(img);
+      setLoadError(false);
     };
     img.onerror = () => {
       console.error('Failed to load image:', imageUrl);
+      setLoadError(true);
     };
     img.src = imageUrl;
   }, [imageUrl]);
 
   const hasStroke = stroke && strokeWidth && strokeWidth > 0;
+
+  // If image failed to load and it's a Twemoji URL, try to extract and render as text
+  if (loadError && imageUrl.includes('twemoji')) {
+    // Extract the unicode codepoint from the URL (e.g., 2713.png -> ✓)
+    const match = imageUrl.match(/\/([0-9a-f]+)\.png$/i);
+    if (match) {
+      const codepoint = match[1];
+      try {
+        const char = String.fromCodePoint(parseInt(codepoint, 16));
+        // Render as text instead (fallback for old icon shapes)
+        return (
+          <KText
+            x={0}
+            y={0}
+            text={char}
+            fontSize={Math.min(width, height) * 0.8}
+            fill="#3b82f6"
+            width={width}
+            height={height}
+            align="center"
+            verticalAlign="middle"
+          />
+        );
+      } catch (e) {
+        // If conversion fails, show error placeholder
+      }
+    }
+  }
 
   if (!image) {
     // Show loading placeholder
@@ -6464,9 +7137,44 @@ function ImageShape({ imageUrl, width, height, stroke, strokeWidth }: {
 }
 
 // Line and Arrow Shape Components
-function LineShape({ x1, y1, x2, y2, stroke, strokeWidth, dash }: {
-  x1: number; y1: number; x2: number; y2: number; stroke: string; strokeWidth: number; dash?: number[];
+function LineShape({ x1, y1, x2, y2, stroke, strokeWidth, dash, curvature }: {
+  x1: number; y1: number; x2: number; y2: number; stroke: string; strokeWidth: number; dash?: number[]; curvature?: number;
 }) {
+  // If curved, render as quadratic bezier
+  if (curvature && Math.abs(curvature) > 1) {
+    // Calculate control point
+    const midX = (x1 + x2) / 2;
+    const midY = (y1 + y2) / 2;
+    const angle = Math.atan2(y2 - y1, x2 - x1);
+    const perpAngle = angle + Math.PI / 2;
+    const controlX = midX + Math.cos(perpAngle) * curvature;
+    const controlY = midY + Math.sin(perpAngle) * curvature;
+    
+    // Generate smooth curve points
+    const numPoints = 20;
+    const points: number[] = [];
+    for (let i = 0; i <= numPoints; i++) {
+      const t = i / numPoints;
+      const oneMinusT = 1 - t;
+      const px = oneMinusT * oneMinusT * x1 + 2 * oneMinusT * t * controlX + t * t * x2;
+      const py = oneMinusT * oneMinusT * y1 + 2 * oneMinusT * t * controlY + t * t * y2;
+      points.push(px, py);
+    }
+    
+    return (
+      <Line
+        points={points}
+        stroke={stroke}
+        strokeWidth={strokeWidth}
+        dash={dash}
+        lineCap="round"
+        lineJoin="round"
+        tension={0}
+      />
+    );
+  }
+  
+  // Straight line
   return (
     <Line
       points={[x1, y1, x2, y2]}
@@ -6479,13 +7187,98 @@ function LineShape({ x1, y1, x2, y2, stroke, strokeWidth, dash }: {
   );
 }
 
-function ArrowShape({ x1, y1, x2, y2, stroke, strokeWidth, dash, arrowHead }: {
-  x1: number; y1: number; x2: number; y2: number; stroke: string; strokeWidth: number; dash?: number[]; arrowHead: string;
+function ArrowShape({ x1, y1, x2, y2, stroke, strokeWidth, dash, arrowHead, curvature }: {
+  x1: number; y1: number; x2: number; y2: number; stroke: string; strokeWidth: number; dash?: number[]; arrowHead: string; curvature?: number;
 }) {
-  // Calculate arrow head points
-  const angle = Math.atan2(y2 - y1, x2 - x1);
   const headLength = Math.max(10, strokeWidth * 3);
   const headAngle = Math.PI / 6; // 30 degrees
+  
+  // If curved, render as quadratic bezier
+  if (curvature && Math.abs(curvature) > 1) {
+    // Calculate control point
+    const midX = (x1 + x2) / 2;
+    const midY = (y1 + y2) / 2;
+    const lineAngle = Math.atan2(y2 - y1, x2 - x1);
+    const perpAngle = lineAngle + Math.PI / 2;
+    const controlX = midX + Math.cos(perpAngle) * curvature;
+    const controlY = midY + Math.sin(perpAngle) * curvature;
+    
+    // Generate smooth curve points
+    const numPoints = 20;
+    const points: number[] = [];
+    for (let i = 0; i <= numPoints; i++) {
+      const t = i / numPoints;
+      const oneMinusT = 1 - t;
+      const px = oneMinusT * oneMinusT * x1 + 2 * oneMinusT * t * controlX + t * t * x2;
+      const py = oneMinusT * oneMinusT * y1 + 2 * oneMinusT * t * controlY + t * t * y2;
+      points.push(px, py);
+    }
+    
+    // Calculate tangent angle at end for arrow head
+    const t = 0.98; // Slightly before end for tangent
+    const oneMinusT = 1 - t;
+    const px1 = oneMinusT * oneMinusT * x1 + 2 * oneMinusT * t * controlX + t * t * x2;
+    const py1 = oneMinusT * oneMinusT * y1 + 2 * oneMinusT * t * controlY + t * t * y2;
+    const endAngle = Math.atan2(y2 - py1, x2 - px1);
+    
+    // Calculate tangent angle at start for arrow head
+    const t2 = 0.02; // Slightly after start for tangent
+    const oneMinusT2 = 1 - t2;
+    const px2 = oneMinusT2 * oneMinusT2 * x1 + 2 * oneMinusT2 * t2 * controlX + t2 * t2 * x2;
+    const py2 = oneMinusT2 * oneMinusT2 * y1 + 2 * oneMinusT2 * t2 * controlY + t2 * t2 * y2;
+    const startAngle = Math.atan2(py2 - y1, px2 - x1);
+    
+    // Arrow head points at end
+    const x3 = x2 - headLength * Math.cos(endAngle - headAngle);
+    const y3 = y2 - headLength * Math.sin(endAngle - headAngle);
+    const x4 = x2 - headLength * Math.cos(endAngle + headAngle);
+    const y4 = y2 - headLength * Math.sin(endAngle + headAngle);
+    
+    return (
+      <>
+        {/* Curved line */}
+        <Line
+          points={points}
+          stroke={stroke}
+          strokeWidth={strokeWidth}
+          dash={dash}
+          lineCap="round"
+          lineJoin="round"
+          tension={0}
+        />
+        {/* Arrow head at end */}
+        {(arrowHead === "end" || arrowHead === "both") && (
+          <Line
+            points={[x3, y3, x2, y2, x4, y4]}
+            stroke={stroke}
+            strokeWidth={strokeWidth}
+            lineCap="round"
+            lineJoin="round"
+          />
+        )}
+        {/* Arrow head at start if both */}
+        {arrowHead === "both" && (
+          <Line
+            points={[
+              x1 + headLength * Math.cos(startAngle - headAngle + Math.PI),
+              y1 + headLength * Math.sin(startAngle - headAngle + Math.PI),
+              x1,
+              y1,
+              x1 + headLength * Math.cos(startAngle + headAngle + Math.PI),
+              y1 + headLength * Math.sin(startAngle + headAngle + Math.PI)
+            ]}
+            stroke={stroke}
+            strokeWidth={strokeWidth}
+            lineCap="round"
+            lineJoin="round"
+          />
+        )}
+      </>
+    );
+  }
+  
+  // Straight arrow
+  const angle = Math.atan2(y2 - y1, x2 - x1);
   
   // Arrow head points
   const x3 = x2 - headLength * Math.cos(angle - headAngle);

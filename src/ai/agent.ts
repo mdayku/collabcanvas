@@ -1,7 +1,7 @@
 import type { ShapeBase } from "../types";
 import { useCanvas } from "../state/store";
 import { supabase } from "../lib/supabaseClient";
-import { callOpenAI, isOpenAIConfigured } from "../services/openaiService";
+import { callOpenAI, isOpenAIConfigured, generateImageWithDALLE } from "../services/openaiService";
 import { callGroq, isGroqConfigured } from "../services/groqService";
 
 
@@ -29,10 +29,117 @@ export const tools = {
   resizeShape: (id:string, w:number, h:number) => up(id, { w, h }),
   rotateShape: (id:string, deg:number) => up(id, { rotation: deg }),
   changeColor: (id:string, color:string) => up(id, { color }),
-  changeStroke: (id:string, stroke:string, strokeWidth?:number) => {
-    const updates: Partial<ShapeBase> = { stroke };
+  changeStroke: (id:string, stroke?:string, strokeWidth?:number) => {
+    const updates: Partial<ShapeBase> = {};
+    if (stroke !== undefined) updates.stroke = stroke;
     if (strokeWidth !== undefined) updates.strokeWidth = strokeWidth;
     return up(id, updates);
+  },
+  updateText: (id:string, newText:string) => up(id, { text: newText }),
+  changeFontSize: (id:string, fontSize:number) => up(id, { fontSize }),
+  changeFontFamily: (id:string, fontFamily:string) => up(id, { fontFamily }),
+  formatText: (id:string, formatting: { bold?: boolean; italic?: boolean; underline?: boolean; align?: 'left' | 'center' | 'right' }) => {
+    const updates: Partial<ShapeBase> = {};
+    if (formatting.bold !== undefined) updates.fontWeight = formatting.bold ? 'bold' : 'normal';
+    if (formatting.italic !== undefined) updates.fontStyle = formatting.italic ? 'italic' : 'normal';
+    if (formatting.underline !== undefined) updates.textDecoration = formatting.underline ? 'underline' : 'none';
+    if (formatting.align) updates.textAlign = formatting.align;
+    return up(id, updates);
+  },
+  distributeShapes: (ids: string[], direction: 'horizontal' | 'vertical') => {
+    if (ids.length < 3) return; // Need at least 3 shapes to distribute
+    
+    useCanvas.getState().pushHistory();
+    const shapes = ids.map(id => useCanvas.getState().shapes[id]).filter(Boolean);
+    if (shapes.length < 3) return;
+    
+    // Sort shapes by position
+    const sorted = [...shapes].sort((a, b) => 
+      direction === 'horizontal' ? a.x - b.x : a.y - b.y
+    );
+    
+    // Calculate total space and gap
+    if (direction === 'horizontal') {
+      const first = sorted[0];
+      const last = sorted[sorted.length - 1];
+      const totalSpace = (last.x + last.w) - first.x;
+      const totalShapeWidth = sorted.reduce((sum, s) => sum + s.w, 0);
+      const gap = (totalSpace - totalShapeWidth) / (sorted.length - 1);
+      
+      // Position shapes evenly
+      let currentX = first.x + first.w + gap;
+      for (let i = 1; i < sorted.length - 1; i++) {
+        up(sorted[i].id, { x: currentX });
+        currentX += sorted[i].w + gap;
+      }
+    } else {
+      const first = sorted[0];
+      const last = sorted[sorted.length - 1];
+      const totalSpace = (last.y + last.h) - first.y;
+      const totalShapeHeight = sorted.reduce((sum, s) => sum + s.h, 0);
+      const gap = (totalSpace - totalShapeHeight) / (sorted.length - 1);
+      
+      // Position shapes evenly
+      let currentY = first.y + first.h + gap;
+      for (let i = 1; i < sorted.length - 1; i++) {
+        up(sorted[i].id, { y: currentY });
+        currentY += sorted[i].h + gap;
+      }
+    }
+  },
+  generateAIImage: async (frameId: string, prompt: string) => {
+    const frame = useCanvas.getState().shapes[frameId];
+    if (!frame || frame.type !== 'frame') {
+      console.error('[AI] generateAIImage: shape is not a frame or doesn\'t exist');
+      return null;
+    }
+    
+    useCanvas.getState().pushHistory();
+    
+    // Set loading state
+    const loadingFrame = {
+      ...frame,
+      isGenerating: true,
+      updated_at: Date.now(),
+      updated_by: useCanvas.getState().me.id
+    };
+    useCanvas.getState().upsert(loadingFrame);
+    broadcastUpsert(loadingFrame);
+    
+    try {
+      const imageUrl = await generateImageWithDALLE(prompt, frame.w, frame.h);
+      
+      // Update frame with generated image
+      const updatedFrame = {
+        ...frame,
+        isGenerating: false,
+        aiPrompt: prompt,
+        generatedImageUrl: imageUrl,
+        updated_at: Date.now(),
+        updated_by: useCanvas.getState().me.id
+      };
+      
+      useCanvas.getState().upsert(updatedFrame);
+      broadcastUpsert(updatedFrame);
+      persist(updatedFrame);
+      
+      return imageUrl;
+    } catch (error) {
+      console.error('[AI] AI image generation failed:', error);
+      
+      // Reset loading state on error
+      const errorFrame = {
+        ...frame,
+        isGenerating: false,
+        updated_at: Date.now(),
+        updated_by: useCanvas.getState().me.id
+      };
+      
+      useCanvas.getState().upsert(errorFrame);
+      broadcastUpsert(errorFrame);
+      
+      throw error;
+    }
   },
   deleteShape: (id:string) => {
     useCanvas.getState().pushHistory();
@@ -177,6 +284,294 @@ export const tools = {
       const maxY = Math.max(...shapes.map(s => s.y + (s.h || 0)));
       shapes.forEach(s => up(s.id, { y: maxY - (s.h || 0) }));
     }
+  },
+  sendToFront: (id: string) => {
+    useCanvas.getState().pushHistory();
+    const shapes = useCanvas.getState().shapes;
+    const maxZIndex = Math.max(...Object.values(shapes).map(s => s.zIndex || 0));
+    up(id, { zIndex: maxZIndex + 1 });
+  },
+  sendToBack: (id: string) => {
+    useCanvas.getState().pushHistory();
+    const shapes = useCanvas.getState().shapes;
+    const minZIndex = Math.min(...Object.values(shapes).map(s => s.zIndex || 0));
+    up(id, { zIndex: minZIndex - 1 });
+  },
+  moveUp: (id: string) => {
+    useCanvas.getState().pushHistory();
+    const shape = useCanvas.getState().shapes[id];
+    if (shape) up(id, { zIndex: (shape.zIndex || 0) + 1 });
+  },
+  moveDown: (id: string) => {
+    useCanvas.getState().pushHistory();
+    const shape = useCanvas.getState().shapes[id];
+    if (shape) up(id, { zIndex: (shape.zIndex || 0) - 1 });
+  },
+  matchSize: (sourceId: string, targetId: string) => {
+    const source = useCanvas.getState().shapes[sourceId];
+    const target = useCanvas.getState().shapes[targetId];
+    if (!source || !target) return;
+    
+    useCanvas.getState().pushHistory();
+    up(targetId, { w: source.w, h: source.h });
+  },
+  matchPosition: (sourceId: string, targetId: string) => {
+    const source = useCanvas.getState().shapes[sourceId];
+    const target = useCanvas.getState().shapes[targetId];
+    if (!source || !target) return;
+    
+    useCanvas.getState().pushHistory();
+    up(targetId, { x: source.x, y: source.y });
+  },
+  copyStyle: (sourceId: string, targetIds: string[]) => {
+    const source = useCanvas.getState().shapes[sourceId];
+    if (!source) return;
+    
+    useCanvas.getState().pushHistory();
+    const styleToCopy: Partial<ShapeBase> = {};
+    if (source.color !== undefined) styleToCopy.color = source.color;
+    if (source.stroke !== undefined) styleToCopy.stroke = source.stroke;
+    if (source.strokeWidth !== undefined) styleToCopy.strokeWidth = source.strokeWidth;
+    if (source.fontSize !== undefined) styleToCopy.fontSize = source.fontSize;
+    if (source.fontFamily !== undefined) styleToCopy.fontFamily = source.fontFamily;
+    if (source.fontWeight !== undefined) styleToCopy.fontWeight = source.fontWeight;
+    if (source.fontStyle !== undefined) styleToCopy.fontStyle = source.fontStyle;
+    if (source.textDecoration !== undefined) styleToCopy.textDecoration = source.textDecoration;
+    if (source.textAlign !== undefined) styleToCopy.textAlign = source.textAlign;
+    
+    targetIds.forEach(targetId => up(targetId, styleToCopy));
+  },
+  undo: () => useCanvas.getState().undo(),
+  redo: () => useCanvas.getState().redo(),
+  arrangeInGrid: (ids: string[], columns: number, gap: number = 20) => {
+    if (ids.length < 2) return;
+    
+    useCanvas.getState().pushHistory();
+    const shapes = ids.map(id => useCanvas.getState().shapes[id]).filter(Boolean);
+    if (shapes.length < 2) return;
+    
+    // Find the top-left position (use first shape)
+    const startX = shapes[0].x;
+    const startY = shapes[0].y;
+    
+    // Arrange in grid
+    let row = 0;
+    let col = 0;
+    shapes.forEach((shape) => {
+      const x = startX + col * (shape.w + gap);
+      const y = startY + row * (shape.h + gap);
+      up(shape.id, { x, y });
+      
+      col++;
+      if (col >= columns) {
+        col = 0;
+        row++;
+      }
+    });
+  },
+  stackVertically: (ids: string[], gap: number = 10) => {
+    if (ids.length < 2) return;
+    
+    useCanvas.getState().pushHistory();
+    const shapes = ids.map(id => useCanvas.getState().shapes[id]).filter(Boolean);
+    if (shapes.length < 2) return;
+    
+    // Start from the first shape's position
+    let currentY = shapes[0].y + shapes[0].h + gap;
+    
+    // Stack the rest below
+    for (let i = 1; i < shapes.length; i++) {
+      up(shapes[i].id, { y: currentY });
+      currentY += shapes[i].h + gap;
+    }
+  },
+  selectByType: (type: string) => {
+    const shapes = useCanvas.getState().shapes;
+    const matchingIds = Object.values(shapes)
+      .filter(s => s.type === type)
+      .map(s => s.id);
+    
+    if (matchingIds.length > 0) {
+      useCanvas.getState().select(matchingIds);
+      return matchingIds;
+    }
+    return [];
+  },
+  selectByColor: (color: string) => {
+    const shapes = useCanvas.getState().shapes;
+    const normalizedColor = color.toLowerCase();
+    const matchingIds = Object.values(shapes)
+      .filter(s => s.color && s.color.toLowerCase().includes(normalizedColor))
+      .map(s => s.id);
+    
+    if (matchingIds.length > 0) {
+      useCanvas.getState().select(matchingIds);
+      return matchingIds;
+    }
+    return [];
+  },
+  selectByRegion: (x: number, y: number, w: number, h: number) => {
+    const shapes = useCanvas.getState().shapes;
+    const matchingIds = Object.values(shapes)
+      .filter(s => {
+        // Check if shape overlaps with the region
+        return s.x < x + w && s.x + s.w > x && s.y < y + h && s.y + s.h > y;
+      })
+      .map(s => s.id);
+    
+    if (matchingIds.length > 0) {
+      useCanvas.getState().select(matchingIds);
+      return matchingIds;
+    }
+    return [];
+  },
+  saveAsComponent: (ids: string[], name: string) => {
+    if (ids.length === 0) return null;
+    
+    const shapes = ids.map(id => useCanvas.getState().shapes[id]).filter(Boolean);
+    if (shapes.length === 0) return null;
+    
+    // Store component in localStorage (temporary until database schema is added)
+    const components = JSON.parse(localStorage.getItem('savedComponents') || '{}');
+    components[name] = shapes;
+    localStorage.setItem('savedComponents', JSON.stringify(components));
+    
+    console.log('[AI] Component saved:', name, 'with', shapes.length, 'shapes');
+    return name;
+  },
+  insertComponent: (componentName: string, x?: number, y?: number) => {
+    // Load component from localStorage
+    const components = JSON.parse(localStorage.getItem('savedComponents') || '{}');
+    const componentShapes = components[componentName];
+    
+    if (!componentShapes || componentShapes.length === 0) {
+      console.error('[AI] Component not found:', componentName);
+      return [];
+    }
+    
+    useCanvas.getState().pushHistory();
+    
+    // Calculate offset from original position to target position
+    const originalMinX = Math.min(...componentShapes.map((s: ShapeBase) => s.x));
+    const originalMinY = Math.min(...componentShapes.map((s: ShapeBase) => s.y));
+    const targetX = x !== undefined ? x : originalMinX;
+    const targetY = y !== undefined ? y : originalMinY;
+    const offsetX = targetX - originalMinX;
+    const offsetY = targetY - originalMinY;
+    
+    // Create new shapes at the target position
+    const newIds: string[] = [];
+    componentShapes.forEach((shape: ShapeBase) => {
+      const newShape: ShapeBase = {
+        ...shape,
+        id: crypto.randomUUID(),
+        x: shape.x + offsetX,
+        y: shape.y + offsetY,
+        updated_at: Date.now(),
+        updated_by: useCanvas.getState().me.id,
+        zIndex: Object.keys(useCanvas.getState().shapes).length + newIds.length
+      };
+      
+      useCanvas.getState().upsert(newShape);
+      broadcastUpsert(newShape);
+      persist(newShape);
+      newIds.push(newShape.id);
+    });
+    
+    // Select the newly inserted component
+    useCanvas.getState().select(newIds);
+    
+    console.log('[AI] Component inserted:', componentName, 'with', newIds.length, 'shapes');
+    return newIds;
+  },
+  exportCanvas: (format: 'png' | 'json' = 'png', filename?: string): string => {
+    console.log('[AI] Exporting canvas as', format);
+    
+    if (format === 'json') {
+      // Export as JSON data
+      const shapes = useCanvas.getState().shapes;
+      const canvasData = {
+        shapes: Object.values(shapes),
+        exportedAt: new Date().toISOString(),
+        version: '1.0'
+      };
+      
+      const dataStr = JSON.stringify(canvasData, null, 2);
+      const dataBlob = new Blob([dataStr], { type: 'application/json' });
+      const url = URL.createObjectURL(dataBlob);
+      
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = filename || `canvas-export-${Date.now()}.json`;
+      link.click();
+      
+      URL.revokeObjectURL(url);
+      return link.download;
+    } else {
+      // Export as PNG - note: This is a placeholder, actual implementation requires Stage ref
+      console.warn('[AI] PNG export requires Stage reference - returning JSON export instead');
+      return tools.exportCanvas('json', filename);
+    }
+  },
+  createCanvas: async (name: string) => {
+    console.log('[AI] Creating new canvas:', name);
+    // This requires Supabase integration - placeholder for now
+    console.warn('[AI] Canvas creation requires full Supabase integration - feature not yet implemented');
+    return null;
+  },
+  switchCanvas: async (canvasId: string) => {
+    console.log('[AI] Switching to canvas:', canvasId);
+    // This requires CanvasSelector integration - placeholder for now
+    console.warn('[AI] Canvas switching requires CanvasSelector integration - feature not yet implemented');
+    return null;
+  },
+  duplicateCanvas: async (sourceCanvasId: string, newName: string) => {
+    console.log('[AI] Duplicating canvas:', sourceCanvasId, 'as', newName);
+    // This requires full canvas duplication logic - placeholder for now
+    console.warn('[AI] Canvas duplication requires full implementation - feature not yet implemented');
+    return null;
+  },
+  connectShapes: (startShapeId: string, endShapeId: string, connectionType: 'line' | 'arrow' = 'line') => {
+    const start = useCanvas.getState().shapes[startShapeId];
+    const end = useCanvas.getState().shapes[endShapeId];
+    if (!start || !end) return null;
+    
+    useCanvas.getState().pushHistory();
+    
+    // Calculate default anchor points (right of start, left of end)
+    const startX = start.x + start.w;
+    const startY = start.y + start.h / 2;
+    const endX = end.x;
+    const endY = end.y + end.h / 2;
+    
+    // Create the connection shape
+    const connection: ShapeBase = {
+      id: crypto.randomUUID(),
+      type: connectionType,
+      x: startX,
+      y: startY,
+      w: Math.abs(endX - startX),
+      h: 2,
+      x2: endX,
+      y2: endY,
+      startShapeId,
+      endShapeId,
+      startAnchor: 'right',
+      endAnchor: 'left',
+      stroke: '#000000',
+      strokeWidth: 2,
+      rotation: 0,
+      updated_at: Date.now(),
+      updated_by: useCanvas.getState().me.id,
+      zIndex: Object.keys(useCanvas.getState().shapes).length
+    };
+    
+    useCanvas.getState().upsert(connection);
+    broadcastUpsert(connection);
+    persist(connection);
+    useCanvas.getState().select([connection.id]);
+    
+    return connection.id;
   },
   createText: (text:string, x:number, y:number, fontSize:number, color?:string) => {
     // Calculate dynamic dimensions similar to the Canvas component
@@ -731,105 +1126,105 @@ export async function interpret(text: string) {
       }
     }
     
-    return { ok: true, tool_calls: [{ name:"createGrid", args:{ gx:+gx, gy:+gy, type: objectType, ids }}] };
+    return { ok: true, ids }; // Grid shapes already created
   }
 
   // CREATE basic shapes
-  if (/create|make|add/.test(t)) {
+  if (/create|make|add|draw/.test(t)) {
     // Check for rounded rectangle BEFORE regular rectangle
     if (/\b(rounded\s*(rect|rectangle|box))\b/.test(t)) {
       const id = tools.createShape("roundedRect", 250, 200, 120, 80, parseColor(t));
-      return { ok: true, tool_calls: [{ name:"createShape", args:{ type:"roundedRect", id }}] };
+      return { ok: true, ids: [id] };
     }
     if (/\b(circle)\b/.test(t))  {
       const id = tools.createShape("circle", 200, 200, 120, 120, parseColor(t));
-      return { ok: true, tool_calls: [{ name:"createShape", args:{ type:"circle", id }}] };
+      return { ok: true, ids: [id] };
     }
     if (/\b(rect|rectangle|square)\b/.test(t)) {
       const { w, h } = parseSize(t) ?? { w: 200, h: 120 };
       const id = tools.createShape("rect", 300, 220, w, h, parseColor(t));
-      return { ok: true, tool_calls: [{ name:"createShape", args:{ type:"rect", id }}] };
+      return { ok: true, ids: [id] };
     }
     if (/\b(star)\b/.test(t)) {
       const id = tools.createShape("star", 250, 200, 100, 100, parseColor(t));
-      return { ok: true, tool_calls: [{ name:"createShape", args:{ type:"star", id }}] };
+      return { ok: true, ids: [id] };
     }
     if (/\b(heart)\b/.test(t)) {
       const id = tools.createShape("heart", 250, 200, 100, 100, parseColor(t));
-      return { ok: true, tool_calls: [{ name:"createShape", args:{ type:"heart", id }}] };
+      return { ok: true, ids: [id] };
     }
     if (/\b(triangle)\b/.test(t)) {
       const id = tools.createShape("triangle", 250, 200, 100, 100, parseColor(t));
-      return { ok: true, tool_calls: [{ name:"createShape", args:{ type:"triangle", id }}] };
+      return { ok: true, ids: [id] };
     }
     if (/\b(pentagon)\b/.test(t)) {
       const id = tools.createShape("pentagon", 250, 200, 100, 100, parseColor(t));
-      return { ok: true, tool_calls: [{ name:"createShape", args:{ type:"pentagon", id }}] };
+      return { ok: true, ids: [id] };
     }
     if (/\b(hexagon)\b/.test(t)) {
       const id = tools.createShape("hexagon", 250, 200, 100, 100, parseColor(t));
-      return { ok: true, tool_calls: [{ name:"createShape", args:{ type:"hexagon", id }}] };
+      return { ok: true, ids: [id] };
     }
     if (/\b(octagon)\b/.test(t)) {
       const id = tools.createShape("octagon", 250, 200, 100, 100, parseColor(t));
-      return { ok: true, tool_calls: [{ name:"createShape", args:{ type:"octagon", id }}] };
+      return { ok: true, ids: [id] };
     }
     if (/\b(oval|ellipse)\b/.test(t)) {
       const id = tools.createShape("oval", 250, 200, 150, 100, parseColor(t));
-      return { ok: true, tool_calls: [{ name:"createShape", args:{ type:"oval", id }}] };
+      return { ok: true, ids: [id] };
     }
     if (/\b(trapezoid)\b/.test(t)) {
       const id = tools.createShape("trapezoid", 250, 200, 100, 100, parseColor(t));
-      return { ok: true, tool_calls: [{ name:"createShape", args:{ type:"trapezoid", id }}] };
+      return { ok: true, ids: [id] };
     }
     if (/\b(rhombus|diamond)\b/.test(t)) {
       const id = tools.createShape("rhombus", 250, 200, 100, 100, parseColor(t));
-      return { ok: true, tool_calls: [{ name:"createShape", args:{ type:"rhombus", id }}] };
+      return { ok: true, ids: [id] };
     }
     if (/\b(parallelogram)\b/.test(t)) {
       const id = tools.createShape("parallelogram", 250, 200, 100, 100, parseColor(t));
-      return { ok: true, tool_calls: [{ name:"createShape", args:{ type:"parallelogram", id }}] };
+      return { ok: true, ids: [id] };
     }
     if (/\b(cylinder)\b/.test(t)) {
       const id = tools.createShape("cylinder", 250, 200, 100, 120, parseColor(t));
-      return { ok: true, tool_calls: [{ name:"createShape", args:{ type:"cylinder", id }}] };
+      return { ok: true, ids: [id] };
     }
     if (/\b(document)\b/.test(t)) {
       const id = tools.createShape("document", 250, 200, 100, 130, parseColor(t));
-      return { ok: true, tool_calls: [{ name:"createShape", args:{ type:"document", id }}] };
+      return { ok: true, ids: [id] };
     }
     if (/\b(stadium|pill)\b/.test(t)) {
       const id = tools.createShape("stadium", 250, 200, 150, 60, parseColor(t));
-      return { ok: true, tool_calls: [{ name:"createShape", args:{ type:"stadium", id }}] };
+      return { ok: true, ids: [id] };
     }
     if (/\b(note|annotation)\b/.test(t) && !/\btext\b/.test(t)) {
       const id = tools.createShape("note", 250, 200, 120, 100, parseColor(t));
-      return { ok: true, tool_calls: [{ name:"createShape", args:{ type:"note", id }}] };
+      return { ok: true, ids: [id] };
     }
     if (/\b(line)\b/.test(t) && !/\btext\b/.test(t)) {
       const id = tools.createShape("line", 250, 200, 120, 2, parseColor(t));
-      return { ok: true, tool_calls: [{ name:"createShape", args:{ type:"line", id }}] };
+      return { ok: true, ids: [id] };
     }
     if (/\b(arrow)\b/.test(t)) {
       const id = tools.createShape("arrow", 250, 200, 120, 2, parseColor(t));
-      return { ok: true, tool_calls: [{ name:"createShape", args:{ type:"arrow", id }}] };
+      return { ok: true, ids: [id] };
     }
-    if (/\b(frame)\b/.test(t) && /\b(ai|image|picture)\b/.test(t)) {
+    if (/\b(frame)\b/.test(t)) {
       const id = tools.createShape("frame", 250, 200, 200, 150, parseColor(t));
-      return { ok: true, tool_calls: [{ name:"createShape", args:{ type:"frame", id }}] };
+      return { ok: true, ids: [id] };
     }
     if (/\b(text|label)\b/.test(t)) {
       const content = parseText(t) ?? "Hello World";
       const id = tools.createText(content, 180, 180, 24, parseColor(t));
-      return { ok: true, tool_calls: [{ name:"createText", args:{ text: content, id }}] };
+      return { ok: true, ids: [id] };
     }
     
     // EMOJIS - Support all emojis from toolbar
     const emojiMap: Record<string, string> = {
       'smiley|smile|happy|face': '😊',
-      'thumbs?\\s*up|like|approve': '👍',
+      'thumbs?[-\\s]*up|like|approve': '👍',
       'fire|flame|hot': '🔥',
-      'light\\s*bulb|bulb|idea': '💡',
+      'light[-\\s]*bulb|bulb|idea': '💡',
       'rocket|spaceship': '🚀',
       'party|celebrate|confetti': '🎉',
       'computer|laptop|pc': '💻',
@@ -843,7 +1238,7 @@ export async function interpret(text: string) {
     for (const [pattern, emoji] of Object.entries(emojiMap)) {
       if (new RegExp(`\\b(${pattern})\\b`, 'i').test(t) && /emoji/.test(t)) {
         const id = tools.createEmoji(emoji, 250, 200);
-        return { ok: true, tool_calls: [{ name:"createEmoji", args:{ emoji, id }}] };
+        return { ok: true, ids: [id] }; // Shape already created, no re-execution needed
       }
     }
     
@@ -872,7 +1267,7 @@ export async function interpret(text: string) {
     for (const [pattern, icon] of Object.entries(iconMap)) {
       if (new RegExp(`\\b(${pattern})\\b`, 'i').test(t) && /icon/.test(t)) {
         const id = tools.createIcon(icon, 250, 200);
-        return { ok: true, tool_calls: [{ name:"createIcon", args:{ icon, id }}] };
+        return { ok: true, ids: [id] }; // Shape already created, no re-execution needed
       }
     }
   }
@@ -1156,7 +1551,7 @@ export async function interpret(text: string) {
 }
 
 // === Rule-based parser helpers ===
-type Hint = { type?: "rect"|"circle"|"text"; color?: string; selected?: boolean };
+type Hint = { type?: "rect"|"circle"|"text"; color?: string; selected?: boolean | string };
 
 function normalize(s:string){ return s.toLowerCase().replace(/\s+/g,' ').trim(); }
 
@@ -1208,35 +1603,99 @@ function getSelectionOrAll(n=0): string[] {
 function resolveTarget(hint?: Partial<Hint>): { id:string; shape: ShapeBase } | null {
   const s = useCanvas.getState();
   
-  // Prefer currently selected shapes
+  // PRIORITY 1: Emoji/icon name (if explicitly mentioned, override selection)
+  if (hint?.selected && typeof hint.selected === 'string') {
+    console.log('[AI] resolveTarget searching for emoji/icon:', hint.selected);
+    const normalizedHint = hint.selected.replace(/[-\s]+/g, '').toLowerCase();
+    
+    // Emoji name mapping
+    const emojiNameToCodepoint: Record<string, string> = {
+      'smiley': '1f60a', 'smile': '1f60a', 'happy': '1f60a',
+      'thumbsup': '1f44d', 'thumbup': '1f44d', 'like': '1f44d',
+      'fire': '1f525', 'flame': '1f525',
+      'lightbulb': '1f4a1', 'bulb': '1f4a1', 'idea': '1f4a1',
+      'rocket': '1f680',
+      'party': '1f389',
+      'computer': '1f4bb', 'laptop': '1f4bb',
+      'music': '1f3b5', 'note': '1f3b5',
+      'star': '1f31f', 'sparkle': '1f31f',
+      'art': '1f3a8', 'palette': '1f3a8',
+      'book': '1f4da',
+      'trophy': '1f3c6'
+    };
+    
+    // Search for matching emoji by URL
+    for (const [name, codepoint] of Object.entries(emojiNameToCodepoint)) {
+      if (normalizedHint.includes(name)) {
+        console.log('[AI] Checking emoji name:', name, 'with codepoint:', codepoint);
+        const found = Object.values(s.shapes).find(x => 
+          x.type === 'image' && 
+          x.imageUrl && 
+          x.imageUrl.includes(codepoint)
+        );
+        if (found) {
+          console.log('[AI] Found emoji shape:', found.id, found.imageUrl);
+          return { id: found.id, shape: found };
+        }
+      }
+    }
+    console.log('[AI] No emoji found matching:', hint.selected);
+  }
+  
+  // PRIORITY 2: Currently selected shapes (only if no emoji/icon name specified)
   if (s.selectedIds.length) {
     const id = s.selectedIds[0]; 
     return { id, shape: s.shapes[id] };
   }
   
-  // by explicit type words
+  // PRIORITY 3: by explicit type words
   if (hint?.type) {
     const found = Object.values(s.shapes).find(x => x.type === hint!.type); 
     if (found) return { id: found.id, shape: found };
   }
   
-  // by color mention (e.g., "blue rectangle")
+  // PRIORITY 4: by color mention (e.g., "blue rectangle")
   if (hint?.color) {
     const found = Object.values(s.shapes).find(x => x.color && x.color.includes(hint!.color!)); 
     if (found) return { id: found.id, shape: found };
   }
   
-  // last created as fallback
+  // PRIORITY 5: last created as fallback
   const last = Object.values(s.shapes).sort((a,b)=>b.updated_at-a.updated_at)[0];
   return last ? { id: last.id, shape: last } : null;
 }
 
 function extractHint(t:string): Hint {
-  const type = /\b(rect|rectangle)\b/.test(t) ? "rect" : 
-               /\bcircle\b/.test(t) ? "circle" : 
-               /\btext|label\b/.test(t) ? "text" : undefined;
+  const type: "rect" | "circle" | "text" | undefined = 
+    /\b(rect|rectangle)\b/.test(t) ? "rect" : 
+    /\bcircle\b/.test(t) ? "circle" : 
+    /\btext|label\b/.test(t) ? "text" : undefined;
   const c = parseColor(t);
-  return { type, color: c };
+  
+  // Extract emoji/icon names (e.g., "fire emoji", "thumbs up emoji")
+  let emojiName: string | undefined;
+  if (/emoji|icon/.test(t)) {
+    const emojiPatterns = [
+      'thumbs?[-\\s]*up', 'smiley', 'smile', 'happy',
+      'fire', 'flame', 'light[-\\s]*bulb', 'bulb', 'idea',
+      'rocket', 'party', 'computer', 'laptop',
+      'music', 'note', 'star', 'sparkle',
+      'art', 'palette', 'book', 'trophy'
+    ];
+    
+    for (const pattern of emojiPatterns) {
+      const regex = new RegExp(pattern, 'i');
+      if (regex.test(t)) {
+        emojiName = t.match(regex)?.[0].toLowerCase().replace(/[-\s]+/g, ' ');
+        console.log('[AI] extractHint found emoji name:', emojiName, 'from text:', t);
+        break;
+      }
+    }
+  }
+  
+  const hint: Hint = { type, color: c, selected: emojiName };
+  console.log('[AI] extractHint result:', hint);
+  return hint;
 }
 
 // Simple row layout

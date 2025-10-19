@@ -20,18 +20,37 @@ function initializeOpenAI() {
 // System prompt that teaches the AI about our canvas tools
 const SYSTEM_PROMPT = `You are an AI assistant for CollabCanvas, a collaborative design tool. Users can give you natural language commands to create and manipulate shapes on a canvas.
 
-AVAILABLE TOOLS:
-1. createShape(type, x, y, w, h, color, text?) - Create rectangle, circle, or text
-2. moveShape(id, x, y) - Move an existing shape to new position  
-3. resizeShape(id, w, h) - Resize an existing shape
-4. rotateShape(id, degrees) - Rotate shape by degrees
-5. createGrid(rows, cols) - Create a grid of rectangles
-6. createLoginForm() - Create a complete login form layout
-7. createNavBar() - Create a navigation bar with menu items
-8. createCard() - Create a card layout with title, image, description
-9. arrangeHorizontally() - Arrange existing shapes in a horizontal row
+AVAILABLE TOOLS (use these tool names exactly):
+1. createShape - Create shapes (rect, circle, triangle, star, heart, text, etc.)
+2. moveShape - Move shape to x,y position
+3. resizeShape - Change shape width and height
+4. rotateShape - Rotate shape by degrees
+5. changeColor - Change shape fill color
+6. changeStroke - Change outline color and width
+7. updateText - Change text content
+8. formatText - Bold, italic, underline, text alignment
+9. changeFontSize / changeFontFamily - Change font properties
+10. deleteShape - Remove a shape
+11. duplicateShape - Clone a shape
+12. groupShapes / ungroupShapes - Group/ungroup shapes
+13. alignShapes - Align shapes (left, right, center, top, middle, bottom)
+14. sendToFront / sendToBack / moveUp / moveDown - Layer ordering
+15. distributeShapes - Evenly space shapes (horizontal/vertical)
+16. matchSize / matchPosition - Match shape dimensions or position
+17. copyStyle - Copy visual style to other shapes
+18. connectShapes - Create line/arrow between shapes
+19. createGrid - Create NxM grid of shapes
+20. undo / redo - Undo or redo actions
 
-CURRENT CANVAS STATE: The user has these shapes: {canvasState}
+CONTEXT: {canvasState}
+
+IMPORTANT RULES:
+- When shapes are selected and user says "make it bold/bigger/blue/etc", apply to SELECTED shapes
+- Don't create new shapes if user wants to modify existing ones
+- Use the exact tool names listed above
+- Provide shape IDs when modifying existing shapes
+- For emojis (👍, 🔥, etc.) or icons (⚙️, 📧, etc.), the rule-based parser handles them - return clarify intent
+- NEVER try to draw emojis using basic shapes - they are image objects handled by the system
 
 RESPONSE FORMAT: Always respond with valid JSON in this format:
 {
@@ -39,26 +58,25 @@ RESPONSE FORMAT: Always respond with valid JSON in this format:
   "confidence": 0.8,
   "actions": [
     {
-      "tool": "createShape",
-      "params": {
-        "type": "rect|circle|text", 
+      "name": "createShape",
+      "args": {
+        "type": "rect|circle|triangle|star|heart|text",
         "x": 100, "y": 100, "w": 200, "h": 150,
-        "color": "#ff0000", "text": "optional text content"
+        "color": "#ff0000", "text": "optional"
       }
     }
   ],
   "message": "I'll create a red rectangle for you!",
-  "suggestions": ["Try: Create a blue circle", "Add text saying hello"]
+  "suggestions": ["Try: Create a blue circle"]
 }
 
 GUIDELINES:
-- Always provide helpful, encouraging responses
-- If unclear, ask for clarification with specific suggestions
-- Use realistic coordinates (canvas is ~800x600, start shapes around 100-400 range)
-- Choose appropriate colors (use hex codes like #ff0000, #0000ff, #00ff00)
-- For text shapes, make them wide enough for the content
-- When arranging/moving shapes, consider their current positions
-- If no shapes exist and user wants to move/resize, suggest creating shapes first
+- Use realistic coordinates (canvas ~1200x800, start shapes around 100-400)
+- Provide shape IDs for modifications (get from CONTEXT above)
+- Use hex color codes (#ff0000, #0000ff, #00ff00)
+- For text shapes, make them wide enough for content
+- Be concise, helpful, and encouraging
+- If unclear, use intent: "clarify" with 2-3 specific options
 
 CLARIFICATION HANDLING:
 When a command is AMBIGUOUS or UNCLEAR, respond with intent: "clarify":
@@ -73,13 +91,13 @@ When a command is AMBIGUOUS or UNCLEAR, respond with intent: "clarify":
 
 EXAMPLES:
 User: "Create a red circle"
-Response: {"intent": "create", "confidence": 0.9, "actions": [{"tool": "createShape", "params": {"type": "circle", "x": 200, "y": 200, "w": 100, "h": 100, "color": "#ff0000"}}], "message": "I'll create a red circle for you!", "suggestions": []}
+Response: {"intent": "create", "confidence": 0.9, "actions": [{"name": "createShape", "args": {"type": "circle", "x": 200, "y": 200, "w": 100, "h": 100, "color": "#ff0000"}}], "message": "Creating a red circle!", "suggestions": []}
 
 User: "Make something blue"  
-Response: {"intent": "clarify", "confidence": 0.6, "actions": [], "message": "I'd love to make something blue! What would you like me to create?", "suggestions": ["Create a blue rectangle", "Create a blue circle", "Add blue text"]}
+Response: {"intent": "clarify", "confidence": 0.6, "actions": [], "message": "What should I make blue?", "suggestions": ["Create a blue rectangle", "Create a blue circle"]}
 
-User: "make it yellow" (with circle selected)
-Response: {"intent": "create", "confidence": 0.9, "actions": [{"tool": "changeColor", "params": {"id": "circle-id", "color": "#ffff00"}}], "message": "I'll make the selected circle yellow!", "suggestions": []}
+User: "make it yellow" (with text shape id:abc123 selected)
+Response: {"intent": "modify", "confidence": 0.9, "actions": [{"name": "changeColor", "args": {"id": "abc123", "color": "#ffff00"}}], "message": "Making the selected text yellow!", "suggestions": []}
 
 Always be creative, helpful, and encouraging!`;
 
@@ -144,51 +162,12 @@ export async function callOpenAI(
 IMPORTANT: When user gives modification commands (like "make outline thicker", "change color", "make it bigger", etc.) and there are selected shapes, they mean to apply the modification to the SELECTED shapes UNLESS they explicitly specify a different target (like "make the red circle bigger" when a blue square is selected). Don't ask for clarification - just apply the modification to the selected shapes.`;
 
     const basePrompt = SYSTEM_PROMPTS[language as keyof typeof SYSTEM_PROMPTS] || SYSTEM_PROMPTS.en;
-    const fullPrompt = `${basePrompt}
-
-AVAILABLE TOOLS:
-1. createShape(type, x, y, w, h, color, text?) - Create rectangle, circle, or text
-2. moveShape(id, x, y) - Move an existing shape to new position  
-3. resizeShape(id, w, h) - Resize an existing shape
-4. rotateShape(id, degrees) - Rotate shape by degrees
-5. createGrid(rows, cols) - Create a grid of rectangles
-6. createLoginForm() - Create a complete login form layout
-7. createNavBar() - Create a navigation bar with menu items
-8. createCard() - Create a card layout with title, image, description
-9. arrangeHorizontally() - Arrange existing shapes in a horizontal row
-
-CURRENT CANVAS STATE: 
-- Shapes: ${stateDescription}
-- Selection: ${selectionDescription}
-
-RESPONSE FORMAT: Always respond with valid JSON in this format:
-{
-  "intent": "create|move|resize|rotate|arrange|clarify|error",
-  "confidence": 0.8,
-  "actions": [
-    {
-      "tool": "createShape",
-      "params": {
-        "type": "rect|circle|text", 
-        "x": 100, "y": 100, "w": 200, "h": 150,
-        "color": "#ff0000", "text": "optional text content"
-      }
-    }
-  ],
-  "message": "I'll create a red rectangle for you!",
-  "suggestions": ["Try: Create a blue circle", "Add text saying hello"]
-}
-
-GUIDELINES:
-- Always provide helpful, encouraging responses
-- If unclear, ask for clarification with specific suggestions
-- Use realistic coordinates (canvas is ~800x600, start shapes around 100-400 range)
-- Choose appropriate colors (use hex codes like #ff0000, #0000ff, #00ff00)
-- For text shapes, make them wide enough for the content
-- When arranging/moving shapes, consider their current positions
-- If no shapes exist and user wants to move/resize, suggest creating shapes first
-
-Always be creative, helpful, and encouraging!`;
+    
+    // Build full prompt with current canvas state
+    const fullPrompt = SYSTEM_PROMPT.replace(
+      '{canvasState}', 
+      `Current canvas: ${stateDescription}\nSelected shapes: ${selectionDescription}`
+    );
     
     const systemPrompt = fullPrompt;
 
@@ -222,8 +201,32 @@ Always be creative, helpful, and encouraging!`;
     }
 
     // Parse and validate the JSON response
-    const aiResponse: AIResponse = JSON.parse(responseText);
-    console.log('[OpenAI] Parsed response:', aiResponse);
+    const rawResponse: any = JSON.parse(responseText);
+    console.log('[OpenAI] Parsed response:', rawResponse);
+    
+    // Normalize action format: OpenAI may return {tool, params} instead of {name, args}
+    let normalizedActions = rawResponse.actions || [];
+    if (Array.isArray(normalizedActions)) {
+      normalizedActions = normalizedActions.map((action: any) => {
+        // If action has 'tool' and 'params', convert to 'name' and 'args'
+        if (action.tool && action.params && !action.name && !action.args) {
+          console.log('[OpenAI] Normalizing action format:', action);
+          return {
+            name: action.tool,
+            args: action.params
+          };
+        }
+        return action;
+      });
+    }
+    
+    const aiResponse: AIResponse = {
+      intent: rawResponse.intent,
+      confidence: rawResponse.confidence,
+      message: rawResponse.message,
+      actions: normalizedActions,
+      suggestions: rawResponse.suggestions
+    };
     
     // Validate required fields (actions are optional for error/clarify intents)
     if (!aiResponse.intent || !aiResponse.message) {
@@ -280,6 +283,14 @@ export async function generateImageWithDALLE(prompt: string, frameWidth?: number
   console.log('[DALL-E] 🚀 Starting AI image generation...');
   console.log('[DALL-E] Prompt:', prompt);
   console.log('[DALL-E] Frame dimensions:', frameWidth, '×', frameHeight);
+
+  // 🚨 Check if running on localhost (AI image generation requires deployment due to CORS proxy)
+  const isLocalhost = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
+  if (isLocalhost) {
+    console.warn('[DALL-E] ⚠️ AI image generation is not available on localhost due to CORS restrictions.');
+    console.warn('[DALL-E] 💡 Deploy to Vercel to use this feature (requires /api/generate-image serverless function).');
+    throw new Error('AI image generation is only available in production. Deploy your app to Vercel to use DALL-E integration.');
+  }
 
   // 🎯 Try Lambda-first approach (server-side generation with no CORS issues)
   try {

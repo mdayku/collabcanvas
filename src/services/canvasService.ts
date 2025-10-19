@@ -477,6 +477,29 @@ class CanvasService {
         baseShape.arrowHead = shape.arrow_head;
       }
       
+      // Connection/attachment properties (snake_case → camelCase)
+      if (shape.start_shape_id !== null && shape.start_shape_id !== undefined) {
+        baseShape.startShapeId = shape.start_shape_id;
+      }
+      if (shape.end_shape_id !== null && shape.end_shape_id !== undefined) {
+        baseShape.endShapeId = shape.end_shape_id;
+      }
+      if (shape.start_anchor !== null && shape.start_anchor !== undefined) {
+        baseShape.startAnchor = shape.start_anchor;
+      }
+      if (shape.end_anchor !== null && shape.end_anchor !== undefined) {
+        baseShape.endAnchor = shape.end_anchor;
+      }
+      if (shape.path_type !== null && shape.path_type !== undefined) {
+        baseShape.pathType = shape.path_type;
+      }
+      if (shape.control_points !== null && shape.control_points !== undefined) {
+        baseShape.controlPoints = shape.control_points;
+      }
+      if (shape.curvature !== null && shape.curvature !== undefined) {
+        baseShape.curvature = shape.curvature;
+      }
+      
       // Group properties
       if (shape.group_id !== null && shape.group_id !== undefined) {
         baseShape.groupId = shape.group_id;

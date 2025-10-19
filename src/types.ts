@@ -27,6 +27,14 @@ export type ShapeBase = {
   y2?: number; // end point y for lines and arrows
   arrowHead?: 'start' | 'end' | 'both' | 'none'; // arrow head configuration
   dashPattern?: number[]; // dash pattern for lines [dash, gap, dash, gap...]
+  // Connection system (for attaching lines/arrows to shapes)
+  startShapeId?: string; // shape ID that the line starts from
+  endShapeId?: string; // shape ID that the line ends at
+  startAnchor?: 'top' | 'right' | 'bottom' | 'left' | 'center'; // anchor point on start shape
+  endAnchor?: 'top' | 'right' | 'bottom' | 'left' | 'center'; // anchor point on end shape
+  pathType?: 'straight' | 'curved' | 'orthogonal'; // line path type
+  controlPoints?: { x: number; y: number }[]; // bezier control points for curved lines
+  curvature?: number; // curve tension (0-1) for simple curved lines
   groupId?: string; // group identifier for grouped shapes
   // AI Frame properties
   aiPrompt?: string; // the prompt used to generate AI image (for frame type)

@@ -20,45 +20,60 @@ function initializeGroq() {
 // System prompt that teaches the AI about our canvas tools
 const SYSTEM_PROMPT = `You are an AI assistant for CollabCanvas, a collaborative design tool. Users can give you natural language commands to create and manipulate shapes on a canvas.
 
-AVAILABLE TOOLS:
-1. createShape(type, x, y, w, h, color, text?) - Create rectangle, circle, or text
-2. moveShape(id, x, y) - Move an existing shape to new position  
-3. resizeShape(id, w, h) - Resize an existing shape
-4. rotateShape(id, degrees) - Rotate shape by degrees
-5. createGrid(rows, cols) - Create a grid of rectangles
-6. createLoginForm() - Create a complete login form layout
-7. createNavBar() - Create a navigation bar with menu items
-8. createCard() - Create a card layout with title, image, description
-9. arrangeHorizontally() - Arrange existing shapes in a horizontal row
+AVAILABLE TOOLS (use these tool names exactly):
+1. createShape - Create shapes (rect, circle, triangle, star, heart, text, etc.)
+2. moveShape - Move shape to x,y position
+3. resizeShape - Change shape width and height
+4. rotateShape - Rotate shape by degrees
+5. changeColor - Change shape fill color
+6. changeStroke - Change outline color and width
+7. updateText - Change text content
+8. formatText - Bold, italic, underline, text alignment
+9. changeFontSize / changeFontFamily - Change font properties
+10. deleteShape - Remove a shape
+11. duplicateShape - Clone a shape
+12. groupShapes / ungroupShapes - Group/ungroup shapes
+13. alignShapes - Align shapes (left, right, center, top, middle, bottom)
+14. sendToFront / sendToBack / moveUp / moveDown - Layer ordering
+15. distributeShapes - Evenly space shapes (horizontal/vertical)
+16. matchSize / matchPosition - Match shape dimensions or position
+17. copyStyle - Copy visual style to other shapes
+18. connectShapes - Create line/arrow between shapes
+19. createGrid - Create NxM grid of shapes
+20. undo / redo - Undo or redo actions
 
-CURRENT CANVAS STATE: The user has these shapes: {canvasState}
+CONTEXT: {canvasState}
 
-RESPONSE FORMAT: Always respond with valid JSON in this exact format:
+IMPORTANT RULES:
+- When shapes are selected and user says "make it bold/bigger/blue/etc", apply to SELECTED shapes
+- Don't create new shapes if user wants to modify existing ones
+- Use the exact tool names listed above
+- Provide shape IDs when modifying existing shapes
+
+RESPONSE FORMAT: Always respond with valid JSON in this format:
 {
-  "intent": "create",
+  "intent": "create|move|resize|rotate|arrange|clarify|error",
   "confidence": 0.8,
   "actions": [
     {
-      "tool": "createShape",
-      "params": {
-        "type": "rect", 
+      "name": "createShape",
+      "args": {
+        "type": "rect|circle|triangle|star|heart|text",
         "x": 100, "y": 100, "w": 200, "h": 150,
-        "color": "#ff0000", "text": "optional text content"
+        "color": "#ff0000", "text": "optional"
       }
     }
   ],
-  "message": "I'll create a red rectangle for you!",
-  "suggestions": ["Try: Create a blue circle", "Add text saying hello"]
+  "message": "Creating a red rectangle!",
+  "suggestions": ["Try: Create a blue circle"]
 }
 
 GUIDELINES:
-- Always provide helpful, encouraging responses
-- If unclear, ask for clarification with specific suggestions
-- Use realistic coordinates (canvas is ~800x600, start shapes around 100-400 range)
-- Choose appropriate colors (use hex codes like #ff0000, #0000ff, #00ff00)
-- For text shapes, make them wide enough for the content
-- When creating multiple shapes, space them nicely apart
-- If no shapes exist and user wants to move/resize, suggest creating shapes first
+- Use realistic coordinates (canvas ~1200x800, start shapes around 100-400)
+- Provide shape IDs for modifications (get from CONTEXT above)
+- Use hex color codes (#ff0000, #0000ff, #00ff00)
+- Be concise, helpful, and encouraging
+- If unclear, use intent: "clarify"
 
 EXAMPLES:
 User: "Create 3 blue circles"
@@ -120,50 +135,12 @@ export async function callGroq(userMessage: string, language: string = 'en'): Pr
 IMPORTANT: When user gives modification commands (like "make outline thicker", "change color", "make it bigger", etc.) and there are selected shapes, they mean to apply the modification to the SELECTED shapes UNLESS they explicitly specify a different target (like "make the red circle bigger" when a blue square is selected). Don't ask for clarification - just apply the modification to the selected shapes.`;
 
     const basePrompt = SYSTEM_PROMPTS[language as keyof typeof SYSTEM_PROMPTS] || SYSTEM_PROMPTS.en;
-    const fullPrompt = `${basePrompt}
-
-AVAILABLE TOOLS:
-1. createShape(type, x, y, w, h, color, text?) - Create rectangle, circle, or text
-2. moveShape(id, x, y) - Move an existing shape to new position  
-3. resizeShape(id, w, h) - Resize an existing shape
-4. rotateShape(id, degrees) - Rotate shape by degrees
-5. createGrid(rows, cols) - Create a grid of rectangles
-6. createLoginForm() - Create a complete login form layout
-7. createNavBar() - Create a navigation bar with menu items
-8. createCard() - Create a card layout with title, image, description
-9. arrangeHorizontally() - Arrange existing shapes in a horizontal row
-
-CURRENT CANVAS STATE: ${stateDescription}
-SELECTION STATE: ${selectionDescription}
-
-RESPONSE FORMAT: Always respond with valid JSON in this exact format:
-{
-  "intent": "create",
-  "confidence": 0.8,
-  "actions": [
-    {
-      "tool": "createShape",
-      "params": {
-        "type": "rect", 
-        "x": 100, "y": 100, "w": 200, "h": 150,
-        "color": "#ff0000", "text": "optional text content"
-      }
-    }
-  ],
-  "message": "I'll create a red rectangle for you!",
-  "suggestions": ["Try: Create a blue circle", "Add text saying hello"]
-}
-
-GUIDELINES:
-- Always provide helpful, encouraging responses
-- If unclear, ask for clarification with specific suggestions
-- Use realistic coordinates (canvas is ~800x600, start shapes around 100-400 range)
-- Choose appropriate colors (use hex codes like #ff0000, #0000ff, #00ff00)
-- For text shapes, make them wide enough for the content
-- When creating multiple shapes, space them nicely apart
-- If no shapes exist and user wants to move/resize, suggest creating shapes first
-
-Always be creative, helpful, and encouraging!`;
+    
+    // Build full prompt with current canvas state
+    const fullPrompt = SYSTEM_PROMPT.replace(
+      '{canvasState}', 
+      `Current canvas: ${stateDescription}\nSelected shapes: ${selectionDescription}`
+    );
     
     const systemPrompt = fullPrompt;
 
