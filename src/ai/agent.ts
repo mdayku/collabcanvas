@@ -172,6 +172,44 @@ export const tools = {
     
     return duplicate.id;
   },
+  cutShapes: (ids: string[]) => {
+    if (ids.length === 0) return [];
+    
+    useCanvas.getState().pushHistory();
+    const duplicates: string[] = [];
+    
+    // Duplicate each shape with slight offset
+    ids.forEach(id => {
+      const original = useCanvas.getState().shapes[id];
+      if (!original) return;
+      
+      const duplicate: ShapeBase = {
+        ...original,
+        id: crypto.randomUUID(),
+        x: original.x + 10,
+        y: original.y + 10,
+        updated_at: Date.now(),
+        updated_by: useCanvas.getState().me.id
+      };
+      
+      useCanvas.getState().upsert(duplicate);
+      broadcastUpsert(duplicate);
+      persist(duplicate);
+      duplicates.push(duplicate.id);
+    });
+    
+    // Delete originals
+    useCanvas.getState().remove(ids);
+    broadcastRemove(ids);
+    ids.forEach(id => {
+      supabase.from("shapes").delete().eq("id", id);
+    });
+    
+    // Select the duplicates (the "cut" shapes)
+    useCanvas.getState().select(duplicates);
+    
+    return duplicates;
+  },
   groupShapes: (ids:string[]) => {
     useCanvas.getState().pushHistory();
     const groupId = useCanvas.getState().groupShapes(ids);
@@ -913,6 +951,24 @@ export async function interpretWithResponse(text: string, language: string = 'en
           useCanvas.getState().remove([shape.id]);
           // Note: We'd need to implement broadcastRemove and deleteFromDB functions
         });
+      }
+    };
+  }
+
+  if (t.includes("cut")) {
+    const selectedIds = useCanvas.getState().selectedIds;
+    if (selectedIds.length === 0) {
+      return {
+        type: 'error',
+        message: "No shapes selected to cut. Select some shapes first."
+      };
+    }
+    
+    return {
+      type: 'confirmation_required',
+      message: `Cut ${selectedIds.length} shape(s)? This will remove them from their current position.`,
+      confirmAction: async () => {
+        tools.cutShapes(selectedIds);
       }
     };
   }
