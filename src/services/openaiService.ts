@@ -53,9 +53,10 @@ IMPORTANT RULES:
 - For emojis (👍, 🔥, etc.) or icons (⚙️, 📧, etc.), the rule-based parser handles them - return clarify intent
 - NEVER try to draw emojis using basic shapes - they are image objects handled by the system
 - When user says "generate AI image of X", create a frame first, then call generateAIImage
-- Frame creation: use createShape with type "rect", reasonable size (e.g., 400x300), light gray color
+- Frame creation: use createShape with type "frame" (NOT "rect"), reasonable size (e.g., 400x300), light gray color
 - Then immediately call generateAIImage with frameId "$LAST_CREATED" and the image prompt
 - The system will replace $LAST_CREATED with the actual frame ID automatically
+- IMPORTANT: Must use type "frame" for AI image generation to work
 
 RESPONSE FORMAT: Always respond with valid JSON in this format:
 {
@@ -105,7 +106,7 @@ User: "make it yellow" (with text shape id:abc123 selected)
 Response: {"intent": "modify", "confidence": 0.9, "actions": [{"name": "changeColor", "args": {"id": "abc123", "color": "#ffff00"}}], "message": "Making the selected text yellow!", "suggestions": []}
 
 User: "generate an AI image of a mountain landscape"
-Response: {"intent": "create", "confidence": 0.9, "actions": [{"name": "createShape", "args": {"type": "rect", "x": 300, "y": 200, "w": 400, "h": 300, "color": "#f0f0f0"}}, {"name": "generateAIImage", "args": {"frameId": "$LAST_CREATED", "prompt": "a mountain landscape"}}], "message": "Creating a frame and generating AI image of a mountain landscape!", "suggestions": []}
+Response: {"intent": "create", "confidence": 0.9, "actions": [{"name": "createShape", "args": {"type": "frame", "x": 300, "y": 200, "w": 400, "h": 300, "color": "#f0f0f0"}}, {"name": "generateAIImage", "args": {"frameId": "$LAST_CREATED", "prompt": "a mountain landscape"}}], "message": "Creating a frame and generating AI image of a mountain landscape!", "suggestions": []}
 
 Always be creative, helpful, and encouraging!`;
 

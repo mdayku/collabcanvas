@@ -51,9 +51,10 @@ IMPORTANT RULES:
 - Use the exact tool names listed above
 - Provide shape IDs when modifying existing shapes
 - When user says "generate AI image of X", create a frame first, then call generateAIImage
-- Frame creation: use createShape with type "rect", reasonable size (e.g., 400x300), light gray color
+- Frame creation: use createShape with type "frame" (NOT "rect"), reasonable size (e.g., 400x300), light gray color
 - Then immediately call generateAIImage with frameId "$LAST_CREATED" and the image prompt
 - The system will replace $LAST_CREATED with the actual frame ID automatically
+- IMPORTANT: Must use type "frame" for AI image generation to work
 
 RESPONSE FORMAT: Always respond with valid JSON in this format:
 {
