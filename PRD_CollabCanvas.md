@@ -90,12 +90,12 @@ A real-time collaborative design canvas where users and AI co-create. Like Figma
 
 #### **✅ AI-Powered Design** (Enhanced Oct 19, 2025)
 - **Hybrid AI Agent**: Rule-based parser (85% coverage, <20ms) + LLM fallback with context injection
-- **30+ AI Tools** (~90% manual capability coverage):
+- **30+ AI Tools** (~95% manual capability coverage):
   - **Creation**: All 20 shapes, emojis, icons, text, grids, templates, AI images
   - **Manipulation**: Move, resize, rotate, color, stroke, layer ordering
   - **Text**: Update content, formatting (bold/italic/underline/align), font size/family
   - **Layout**: Distribute evenly, arrange in grid, stack vertically, align shapes
-  - **Transforms**: Match size/position, copy style, duplicate, group/ungroup
+  - **Transforms**: Match size/position, copy style, duplicate, cut, group/ungroup
   - **Selection**: Select by type/color/region, smart filtering
   - **Connections**: Connect shapes with lines/arrows, specify direction
   - **Components**: Save selections, insert saved components

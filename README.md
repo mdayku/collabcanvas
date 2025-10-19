@@ -12,7 +12,7 @@
 - **🎭 Multi-Platform Deployment**: Vercel (primary) + AWS Amplify (tested) deployment
 - **👥 Real-Time Collaboration**: Sub-50ms synchronization with Last-Write-Wins conflict resolution
 - **🔔 Visual Feedback**: Toast notifications for conflict awareness and user actions
-- **🎯 Hybrid AI Agent**: 30+ AI tools covering ~90% of manual capabilities
+- **🎯 Hybrid AI Agent**: 30+ AI tools covering ~95% of manual capabilities
 - **✏️ Pen Tool**: Click-to-draw bezier paths with smoothing (double-click to finish)
 - **🔲 Box Select Tool**: Drag to select multiple shapes, compatible with zoom/pan
 - **🏗️ Production Infrastructure**: Professional UI, 287/299 tests passing (96%)
