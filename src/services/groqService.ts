@@ -152,7 +152,9 @@ IMPORTANT: When user gives modification commands (like "make outline thicker", "
 
     console.log('[Groq] Sending request for:', userMessage);
     
-    const completion = await client.chat.completions.create({
+    // Add timeout to prevent hanging indefinitely
+    const timeoutMs = 10000; // 10 seconds
+    const completionPromise = client.chat.completions.create({
       messages: [
         { role: 'system', content: systemPrompt },
         { role: 'user', content: userMessage }
@@ -161,6 +163,12 @@ IMPORTANT: When user gives modification commands (like "make outline thicker", "
       max_tokens: 500,
       temperature: 0.3, // Lower for more consistent JSON
     });
+    
+    const timeoutPromise = new Promise((_, reject) => {
+      setTimeout(() => reject(new Error('Groq request timed out after 10 seconds')), timeoutMs);
+    });
+    
+    const completion = await Promise.race([completionPromise, timeoutPromise]) as any;
 
     const responseText = completion.choices[0]?.message?.content;
     console.log('[Groq] Raw response:', responseText);
@@ -195,7 +203,11 @@ IMPORTANT: When user gives modification commands (like "make outline thicker", "
     // More detailed error message based on error type
     let errorMessage = 'Groq AI encountered an error. Using basic pattern matching instead.';
     if (error instanceof Error) {
-      if (error.message.includes('API key')) {
+      if (error.message.includes('timed out')) {
+        errorMessage = '⏱️ Groq request timed out. Check your internet connection or try again.';
+      } else if (error.message.includes('ERR_NAME_NOT_RESOLVED') || error.message.includes('network')) {
+        errorMessage = '🌐 Network error reaching Groq. Check your internet connection.';
+      } else if (error.message.includes('API key')) {
         errorMessage = '🔑 Groq API key issue. Check your configuration or using basic mode.';
       } else if (error.message.includes('rate limit')) {
         errorMessage = '⏱️ Groq rate limit hit. Wait a moment or using basic mode.';

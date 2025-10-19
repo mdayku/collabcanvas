@@ -194,13 +194,21 @@ IMPORTANT: When user gives modification commands (like "make outline thicker", "
     
     messages.push({ role: 'user', content: userMessage });
     
-    const completion = await client.chat.completions.create({
+    // Add timeout to prevent hanging indefinitely
+    const timeoutMs = 10000; // 10 seconds
+    const completionPromise = client.chat.completions.create({
       model: 'gpt-3.5-turbo',
       messages,
       max_tokens: 500,
       temperature: 0.7,
       response_format: { type: 'json_object' } // Ensure JSON response
     });
+    
+    const timeoutPromise = new Promise((_, reject) => {
+      setTimeout(() => reject(new Error('OpenAI request timed out after 10 seconds')), timeoutMs);
+    });
+    
+    const completion = await Promise.race([completionPromise, timeoutPromise]) as any;
 
     const responseText = completion.choices[0]?.message?.content;
     console.log('[OpenAI] Raw response:', responseText);
@@ -255,7 +263,11 @@ IMPORTANT: When user gives modification commands (like "make outline thicker", "
     // More detailed error message based on error type
     let errorMessage = 'OpenAI unavailable - using basic pattern matching instead.';
     if (error instanceof Error) {
-      if (error.message.includes('quota') || error.message.includes('429')) {
+      if (error.message.includes('timed out')) {
+        errorMessage = '⏱️ OpenAI request timed out. Check your internet connection or try again.';
+      } else if (error.message.includes('ERR_NAME_NOT_RESOLVED') || error.message.includes('network')) {
+        errorMessage = '🌐 Network error reaching OpenAI. Check your internet connection.';
+      } else if (error.message.includes('quota') || error.message.includes('429')) {
         errorMessage = '💳 OpenAI quota exceeded. Add billing at platform.openai.com or using basic mode.';
       } else if (error.message.includes('API key')) {
         errorMessage = '🔑 OpenAI API key issue. Check your configuration or using basic mode.';

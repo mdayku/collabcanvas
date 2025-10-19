@@ -939,6 +939,34 @@ export async function interpret(text: string) {
   // 0) target resolution (selected > mentioned > last by type)
   const resolve = (hint?: Partial<Hint>) => resolveTarget({ ...extractHint(t), ...hint });
 
+  // AI IMAGE GENERATION - Check FIRST before anything else
+  if (/\b(generate|create|make).*\b(ai|dall.?e|image)/.test(t) || /\b(ai|dall.?e).*\b(image|picture|photo)/.test(t)) {
+    console.log('[AI] Rule-based parser detected AI image generation request');
+    
+    // Extract the prompt (everything after "of" or "with" or just use the full text)
+    let prompt = raw;
+    const ofMatch = /(?:of|with|showing)\s+(.+)$/i.exec(raw);
+    if (ofMatch) {
+      prompt = ofMatch[1].trim();
+    }
+    
+    // Create a frame first
+    const frameX = 300, frameY = 200, frameW = 400, frameH = 300;
+    const frameId = tools.createShape('frame', frameX, frameY, frameW, frameH, '#f0f0f0');
+    
+    // Then generate the AI image
+    if (frameId) {
+      console.log('[AI] Created frame:', frameId, 'generating image with prompt:', prompt);
+      tools.generateAIImage(frameId, prompt).catch((error: Error) => {
+        console.error('[AI] AI image generation failed:', error);
+      });
+      
+      return { ok: true, ids: [frameId] };
+    }
+    
+    return { error: "Failed to create frame for AI image generation" };
+  }
+
   // ROTATE
   if (/(rotate|spin|turn)\b/.test(t)) {
     const angle = parseAngle(t) ?? 90; // default 90°
