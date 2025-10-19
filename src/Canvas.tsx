@@ -5589,14 +5589,29 @@ function FloatingAIWidget() {
       } else {
         // Success! Execute the actions
         if (response.result && Array.isArray(response.result)) {
+          let lastCreatedId: string | null = null; // Track the last created shape ID
+          
           for (const action of response.result) {
             // Support both normalized (name/args) and legacy (tool/params) formats
             const toolName = action.name || action.tool;
-            const p = action.args || action.params;
+            let p = action.args || action.params;
+            
+            // Replace $LAST_CREATED with the actual last created shape ID
+            if (p && lastCreatedId) {
+              p = { ...p };
+              Object.keys(p).forEach(key => {
+                if (p[key] === '$LAST_CREATED') {
+                  p[key] = lastCreatedId;
+                }
+              });
+            }
             
             switch (toolName) {
               case 'createShape':
-                if (p) tools.createShape(p.type, p.x, p.y, p.w, p.h, p.color, p.text);
+                if (p) {
+                  const shapeId = tools.createShape(p.type, p.x, p.y, p.w, p.h, p.color, p.text);
+                  if (shapeId) lastCreatedId = shapeId;
+                }
                 break;
               case 'createText':
                 if (p) tools.createText(p.text, p.x, p.y, p.fontSize, p.color);

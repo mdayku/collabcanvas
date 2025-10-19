@@ -41,6 +41,7 @@ AVAILABLE TOOLS (use these tool names exactly):
 18. connectShapes - Create line/arrow between shapes
 19. createGrid - Create NxM grid of shapes
 20. undo / redo - Undo or redo actions
+21. generateAIImage - Generate AI image with DALL-E for a frame shape (requires frameId and prompt)
 
 CONTEXT: {canvasState}
 
@@ -49,6 +50,10 @@ IMPORTANT RULES:
 - Don't create new shapes if user wants to modify existing ones
 - Use the exact tool names listed above
 - Provide shape IDs when modifying existing shapes
+- When user says "generate AI image of X", create a frame first, then call generateAIImage
+- Frame creation: use createShape with type "rect", reasonable size (e.g., 400x300), light gray color
+- Then immediately call generateAIImage with frameId "$LAST_CREATED" and the image prompt
+- The system will replace $LAST_CREATED with the actual frame ID automatically
 
 RESPONSE FORMAT: Always respond with valid JSON in this format:
 {
