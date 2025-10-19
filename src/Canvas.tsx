@@ -6409,20 +6409,28 @@ function ContextMenu({ x, y, shapeIds, onClose }: {
       
       if (!user) {
         // If not authenticated, fall back to localStorage
-        const existingComponents = JSON.parse(localStorage.getItem('collabcanvas_components') || '[]');
-        const newComponent = {
-          id: crypto.randomUUID(),
-          name: componentName.trim(),
-          shapes: normalizedShapes,
-          created_at: Date.now(),
-        };
-        existingComponents.push(newComponent);
-        localStorage.setItem('collabcanvas_components', JSON.stringify(existingComponents));
-        
-        // Dispatch event to refresh components list
-        window.dispatchEvent(new Event('componentsUpdated'));
-        
-        showToast(`Component "${componentName}" saved!`, 'success');
+        try {
+          const existingComponents = JSON.parse(localStorage.getItem('collabcanvas_components') || '[]');
+          const newComponent = {
+            id: crypto.randomUUID(),
+            name: componentName.trim(),
+            shapes: normalizedShapes,
+            created_at: Date.now(),
+          };
+          existingComponents.push(newComponent);
+          localStorage.setItem('collabcanvas_components', JSON.stringify(existingComponents));
+          
+          // Dispatch event to refresh components list
+          window.dispatchEvent(new Event('componentsUpdated'));
+          
+          showToast(`Component "${componentName}" saved!`, 'success');
+        } catch (storageError: any) {
+          if (storageError.name === 'QuotaExceededError') {
+            showToast('Storage quota exceeded. Please sign in to save unlimited components, or delete some existing components.', 'error');
+          } else {
+            showToast('Failed to save component to storage', 'error');
+          }
+        }
         return;
       }
 
@@ -6442,16 +6450,21 @@ function ContextMenu({ x, y, shapeIds, onClose }: {
         return;
       }
       
-      // Also save to localStorage as backup
-      const existingComponents = JSON.parse(localStorage.getItem('collabcanvas_components') || '[]');
-      const newComponent = {
-        id: crypto.randomUUID(),
-        name: componentName.trim(),
-        shapes: normalizedShapes,
-        created_at: Date.now(),
-      };
-      existingComponents.push(newComponent);
-      localStorage.setItem('collabcanvas_components', JSON.stringify(existingComponents));
+      // Also save to localStorage as backup (ignore errors - Supabase is primary)
+      try {
+        const existingComponents = JSON.parse(localStorage.getItem('collabcanvas_components') || '[]');
+        const newComponent = {
+          id: crypto.randomUUID(),
+          name: componentName.trim(),
+          shapes: normalizedShapes,
+          created_at: Date.now(),
+        };
+        existingComponents.push(newComponent);
+        localStorage.setItem('collabcanvas_components', JSON.stringify(existingComponents));
+      } catch (storageError) {
+        // Silently ignore localStorage errors when authenticated - Supabase is primary storage
+        console.warn('LocalStorage backup failed (quota exceeded), but component saved to Supabase successfully');
+      }
       
       // Dispatch event to refresh components list
       window.dispatchEvent(new Event('componentsUpdated'));
